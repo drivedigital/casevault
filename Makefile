@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 PY := .venv/bin/python
 
-.PHONY: setup infra-up infra-down web api worker ping-job test lint logs check-env backup handoff-finish env-create
+.PHONY: setup infra-up infra-down web api worker ping-job test test-db lint logs check-env backup handoff-finish env-create
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  make %-16s %s\n", $$1, $$2}'
@@ -29,6 +29,9 @@ worker: ## Run RQ worker (requires redis)
 
 ping-job: ## Run the worker ping job directly (no redis required)
 	$(PY) -m workers.run_ping
+
+test-db: ## Create casevault_test in the compose Postgres (idempotent; run after make infra-up)
+	docker compose exec -T postgres sh -c "psql -U casevault -d casevault -tc \"SELECT 1 FROM pg_database WHERE datname = 'casevault_test'\" | grep -q 1 || createdb -U casevault casevault_test"
 
 test: ## Run Python test suite
 	$(PY) -m pytest

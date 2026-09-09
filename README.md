@@ -63,6 +63,7 @@ Verify:
 curl http://localhost:8100/health            # {"status":"ok",...}
 curl http://localhost:8100/api/v1/health     # {"status":"ok",...}
 make check-env                               # validates .env.local
+make test-db                                   # create casevault_test once (needs make infra-up)
 make test && make lint                       # smoke tests + linters
 ```
 

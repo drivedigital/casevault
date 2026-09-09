@@ -5,6 +5,17 @@ Fields: Date / Branch / What changed / Why / Files affected / What needs local t
 
 ---
 
+## 2026-09-08 — Local-run helper: `make test-db` + runbook refresh
+
+**Branch:** `arena/01a08429-casevault`
+
+Added `make test-db` (idempotent creation of `casevault_test` in the
+compose Postgres) so `make test` works first try on a fresh local clone,
+and refreshed `handoff/TESTING.md` start-the-stack steps and README
+quickstart accordingly (includes `make env-create` + `make migrate`).
+
+---
+
 ## 2026-09-08 — Port conflict fix: API default 8000 → 8100
 
 **Branch:** `arena/01a08429-casevault`

@@ -10,7 +10,10 @@ Concrete local test instructions. Updated every turn by the remote agent.
 ## Start the stack
 
 ```bash
+make env-create   # one-time: create .env.local from .env.example (API port 8100)
 make infra-up     # postgres :5432, redis :6379 (localhost-only)
+make migrate      # Alembic upgrade head
+make test-db      # one-time: create the casevault_test database (idempotent)
 make api          # FastAPI  :8100
 make web          # Next.js  :3000
 make worker       # RQ worker (or: make ping-job — no redis needed)
@@ -24,7 +27,7 @@ make worker       # RQ worker (or: make ping-job — no redis needed)
 - [ ] All 11 nav routes render their placeholder screens
 - [ ] `make ping-job` prints `{"job": "ping", "status": "ok", ...}`
 - [ ] `make worker` connects to redis and lists the 7 queues
-- [ ] `make test` passes (API + worker smoke tests)
+- [ ] `make test-db` once, then `make test` passes (API + worker smoke tests)
 - [ ] `make check-env` reports OK; `make lint` clean
 - [ ] `git check-ignore data/uploads .env.local` confirms both are ignored
 
