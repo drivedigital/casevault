@@ -10,6 +10,23 @@ on:
 jobs:
   python:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: casevault_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/casevault_ci
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/casevault_ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -18,6 +35,9 @@ jobs:
           cache: pip
       - run: pip install -r requirements-dev.txt
       - run: ruff check apps workers scripts tests
+      - name: Verify migrations apply to a fresh database
+        working-directory: apps/api
+        run: alembic upgrade head
       - run: pytest
 
   web:

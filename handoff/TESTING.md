@@ -37,3 +37,29 @@ make worker       # RQ worker (or: make ping-job — no redis needed)
 3. Review the bundle path it prints (it is git-ignored).
 4. Send it via re-run with `--push` (creates the `<feature>-logs` branch)
    or paste the path/manifest to the remote agent in chat.
+
+## Phase 1 test checklist
+
+Run after `git pull`, `scripts/setup_local.sh`, and `make infra-up`.
+
+```bash
+cd apps/api && ../../.venv/bin/python -m alembic upgrade head   # migrate DB
+```
+
+- [ ] `curl http://localhost:8000/api/v1/workspaces/current` →
+      `CaseVault Workspace`, `ai_sharing_default: no_ai`
+- [ ] Home (:3000) shows the workspace dashboard with count cards
+- [ ] Create a matter at /matters/new → slug auto-generated; create a second
+      matter with type `proceeding`
+- [ ] On the proceeding's page, add link type `overlays` → the merits
+      matter; confirm it appears on BOTH matter pages (→ outgoing / ← incoming)
+- [ ] Duplicate link attempt shows "already exists"; self-link is impossible
+- [ ] /actors: register an actor with aliases; search finds it by alias
+- [ ] On a matter page assign the actor a role (`plaintiff`); assigning the
+      same role twice shows a conflict message
+- [ ] /actors/<id> dossier lists the matter role; removing the role on the
+      matter page empties the dossier row list
+- [ ] Edit matter → status `archived` → `archived_at` timestamp shows on the
+      matter page header footer
+- [ ] `make test` — 8 passing (requires `make infra-up`)
+- [ ] `make lint` clean

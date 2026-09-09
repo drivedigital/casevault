@@ -18,3 +18,17 @@ Current defects and limitations, newest first. Triage per Roadmap §9
   `/api/v1` dev rewrite is configured but unused until Phase 1.
 - **[Low] `collect_logs.py --push` flow untested end-to-end** (creates a
   `-logs` branch and force-adds the bundle — test with a trivial note first).
+
+## 2026-09-08 — Phase 1
+
+- **[Medium] No audit entries yet.** Phase 1 mutations (matter/actor CRUD,
+  links, roles) write no `audit_log_entries` rows — that table lands with
+  Migration 010/Roadmap Sprint 5. Until then, review history is only in
+  Git history, not the app.
+- **[Low] `make test` requires Postgres up.** Tests intentionally fail
+  loudly if no test database is reachable (`make infra-up` first, or set
+  `TEST_DATABASE_URL`).
+- **[Low] Deep health check not implemented.** `/health` still doesn't
+  verify DB/redis connectivity (deferred from Phase 0).
+- **[Low] Matter deleting is not implemented** (archive instead); hard
+  delete needs a retention decision first.

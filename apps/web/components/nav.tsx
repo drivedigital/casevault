@@ -3,6 +3,7 @@ import Link from "next/link";
 export const NAV_ITEMS = [
   { href: "/", label: "Workspace Home" },
   { href: "/matters", label: "Matters" },
+  { href: "/actors", label: "Actors" },
   { href: "/evidence", label: "Evidence" },
   { href: "/chronology", label: "Chronology" },
   { href: "/claims", label: "Claims" },
@@ -33,7 +34,7 @@ export function Nav() {
         ))}
       </nav>
       <div className="border-t border-slate-200 px-4 py-3 text-xs text-slate-400">
-        Phase 0 scaffold · local-first
+        local-first · local identity mode
       </div>
     </aside>
   );

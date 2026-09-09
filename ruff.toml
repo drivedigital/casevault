@@ -1,2 +1,7 @@
 src = ["apps/api", "workers"]
 line-length = 100
+
+[lint.per-file-ignores]
+# FastAPI dependency-injection idiom: Depends()/Query()/Path() calls are the
+# documented way to declare endpoint defaults.
+"apps/api/app/routers/**" = ["B008"]

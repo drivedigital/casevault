@@ -20,10 +20,12 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ## P1 — Core product value (Sprints 1–6)
 
-- [ ] workspace shell (app shell done at scaffold level; real data in Phase 1)
-- [ ] matter CRUD (Migration 001 tables + API + UI)
-- [ ] proceeding/overlay matter model
-- [ ] actor registry (Migration 002)
+- [x] workspace shell (dashboard + current-workspace bootstrap, Phase 1)
+- [x] matter CRUD (Migration 0001 + API + UI incl. archive)
+- [x] proceeding/overlay matter model (matter_type + two-direction links)
+- [x] actor registry (Migration 0002 + API + UI: search, aliases, dossier, roles)
+- [ ] workspace switcher UI (multi-workspace; deferred — single workspace today)
+- [ ] collaborator invitations / auth surface (deferred — local identity mode)
 - [ ] source upload + local storage service (Migration 003)
 - [ ] OCR worker (Tesseract/OCRmyPDF path)
 - [ ] VLM description worker

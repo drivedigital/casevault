@@ -28,6 +28,33 @@ survives across turns. Newest first.
   exception is a redacted diagnostics bundle on a `feature/<topic>-logs`
   branch via `scripts/collect_logs.py --push`.
 
+## 2026-09-08 (Phase 1)
+
+- **Local identity mode: DECIDED.** Exactly one `User` row
+  (`owner@casevault.local`, display "Local Owner") plus one default
+  workspace are bootstrapped by `GET /api/v1/workspaces/current`. No login,
+  no session, no password surface. Users/memberships stay in the schema so
+  collaboration is additive later. Revisit when invites land.
+- **CITEXT dropped; pgcrypto dropped.** `users.email` is `String(320)` with
+  a functional unique index on `lower(email)` (migration 0001); row UUIDs
+  are client-side `uuid4`. Both CITEXT and pgcrypto require Postgres
+  contrib modules that some distributions (e.g. embedded Postgres for
+  local/testing) lack; `lower()` and client-side UUIDs have identical
+  practical behavior here. Overrides Schema Draft §3.1/§6.1 accordingly.
+- **pgvector intentionally not enabled in 0001.** The stock `postgres:16`
+  compose image lacks pgvector. When the embedding decision lands (Sprint
+  3/10), expect the compose image to move to `pgvector/pgvector:pg16` and a
+  migration to `CREATE EXTENSION vector`.
+- **"Actors" added to the global nav.** The UX spec's nav lists no Actors
+  entry, but the actor dossier (Sprint 2 deliverable) needs a reachable
+  home. Placed after Matters; revisit in a UX pass.
+- **Single-workspace bootstrap.** `GET /api/v1/workspaces/current` returns
+  the first workspace (creating it if absent). A real workspace switcher is
+  deliberately deferred — matters list without an explicit workspace_id
+  always resolves through it.
+- **FastAPI B008 ignore** in ruff per-file config: `Depends()`/`Query()`
+  in argument defaults is the intended FastAPI idiom.
+
 ## Open decisions (deliberately deferred from the 2026-09-08 blueprint review)
 
 - **Auth mode for local-first.** Schema ships users/memberships in Migration

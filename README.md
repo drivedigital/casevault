@@ -12,10 +12,14 @@ multi-agent analysis, and strict confidentiality defaults.
 > default AI-sharing policy is `no_ai` — no case material leaves this machine
 > unless you explicitly opt in per matter. See `data/README.md`.
 
-**Status: Phase 0 scaffold.** Navigation shell, health endpoints, worker
-bootstrap, and the full local-development workflow are in place. Product
-modules (evidence, chronology, claims, …) are planned placeholders — see
-`handoff/BACKLOG.md` and the spec stack in `docs/specs/`.
+**Status: Phase 1.** Workspace bootstrap (local identity mode), matter
+CRUD with overlay proceeding links, actor registry with aliases/dossiers,
+and matter role assignment are live on real Postgres-backed pages. Evidence,
+chronology, claims, and the other analytical modules remain planned
+placeholders — see `handoff/BACKLOG.md` and the spec stack in `docs/specs/`.
+
+Database migrations run with Alembic: after `make infra-up`,
+`cd apps/api && ../../.venv/bin/python -m alembic upgrade head`.
 
 ## Stack
 
