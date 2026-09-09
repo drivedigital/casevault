@@ -21,8 +21,8 @@ infra-down: ## Stop infra containers
 web: ## Run Next.js dev server (port 3000)
 	npm run dev --workspace=web
 
-api: ## Run FastAPI with reload (port 8000)
-	$(PY) -m uvicorn app.main:app --app-dir apps/api --reload --host 0.0.0.0 --port $${APP_PORT_API:-8000}
+api: ## Run FastAPI with reload (port 8100)
+	$(PY) -m uvicorn app.main:app --app-dir apps/api --reload --host 0.0.0.0 --port $${APP_PORT_API:-8100}
 
 worker: ## Run RQ worker (requires redis)
 	$(PY) -m workers.run_worker

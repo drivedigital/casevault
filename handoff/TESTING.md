@@ -11,15 +11,15 @@ Concrete local test instructions. Updated every turn by the remote agent.
 
 ```bash
 make infra-up     # postgres :5432, redis :6379 (localhost-only)
-make api          # FastAPI  :8000
+make api          # FastAPI  :8100
 make web          # Next.js  :3000
 make worker       # RQ worker (or: make ping-job — no redis needed)
 ```
 
 ## Phase 0 test checklist
 
-- [ ] `curl http://localhost:8000/health` returns `"status": "ok"`
-- [ ] `curl http://localhost:8000/api/v1/health` returns `"status": "ok"`
+- [ ] `curl http://localhost:8100/health` returns `"status": "ok"`
+- [ ] `curl http://localhost:8100/api/v1/health` returns `"status": "ok"`
 - [ ] http://localhost:3000 shows the CaseVault nav shell
 - [ ] All 11 nav routes render their placeholder screens
 - [ ] `make ping-job` prints `{"job": "ping", "status": "ok", ...}`
@@ -46,7 +46,7 @@ Run after `git pull`, `scripts/setup_local.sh`, and `make infra-up`.
 cd apps/api && ../../.venv/bin/python -m alembic upgrade head   # migrate DB
 ```
 
-- [ ] `curl http://localhost:8000/api/v1/workspaces/current` →
+- [ ] `curl http://localhost:8100/api/v1/workspaces/current` →
       `CaseVault Workspace`, `ai_sharing_default: no_ai`
 - [ ] Home (:3000) shows the workspace dashboard with count cards
 - [ ] Create a matter at /matters/new → slug auto-generated; create a second

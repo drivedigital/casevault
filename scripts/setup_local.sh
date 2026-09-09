@@ -37,7 +37,7 @@ cat <<'DONE'
 Setup complete. Next steps:
   1. Review .env.local
   2. make infra-up     # starts postgres + redis (needs docker)
-  3. make api          # FastAPI on :8000  -> curl localhost:8000/health
+  3. make api          # FastAPI on :8100  -> curl localhost:8100/health
   4. make web          # Next.js on :3000
   5. make worker       # RQ worker (needs redis); or: make ping-job (no redis)
 DONE

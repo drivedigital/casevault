@@ -55,6 +55,12 @@ survives across turns. Newest first.
 - **FastAPI B008 ignore** in ruff per-file config: `Depends()`/`Query()`
   in argument defaults is the intended FastAPI idiom.
 
+- **API default port is 8100** (changed from 8000, 2026-09-08). The local
+  test machine runs oMLX on 8000 and LiteLLM on 4000/8080; Ollama uses
+  11434. Defaults in `.env.example`, `config.py`, `next.config.mjs`,
+  Makefile, setup scripts, and docs updated; the value stays
+  env-overridable via `APP_PORT_API`.
+
 ## Open decisions (deliberately deferred from the 2026-09-08 blueprint review)
 
 - **Auth mode for local-first.** Schema ships users/memberships in Migration

@@ -214,9 +214,9 @@ The README should explicitly tell the user that `data/` holds sensitive local ev
 ```env
 APP_ENV=development
 APP_PORT_WEB=3000
-APP_PORT_API=8000
+APP_PORT_API=8100
 APP_BASE_URL=http://localhost:3000
-API_BASE_URL=http://localhost:8000
+API_BASE_URL=http://localhost:8100
 
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/casevault
 REDIS_URL=redis://localhost:6379/0

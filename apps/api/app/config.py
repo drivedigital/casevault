@@ -20,9 +20,9 @@ class Settings(BaseSettings):
     # app
     app_env: str = "development"
     app_port_web: int = 3000
-    app_port_api: int = 8000
+    app_port_api: int = 8100
     app_base_url: str = "http://localhost:3000"
-    api_base_url: str = "http://localhost:8000"
+    api_base_url: str = "http://localhost:8100"
 
     # database / queue
     database_url: str = "postgresql://postgres:postgres@localhost:5432/casevault"

@@ -5,6 +5,34 @@ Fields: Date / Branch / What changed / Why / Files affected / What needs local t
 
 ---
 
+## 2026-09-08 — Port conflict fix: API default 8000 → 8100
+
+**Branch:** `arena/01a08429-casevault`
+
+### What changed
+Default API port moved from 8000 to **8100** everywhere: `.env.example`,
+`apps/api/app/config.py`, `apps/web/next.config.mjs` (proxy fallback),
+`Makefile`, `scripts/setup_local.sh` / `.ps1`, `docs/specs` Phase 0 plan
+.env block, `README.md`, `handoff/TESTING.md`, this worklog. Overrides
+remain env-driven (`APP_PORT_API` / `API_BASE_URL`).
+
+### Why
+The local test machine already uses 8000 for oMLX and 4000/8080 for
+LiteLLM; starting `make api` there would have collided or, worse, silently
+talked to the wrong service. Decision recorded in `handoff/DECISIONS.md`.
+Note: the earlier local-agent instruction block referenced :8000 — use
+:8100 wherever that block said :8000.
+
+### Verification
+Live in sandbox: API on :8100, web on :3000 proxying `/api/v1` to :8100 —
+health checks and matter/actor flows confirmed.
+
+### Local note
+Existing `.env.local` files should update `APP_PORT_API` / `API_BASE_URL`
+to 8100 (or just delete `.env.local` and re-copy from `.env.example`).
+
+---
+
 ## 2026-09-08 — Phase 1: workspace, matters, overlay links, actor registry
 
 **Branch:** `arena/01a08429-casevault` · Roadmap Sprints 1–2
@@ -97,7 +125,7 @@ feature code lands (safety + workflow before app code).
 ### What needs local testing
 1. `bash scripts/setup_local.sh`
 2. `make infra-up` (requires docker)
-3. `make api` → `curl http://localhost:8000/health` and `:8000/api/v1/health`
+3. `make api` → `curl http://localhost:8100/health` and `:8100/api/v1/health`
 4. `make web` → open http://localhost:3000, click through all nav routes
 5. `make worker` (with redis up) and/or `make ping-job` (no redis)
 6. `scripts/collect_logs.py --note "phase0 smoke test"` (bundle creation; no --push yet)
@@ -115,7 +143,7 @@ feature code lands (safety + workflow before app code).
 - [x] `npm install` (workspaces; produced `package-lock.json` for CI `npm ci`)
 - [x] web `lint` — clean; `typecheck` — clean; `next build` — 14 routes static
 - [x] live boot: web :3000 serves the shell; `/api/v1/health` proxied through
-      :3000 → api :8000 returns ok
+      :3000 → api :8100 returns ok
 - [ ] docker / `make infra-up` / real postgres+redis connectivity (not
       available in sandbox — first local test)
 
