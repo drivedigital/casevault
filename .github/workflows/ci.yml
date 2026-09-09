@@ -1,0 +1,44 @@
+# CaseVault CI — Phase 0 skeleton.
+# Python job runs the real smoke tests; web job proves the scaffold builds;
+# secrets job guards the evidence-local repo posture. Expand per-module as
+# features land (see handoff/BACKLOG.md).
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check apps workers scripts tests
+      - run: pytest
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm run lint --workspace=web
+      - run: npm run typecheck --workspace=web
+      - run: npm run build --workspace=web
+
+  secrets:
+    # Secret scanning protects the local-first evidence posture: no API keys
+    # or evidence-adjacent files should ever enter history.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2

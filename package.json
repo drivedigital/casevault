@@ -1,0 +1,18 @@
+{
+  "name": "casevault",
+  "version": "0.0.1",
+  "private": true,
+  "description": "CaseVault — Legal Matter Intelligence Workspace (local-first). Phase 0 scaffold.",
+  "workspaces": [
+    "apps/web"
+  ],
+  "engines": {
+    "node": ">=18.17.0"
+  },
+  "scripts": {
+    "web": "npm run dev --workspace=web",
+    "web:build": "npm run build --workspace=web",
+    "web:lint": "npm run lint --workspace=web",
+    "web:typecheck": "npm run typecheck --workspace=web"
+  }
+}

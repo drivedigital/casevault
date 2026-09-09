@@ -1,0 +1,2 @@
+src = ["apps/api", "workers"]
+line-length = 100

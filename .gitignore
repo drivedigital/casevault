@@ -1,0 +1,42 @@
+# --- env / secrets (NEVER commit) ---
+.env
+.env.*
+!.env.example
+
+# --- local data / evidence / derived artifacts (NEVER commit) ---
+# data/ holds real evidence, OCR output, exports, diagnostics, vectors, logs.
+# Everything inside is ignored EXCEPT the warning README (a whole-directory
+# `data/` ignore cannot be re-included from, so match the contents instead).
+data/*
+!data/README.md
+uploads/
+evidence/
+exports/
+logs/
+tmp/
+cache/
+
+# --- local database files (if sqlite is ever used locally) ---
+*.sqlite
+*.sqlite3
+*.db
+
+# --- node / frontend ---
+node_modules/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+
+# --- python ---
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- misc ---
+.DS_Store
+.vscode/
+.idea/

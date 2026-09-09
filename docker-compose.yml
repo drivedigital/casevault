@@ -1,0 +1,43 @@
+# CaseVault local infrastructure.
+# Phase 0: infrastructure only (postgres + redis). App processes (web, api,
+# worker) run directly on the host during early development — see Makefile.
+# Optional containerized app services will be added in a later phase.
+services:
+  postgres:
+    image: postgres:16
+    container_name: casevault-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-casevault}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - casevault-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7
+    container_name: casevault-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - casevault-redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  casevault-pgdata:
+  casevault-redisdata:
+# NOTE: ports are bound to localhost only. Evidence and credentials on this
+# machine must not be reachable from the LAN. Do not change to 0.0.0.0
+# without an explicit decision recorded in handoff/DECISIONS.md.

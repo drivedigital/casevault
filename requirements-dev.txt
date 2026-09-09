@@ -1,0 +1,10 @@
+# CaseVault Python development requirements (Phase 0).
+# Runtime deps live per-component; this file aggregates them for local dev,
+# CI, and tests. Install into a venv:  pip install -r requirements-dev.txt
+-r apps/api/requirements.txt
+-r workers/requirements.txt
+
+# test / lint
+pytest>=8,<10
+ruff>=0.5,<1
+httpx>=0.27,<1
