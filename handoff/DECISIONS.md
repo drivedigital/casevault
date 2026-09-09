@@ -61,6 +61,28 @@ survives across turns. Newest first.
   Makefile, setup scripts, and docs updated; the value stays
   env-overridable via `APP_PORT_API`.
 
+- **Local-agent run reports go on `arena/01a08429-casevault-logs`**
+  (2026-09-09). Orphan branch, one markdown file per report under
+  `local-runs/`, machine identifiers redacted (usernames, home-dir paths)
+  before committing. Never merged into the working branch; it extends the
+  existing `<branch>-logs` diagnostics convention to structured run
+  reports so local results survive chat loss.
+- **Actor search matches aliases, not just names** (2026-09-09).
+  `GET /api/v1/actors?q=` hits `display_name`, `normalized_name`, and
+  `ActorAlias.alias_text`. Found by local-agent code read; fixed with a
+  regression test.
+- **`make migrate` exists and `alembic.ini` is cwd-independent**
+  (2026-09-09): `script_location`/`prepend_sys_path` use `%(here)s`, so
+  migrations run from repo root (`make migrate`) or `apps/api` (CI) alike.
+- **`make test-db` uses the container's own `$POSTGRES_USER`** (2026-09-09).
+  Repo convention is superuser `postgres` everywhere (compose default,
+  `.env.example` DATABASE_URL, CI); the target had hardcoded `-U
+  casevault`, which broke fresh clones. Compose stays env-overridable.
+- **CI secrets job passes `GITHUB_TOKEN` to gitleaks-action** (2026-09-09).
+  Unauthenticated owner-lookup + rate-limited runner IPs → spurious
+  license-enforcement failures. No leak was present (verified by a local
+  port of the gitleaks 8.24.3 rule engine over every commit diff).
+
 ## Open decisions (deliberately deferred from the 2026-09-08 blueprint review)
 
 - **Auth mode for local-first.** Schema ships users/memberships in Migration

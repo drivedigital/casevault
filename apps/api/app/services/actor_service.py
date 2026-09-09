@@ -20,9 +20,18 @@ def list_actors(
     stmt = select(Actor).where(Actor.workspace_id == workspace_id)
     if query:
         pattern = f"%{query.strip().lower()}%"
+        alias_match = (
+            select(ActorAlias.id)
+            .where(
+                ActorAlias.actor_id == Actor.id,
+                func.lower(ActorAlias.alias_text).like(pattern),
+            )
+            .exists()
+        )
         stmt = stmt.where(
             func.lower(Actor.display_name).like(pattern)
             | func.lower(Actor.normalized_name).like(pattern)
+            | alias_match
         )
     return list(db.scalars(stmt.order_by(Actor.display_name)))
 

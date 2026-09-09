@@ -99,9 +99,15 @@ def test_actor_registry_and_matter_roles(client):
     assert actor["normalized_name"] == "dana grove"
     assert len(actor["aliases"]) == 2
 
-    # search by alias-normalized name
+    # search matches the display name
     found = client.get("/api/v1/actors", params={"q": "dana"}).json()
     assert any(a["id"] == actor["id"] for a in found)
+
+    # search also matches alias text that does not appear in the display name
+    found = client.get("/api/v1/actors", params={"q": "dg"}).json()
+    assert any(a["id"] == actor["id"] for a in found)
+    found = client.get("/api/v1/actors", params={"q": "no-such-actor"}).json()
+    assert found == []
 
     matter_id = client.post("/api/v1/matters", json={"name": "Role Matter"}).json()["id"]
     other_id = client.post("/api/v1/matters", json={"name": "Other Matter"}).json()["id"]

@@ -46,7 +46,7 @@ make worker       # RQ worker (or: make ping-job — no redis needed)
 Run after `git pull`, `scripts/setup_local.sh`, and `make infra-up`.
 
 ```bash
-cd apps/api && ../../.venv/bin/python -m alembic upgrade head   # migrate DB
+make migrate      # Alembic upgrade head (0001 + 0002)
 ```
 
 - [ ] `curl http://localhost:8100/api/v1/workspaces/current` →
@@ -57,7 +57,9 @@ cd apps/api && ../../.venv/bin/python -m alembic upgrade head   # migrate DB
 - [ ] On the proceeding's page, add link type `overlays` → the merits
       matter; confirm it appears on BOTH matter pages (→ outgoing / ← incoming)
 - [ ] Duplicate link attempt shows "already exists"; self-link is impossible
-- [ ] /actors: register an actor with aliases; search finds it by alias
+- [ ] /actors: register an actor with aliases; search finds it by an alias
+      that is NOT part of the display name (e.g. initials "DG" for
+      "Dana Grove")
 - [ ] On a matter page assign the actor a role (`plaintiff`); assigning the
       same role twice shows a conflict message
 - [ ] /actors/<id> dossier lists the matter role; removing the role on the
@@ -66,3 +68,13 @@ cd apps/api && ../../.venv/bin/python -m alembic upgrade head   # migrate DB
       matter page header footer
 - [ ] `make test` — 8 passing (requires `make infra-up`)
 - [ ] `make lint` clean
+
+## macOS notes (from the 2026-09-09 local run)
+
+- Homebrew PostgreSQL occupies :5432 → stop it before `make infra-up`
+  (`brew services stop postgresql@18`) or repoint the compose port mapping.
+- `make test-db` uses the container's own superuser — no manual
+  `CREATE ROLE` needed any more (the 2026-09-09 run had to create role
+  `casevault` by hand; fixed).
+- Verified green on macOS ARM: Python 3.14.7 venv, Node 26, Docker Desktop
+  29.x — 8/8 tests, lint, `next build` (15 routes), all Phase 1 flows.

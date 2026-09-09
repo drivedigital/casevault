@@ -52,6 +52,7 @@ directories, and copies `.env.example` → `.env.local` if missing.
 
 ```bash
 make infra-up        # postgres :5432 + redis :6379 (localhost-only)
+make migrate         # apply Alembic migrations
 make api             # FastAPI on :8100
 make web             # Next.js on :3000
 make worker          # RQ worker (needs redis) — or `make ping-job` without redis
@@ -63,7 +64,7 @@ Verify:
 curl http://localhost:8100/health            # {"status":"ok",...}
 curl http://localhost:8100/api/v1/health     # {"status":"ok",...}
 make check-env                               # validates .env.local
-make test-db                                   # create casevault_test once (needs make infra-up)
+make test-db                                # create casevault_test once (needs make infra-up)
 make test && make lint                       # smoke tests + linters
 ```
 

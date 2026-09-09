@@ -15,8 +15,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] evidence-storage directory strategy (`data/`, git-ignored)
 - [x] CI workflow + secret scanning (`.github/workflows/ci.yml`)
 - [x] workspace backup script (`scripts/backup_workspace.py`)
-- [ ] Docker infra verified on the local machine (tester)
-- [ ] Alembic baseline migration (extensions only) — fold into Phase 1
+- [x] Docker infra verified on the local machine (macOS run 2026-09-09 — all green)
+- [x] Alembic baseline migration — landed as 0001 + 0002 in Phase 1
 
 ## P1 — Core product value (Sprints 1–6)
 

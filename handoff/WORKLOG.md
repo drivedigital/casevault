@@ -5,6 +5,58 @@ Fields: Date / Branch / What changed / Why / Files affected / What needs local t
 
 ---
 
+## 2026-09-09 — Local verification round: fixes from the macOS run + CI flake repair
+
+**Branch:** `arena/01a08429-casevault`
+
+### What changed
+- **Actor search now matches aliases** (`actor_service.list_actors`):
+  matches display_name, normalized_name, OR any `ActorAlias.alias_text`
+  (EXISTS subquery). Regression test added — search `q=dg` for the alias
+  "DG" of actor "Dana Grove", which does not substring-match any name.
+  Previously the "alias search" test only exercised the display name
+  (found by the local agent's code read, 2026-09-09).
+- **`make test-db` no longer hardcodes `-U casevault`.** It now uses the
+  container's own `$POSTGRES_USER`/`$POSTGRES_DB`, so it works against a
+  fresh compose container (default superuser `postgres`) without manually
+  creating a role — the exact failure the local agent hit on a fresh clone.
+- **Added the missing `make migrate` target** (documented last turn but
+  never implemented — the local agent had to run alembic manually). To
+  make it runnable from the repo root, `apps/api/alembic.ini` now uses
+  `%(here)s`-relative `script_location`/`prepend_sys_path`; the CI-style
+  invocation (`cd apps/api && alembic upgrade head`) still works.
+- **CI secrets-job flake fixed** (run 34319692071 failed with no leak
+  present): `gitleaks/gitleaks-action@v2` now receives `GITHUB_TOKEN`.
+  Root cause: without a token its owner-type lookup runs unauthenticated;
+  on rate-limited shared runner IPs it fails, flipping the action into
+  license enforcement (`exit 1`) even though this owner is a personal
+  account. Due diligence before concluding "no leak": ported gitleaks
+  8.24.3 (the action's pinned default version) rule engine to Python and
+  scanned every commit diff on the branch — zero findings. Also added
+  `workflow_dispatch` so CI can be re-run manually.
+- **Local-agent run reports are now archived** on orphan branch
+  `arena/01a08429-casevault-logs` (redacted machine/user details), starting
+  with today's Phase 0/1 verification report. See DECISIONS.md.
+
+### Why
+The user's local agent executed the full Phase 0/1 runbook on macOS
+(ARM, Python 3.14, Node 26, Docker Desktop): everything green — 8/8 tests,
+lint, `next build` (15 routes), all Phase 1 flows — and reported the two
+defects above plus the CI failure that needed diagnosis.
+
+### Verification
+pytest 8/8 (incl. the new alias-search regression), ruff/eslint/tsc/
+`next build` clean, `make migrate` verified from repo root AND from
+`apps/api` against the sandbox Postgres, CI green after push.
+
+### Local testing needed
+`git pull`, then on a fresh clone: `make infra-up && make migrate &&
+make test-db` should now work with zero manual SQL. macOS with Homebrew
+PostgreSQL: stop it first (`brew services stop postgresql@18`) — port 5432
+accepts only one listener.
+
+---
+
 ## 2026-09-08 — Local-run helper: `make test-db` + runbook refresh
 
 **Branch:** `arena/01a08429-casevault`

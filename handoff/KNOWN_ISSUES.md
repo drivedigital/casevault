@@ -5,19 +5,20 @@ Current defects and limitations, newest first. Triage per Roadmap §9
 
 ## 2026-09-08 — Phase 0 scaffold
 
-- **[Medium] Docker untested in build sandbox.** `make infra-up`, actual
-  postgres/redis connectivity, and the `--check-ports` path of
-  `check_env.py` were not exercised by the builder. First local test should
-  confirm these.
-- **[Low] Alembic has no migrations.** Expected — the first migration set
-  (schema draft Migration 001) lands in Phase 1. `alembic upgrade head`
-  currently does nothing.
+- **[Medium → RESOLVED 2026-09-09] Docker untested in build sandbox.**
+  Verified on the local machine (macOS ARM, Docker Desktop 29.x):
+  `make infra-up`, postgres/redis health, `make migrate`, `make test-db`,
+  full stack. Report archived on `arena/01a08429-casevault-logs`.
+- **[Low → RESOLVED Phase 1] Alembic has no migrations.** Migrations
+  0001 + 0002 landed with Phase 1.
 - **[Low] Worker requires redis for `make worker`.** By design for now;
   `make ping-job` verifies the job code without redis.
-- **[Low] Web app is placeholder routes only.** No API calls yet; the
-  `/api/v1` dev rewrite is configured but unused until Phase 1.
+- **[Low → RESOLVED Phase 1] Web app is placeholder routes only.**
 - **[Low] `collect_logs.py --push` flow untested end-to-end** (creates a
   `-logs` branch and force-adds the bundle — test with a trivial note first).
+  Note: a manual `-logs` branch now exists
+  (`arena/01a08429-casevault-logs`, local-run reports) but the script's
+  own push path is still untested.
 
 ## 2026-09-08 — Phase 1
 
