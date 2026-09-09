@@ -360,7 +360,7 @@ Below are recommended initial enums.
 | id | UUID | no | gen_random_uuid() | PK |
 | name | VARCHAR(255) | no |  |  |
 | jurisdiction_default | VARCHAR(32) | no | `'NY'` | New York-first |
-| ai_sharing_default | sharing_policy_enum | no | `external_excerpts_only` | conservative default |
+| ai_sharing_default | sharing_policy_enum | no | `no_ai` | most conservative default; external sharing requires explicit opt-in |
 | created_by_user_id | UUID | no |  | FK users |
 | created_at | TIMESTAMPTZ | no | now() |  |
 | updated_at | TIMESTAMPTZ | no | now() |  |
@@ -414,7 +414,7 @@ Below are recommended initial enums.
 | controlling_memo_ref | TEXT | yes |  | filename/ref only |
 | next_work | TEXT | yes |  |  |
 | jurisdiction | VARCHAR(32) | no | `'NY'` |  |
-| ai_sharing_policy | sharing_policy_enum | no | `external_excerpts_only` | can override workspace default |
+| ai_sharing_policy | sharing_policy_enum | no | `no_ai` | can override workspace default, but only by explicit user opt-in |
 | archived_at | TIMESTAMPTZ | yes |  |  |
 | created_at | TIMESTAMPTZ | no | now() |  |
 | updated_at | TIMESTAMPTZ | no | now() |  |
@@ -685,7 +685,7 @@ Below are recommended initial enums.
 | matter_id | UUID | no |  | FK matters |
 | short_label | VARCHAR(255) | yes |  |  |
 | statement_text | TEXT | no |  | trusted fact text |
-| review_state | review_state_enum | no | `accepted` | for later disputes/supersession |
+| review_state | review_state_enum | no | `proposed` | safe floor; service layer sets `accepted` only on explicit approval |
 | confidence_level | strength_label_enum | yes |  |  |
 | fact_type | fact_type_enum | no | `source_derived` |  |
 | is_material | BOOLEAN | no | false |  |
@@ -752,7 +752,7 @@ Below are recommended initial enums.
 | date_precision | date_precision_enum | no | `unknown` |  |
 | date_text_raw | TEXT | yes |  |  |
 | significance_level | VARCHAR(32) | yes |  | high/medium/low or tag |
-| review_state | review_state_enum | no | `accepted` |  |
+| review_state | review_state_enum | no | `proposed` | safe floor; acceptance flow sets `accepted` explicitly |
 | confidence_level | strength_label_enum | yes |  |  |
 | created_from_proposal_id | UUID | yes |  | FK proposals |
 | created_at | TIMESTAMPTZ | no | now() |  |
@@ -1529,7 +1529,7 @@ These are illustrative, not actual inserts.
 ## 10.1 Workspace
 - workspace: `DG Matter Workspace`
 - jurisdiction default: `NY`
-- AI sharing default: `external_excerpts_only`
+- AI sharing default: `no_ai`
 
 ## 10.2 Matters
 - `230 CPS — 2F Bedroom C` (`slug=230cps`, type=`merits`)

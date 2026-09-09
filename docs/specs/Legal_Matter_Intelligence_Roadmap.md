@@ -65,16 +65,16 @@ Do not overinvest in polished outputs before the underlying interaction model is
 | Milestone | Outcome | Approx. sprints |
 |---|---|---:|
 | M0 | Repo safety, handoff discipline, local testability | 1 |
-| M1 | Workspace, matters, actors, and secure source ingestion | 2 |
+| M1 | Workspace, matters, actors, and secure source ingestion | 3 |
 | M2 | Reviewed fact intake and source ledger workflow | 2 |
 | M3 | Chronology and proof-linking foundation | 2 |
 | M4 | Claim chart engine and gap analysis | 2 |
 | M5 | Search, MCP connectors, and external retrieval | 2 |
-| M6 | Relief matrix, research, and multi-agent review | 2 |
+| M6 | Relief matrix, research, and multi-agent review | 3 |
 | M7 | PDF exports and drafting foundation | 2 |
 | M8 | Stabilization, UX refinement, and continuous-improvement hardening | ongoing |
 
-**Total initial roadmap:** approximately **15 sprints**, with meaningful utility beginning around Sprint 4–6 and strong core value around Sprint 7–9.
+**Total initial roadmap:** approximately **17 sprints** (Sprint 0 through Sprint 16), with meaningful utility beginning around Sprint 4–6 and strong core value around Sprint 7–9.
 
 ---
 
@@ -681,6 +681,8 @@ A sprint should only be considered done when:
 - create diagnostic collection script
 - set branch conventions
 - define evidence-storage directory strategy
+- add CI workflow (lint/typecheck/test) and secret scanning
+- create workspace backup/export script
 
 ## P1 — Core product value
 - workspace shell
@@ -800,21 +802,22 @@ Implement MCP after core source, review, and search models exist. Otherwise, ext
 
 ## 12. Roadmap Recommendation Summary
 
-### Best first 6 sprints
+### Best first 7 sprints
 If the goal is fastest route to a valuable demo-quality system, prioritize:
 1. Sprint 0 — foundations
 2. Sprint 1 — workspace/matters
-3. Sprint 3 — source ingestion
-4. Sprint 4 — source ledger
-5. Sprint 5 — proposal review
-6. Sprint 6 — chronology
+3. Sprint 2 — actors (a minimal actor-registry stub is acceptable on the demo path, but Sprint 2 cannot be skipped entirely: Sprint 3 depends on it)
+4. Sprint 3 — source ingestion
+5. Sprint 4 — source ledger
+6. Sprint 5 — proposal review
+7. Sprint 6 — chronology
 
-### Best first 10 sprints for core product value
+### Best first 11 sprints for core product value
 Add:
-7. Sprint 7 — proof graph foundation
-8. Sprint 8 — claim templates
-9. Sprint 9 — claim chart
-10. Sprint 10 — search
+8. Sprint 7 — proof graph foundation
+9. Sprint 8 — claim templates
+10. Sprint 9 — claim chart
+11. Sprint 10 — search
 
 At that point the app should already be highly useful.
 

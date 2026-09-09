@@ -1,6 +1,7 @@
 # Legal Matter Intelligence Workspace — Formal Build Specification / PRD
 
 **Status:** Planning draft for product and build alignment  
+**Product name:** CaseVault (repository: `drivedigital/casevault`)  
 **Product type:** Full-stack web application  
 **Primary deployment posture:** Local-first testing with real evidence on the user's machine; future private cloud capable  
 **Jurisdiction focus:** New York-first  
@@ -824,6 +825,7 @@ Initial posture is **basic protections with strong repo hygiene**, suitable for 
 - Store API credentials in local environment files only
 - Redact secrets from logs and diagnostics
 - Make external AI sharing opt-in and explicit
+- Default AI-sharing policy is `no_ai` at both workspace and matter level; local or external AI use is enabled only by explicit user choice
 - Allow matter-level AI-sharing policy configuration
 
 ### Minimum `.gitignore` expectations
@@ -985,6 +987,8 @@ Use prioritized buckets:
 - workspace and matter skeleton
 - logging and handoff workflow
 - evidence confidentiality defaults
+- CI workflow and secret scanning
+- workspace backup/export script
 
 #### P1 — Core product value
 - evidence upload + OCR/VLM

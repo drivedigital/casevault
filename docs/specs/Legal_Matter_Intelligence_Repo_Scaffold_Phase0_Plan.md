@@ -51,7 +51,7 @@ By the end of Phase 0, the repository should contain:
 ## 3. Recommended Repo Structure
 
 ```text
-legal-matter-intelligence/
+casevault/
 ├── apps/
 │   ├── web/                        # Next.js frontend
 │   └── api/                        # FastAPI backend
@@ -71,6 +71,7 @@ legal-matter-intelligence/
 │   ├── collect_logs.py
 │   ├── handoff_finish.py
 │   ├── check_env.py
+│   ├── backup_workspace.py
 │   └── seed_dev_data.py
 ├── handoff/
 │   ├── WORKLOG.md
@@ -217,7 +218,7 @@ APP_PORT_API=8000
 APP_BASE_URL=http://localhost:3000
 API_BASE_URL=http://localhost:8000
 
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/legal_matter_intelligence
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/casevault
 REDIS_URL=redis://localhost:6379/0
 LOCAL_STORAGE_ROOT=./data
 
@@ -568,6 +569,14 @@ The initial README should include:
 ## Task 0.12 — Write README
 - include startup, safety, and handoff instructions
 
+## Task 0.13 — Add CI workflow skeleton
+- minimal GitHub Actions workflow: lint, typecheck, pytest, web build
+- secret scanning (e.g., gitleaks) to protect the evidence-local repo posture
+
+## Task 0.14 — Add workspace backup script skeleton
+- `scripts/backup_workspace.py`: one-command backup of Postgres dump + `data/` archive
+- stub with TODOs acceptable at Phase 0; real evidence must never depend on untested backups
+
 ---
 
 ## 17. Suggested Order of Execution
@@ -586,7 +595,9 @@ Recommended exact order:
 10. Alembic init
 11. setup scripts
 12. log collection script stub
-13. verify local startup path
+13. CI workflow skeleton
+14. backup script stub
+15. verify local startup path
 
 Reason: safety and workflow should come before any app code.
 
@@ -607,6 +618,8 @@ Phase 0 is complete when all of the following are true:
 - [ ] `handoff/` files exist and are populated with templates
 - [ ] README explains setup and safety rules
 - [ ] log collection script exists as at least a scaffold
+- [ ] CI workflow skeleton runs lint/typecheck/tests on push
+- [ ] workspace backup script exists as at least a scaffold
 - [ ] branch/handoff workflow is documented
 
 ---

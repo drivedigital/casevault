@@ -832,7 +832,7 @@ Provide a visual “connect the dots” view across facts, actors, events, claim
 - mentions
 - linked to
 - affects
-n- cited by
+- cited by
 - shares actor with
 
 ## UX warning

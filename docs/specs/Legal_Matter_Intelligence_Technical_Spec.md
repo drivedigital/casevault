@@ -179,7 +179,7 @@ This should **not** be built as:
 Recommended top-level structure:
 
 ```text
-legal-matter-intelligence/
+casevault/
 ├── apps/
 │   ├── web/                        # Next.js frontend
 │   └── api/                        # FastAPI backend
@@ -198,6 +198,7 @@ legal-matter-intelligence/
 │   ├── setup_local.ps1
 │   ├── collect_logs.py
 │   ├── handoff_finish.py
+│   ├── backup_workspace.py
 │   ├── seed_dev_data.py
 │   └── export_bundle.py
 ├── handoff/
@@ -517,7 +518,7 @@ Key fields:
 - `id`
 - `name`
 - `jurisdiction_default` (default `NY`)
-- `ai_sharing_default`
+- `ai_sharing_default` (default `no_ai`; external AI sharing is opt-in)
 - `created_by_user_id`
 - `created_at`
 - `updated_at`
@@ -554,6 +555,7 @@ Key fields:
 - `controlling_memo_ref`
 - `next_work`
 - `jurisdiction`
+- `ai_sharing_policy` (matter-level override of workspace default; default `no_ai`)
 - `created_at`
 - `updated_at`
 - `archived_at` nullable
@@ -621,7 +623,7 @@ Key fields:
 - `file_size_bytes`
 - `page_count` nullable
 - `source_status`
-- `review_status`
+- `evidence_review_status`
 - `included_flag`
 - `excluded_flag`
 - `exclusion_reason`
