@@ -159,10 +159,10 @@ This should **not** be built as:
 
 ### Multi-agent review flow
 1. user chooses matter/question/agent set
-2. system assembles allowed context
+2. `ContextAssemblyService` assembles the smallest allowed object-scoped context packet
 3. selected providers/models run
 4. outputs are stored as `agent_run` records
-5. synthesis and comparison appear in AI Review module
+5. synthesis and comparison artifacts are stored as `agent_run_artifact` records and shown in AI Review
 6. user converts insights to tasks, notes, or proposals
 
 ### MCP retrieval flow
@@ -205,7 +205,8 @@ legal-matter-intelligence/
 │   ├── BACKLOG.md
 │   ├── TESTING.md
 │   ├── KNOWN_ISSUES.md
-│   └── DECISIONS.md
+│   ├── DECISIONS.md
+│   └── diagnostic_bundles/        # tracked sanitized bundles for -logs branches
 ├── docs/
 │   ├── architecture/
 │   ├── prompts/
@@ -481,8 +482,27 @@ These may be implemented as Postgres enums or validated string constants.
 - element
 - relief
 - authority
-- draft_paragraph
+- draft_span
 - task
+
+### Fact support origin type
+- source_excerpt
+- source_only
+- user_memory
+- attorney_note
+- agent_summary
+- other
+
+### Draft span type
+- paragraph
+- sentence
+
+### Agent artifact type
+- synthesis
+- consensus
+- disagreement
+- summary
+- memo
 
 ### Agent scope sharing policy
 - no_ai
@@ -655,6 +675,7 @@ Key fields:
 - `metadata_json`
 - `extracted_from_filename_json`
 - `external_provenance_json`
+- `text_simhash` nullable for near-duplicate detection
 
 #### `source_pages`
 For OCR/page-level anchors.
@@ -725,6 +746,16 @@ Key fields:
 - `created_at`
 - `updated_at`
 
+#### `ledger_entry_fact_links`
+Connects working ledger rows to the fact lifecycle. One ledger row may remain a note, become a proposal, or split into multiple approved facts.
+
+Key fields:
+- `id`
+- `ledger_entry_id`
+- `fact_id`
+- `link_type` (`promoted_from`, `derived_from`, `mirrors`, `split_from`)
+- `created_at`
+
 #### `fact_assertions`
 Reviewed factual propositions.
 
@@ -746,11 +777,14 @@ Key fields:
 - `created_at`
 - `updated_at`
 
-#### `fact_source_links`
+#### `fact_support_links`
+Generalized provenance and support links for facts. This allows source-backed facts, user-entered facts awaiting corroboration, and attorney or agent summaries to be represented explicitly.
+
 Key fields:
 - `id`
 - `fact_id`
-- `source_id`
+- `support_origin_type` (`source_excerpt`, `source_only`, `user_memory`, `attorney_note`, `agent_summary`, `other`)
+- `source_id` nullable
 - `excerpt_id` nullable
 - `support_type` (`supports`, `contradicts`, `mentions`, `background`)
 - `strength` (`low`, `medium`, `high`)
@@ -1035,24 +1069,30 @@ Key fields:
 - `created_at`
 - `updated_at`
 
-#### `draft_paragraphs`
+#### `draft_spans`
+A draft is stored as paragraph and sentence spans so support validation can happen below the whole-paragraph level.
+
 Key fields:
 - `id`
 - `draft_document_id`
-- `paragraph_order`
+- `parent_span_id` nullable
+- `span_type` (`paragraph`, `sentence`)
+- `span_order`
 - `text_content`
+- `start_offset` nullable
+- `end_offset` nullable
 - `generated_by_ai` boolean
 - `support_state` (`supported`, `partially_supported`, `unsupported`, `not_checked`)
 - `created_at`
 - `updated_at`
 
-#### `draft_paragraph_fact_links`
-- `draft_paragraph_id`
+#### `draft_span_fact_links`
+- `draft_span_id`
 - `fact_id`
 - `link_type`
 
-#### `draft_paragraph_authority_links`
-- `draft_paragraph_id`
+#### `draft_span_authority_links`
+- `draft_span_id`
 - `authority_id`
 - `link_type`
 
@@ -1119,6 +1159,19 @@ Key fields:
 - `user_id`
 - `disposition` (`adopt_note`, `create_task`, `ignore`, `request_revision`, `convert_to_proposal`)
 - `notes`
+- `created_at`
+
+#### `agent_run_artifacts`
+Durable synthesis and memo objects created from one or more agent steps.
+
+Key fields:
+- `id`
+- `agent_run_id`
+- `artifact_type` (`synthesis`, `consensus`, `disagreement`, `summary`, `memo`)
+- `content_text`
+- `content_json`
+- `created_by` (`system`, `user`)
+- `created_by_user_id` nullable
 - `created_at`
 
 ---
@@ -1349,11 +1402,14 @@ data/
 - `POST /api/v1/ledger-entries`
 - `PATCH /api/v1/ledger-entries/{id}`
 - `POST /api/v1/ledger-entries/import-csv`
+- `POST /api/v1/ledger-entries/{id}/promote-to-proposal`
+- `POST /api/v1/ledger-entries/{id}/promote-to-fact`
+- `POST /api/v1/ledger-entries/{id}/link-fact`
 - `GET /api/v1/facts`
 - `POST /api/v1/facts`
 - `GET /api/v1/facts/{id}`
 - `PATCH /api/v1/facts/{id}`
-- `POST /api/v1/facts/{id}/links/source`
+- `POST /api/v1/facts/{id}/support-links`
 - `POST /api/v1/facts/{id}/links/actor`
 
 ### Proposals / review
@@ -1406,6 +1462,8 @@ data/
 - `GET /api/v1/agent-personas`
 - `POST /api/v1/agent-runs`
 - `GET /api/v1/agent-runs/{id}`
+- `GET /api/v1/agent-runs/{id}/artifacts`
+- `POST /api/v1/agent-runs/{id}/artifacts`
 - `POST /api/v1/agent-runs/{id}/disposition`
 
 ### MCP connectors
@@ -1418,6 +1476,17 @@ data/
 - `POST /api/v1/connector-results/{id}/import-source`
 - `POST /api/v1/connector-results/{id}/import-authority`
 - `POST /api/v1/connector-results/{id}/reject`
+
+### Drafting
+- `GET /api/v1/drafts`
+- `POST /api/v1/drafts`
+- `GET /api/v1/drafts/{id}`
+- `PATCH /api/v1/drafts/{id}`
+- `POST /api/v1/drafts/{id}/generate`
+- `POST /api/v1/drafts/{id}/validate-support`
+- `POST /api/v1/drafts/{id}/spans/{span_id}/link-fact`
+- `POST /api/v1/drafts/{id}/spans/{span_id}/link-authority`
+- `POST /api/v1/drafts/{id}/export-pdf`
 
 ### Exports
 - `POST /api/v1/exports/chronology-pdf`
@@ -1472,6 +1541,12 @@ Body example:
   }
 }
 ```
+
+Expected backend behavior:
+- resolve the selected object scope
+- assemble only relevant approved facts, adverse facts, authorities, and excerpts via `ContextAssemblyService`
+- enforce the matter/workspace sharing policy before any provider call
+- persist the input manifest and any synthesis artifact created from the run
 
 ---
 
@@ -1720,13 +1795,14 @@ Recommended initial personas:
 
 ## 13.2 Run model
 
-One user question => one `agent_run` => many `agent_run_steps`.
+One user question => one `agent_run` => many `agent_run_steps` + zero or more `agent_run_artifacts`.
 
 This allows:
 - side-by-side comparison
 - disagreement capture
 - later synthesis
 - selective reuse of outputs
+- durable storage of consensus, summary, and memo artifacts
 
 ## 13.3 Output handling
 
@@ -2041,7 +2117,7 @@ python scripts/collect_logs.py \
 
 ## 22.3 Script responsibilities
 
-1. create timestamped diagnostic directory under `data/diagnostics/`
+1. create a raw local diagnostic directory under `data/diagnostics/`
 2. gather:
    - API logs
    - web logs
@@ -2061,15 +2137,10 @@ python scripts/collect_logs.py \
 5. optionally include:
    - user note
    - screenshot paths copied into bundle
-6. generate manifest file:
-   - timestamp
-   - branch
-   - note
-   - included files
-   - redaction warnings
+6. generate a shareable sanitized manifest and bundle under `handoff/diagnostic_bundles/<timestamp>/`
 7. create or switch to side branch:
    - `feature/<topic>-logs`
-8. commit diagnostic bundle
+8. commit the sanitized diagnostic bundle only
 9. push branch
 10. print instructions for the remote coding agent
 
@@ -2078,7 +2149,10 @@ python scripts/collect_logs.py \
 ## 22.4 Bundle structure
 
 ```text
-data/diagnostics/2026-09-08T12-30-00Z/
+data/diagnostics/2026-09-08T12-30-00Z/           # raw local-only bundle
+└── ...
+
+handoff/diagnostic_bundles/2026-09-08T12-30-00Z/ # sanitized tracked share bundle
 ├── manifest.json
 ├── note.txt
 ├── versions.txt
@@ -2125,8 +2199,10 @@ apps/api/app/
 │   ├── relief_service.py
 │   ├── authority_service.py
 │   ├── search_service.py
+│   ├── draft_service.py
 │   ├── export_service.py
 │   ├── ai_service.py
+│   ├── context_assembly_service.py
 │   ├── connector_service.py
 │   ├── audit_service.py
 │   └── permission_service.py
@@ -2284,9 +2360,10 @@ The very first migrations should create only the minimal foundation:
 
 ### Migration 004
 - ledger_entries
+- ledger_entry_fact_links
 - proposals
 - fact_assertions
-- fact_source_links
+- fact_support_links
 - fact_actor_links
 
 ### Migration 005
@@ -2308,20 +2385,28 @@ The very first migrations should create only the minimal foundation:
 - relief_requests
 
 ### Migration 008
+- tasks
+- comments
+- approvals
+- draft_documents
+- draft_spans
+- draft_span_fact_links
+- draft_span_authority_links
+
+### Migration 009
 - ai_provider_configs
 - agent_personas
 - agent_runs
 - agent_run_steps
+- agent_run_artifacts
+- agent_run_dispositions
 
-### Migration 009
+### Migration 010
 - connector_configs
 - connector_runs
 - connector_results
 
-### Migration 010
-- tasks
-- comments
-- approvals
+### Migration 011
 - audit_log_entries
 - system_jobs
 

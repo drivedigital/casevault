@@ -231,18 +231,26 @@ Below are recommended initial enums.
 - `mentions`
 - `background`
 
-## 5.12 `strength_label_enum`
+## 5.12 `support_origin_type_enum`
+- `source_excerpt`
+- `source_only`
+- `user_memory`
+- `attorney_note`
+- `agent_summary`
+- `other`
+
+## 5.13 `strength_label_enum`
 - `low`
 - `medium`
 - `high`
 
-## 5.13 `date_precision_enum`
+## 5.14 `date_precision_enum`
 - `exact`
 - `range`
 - `approximate`
 - `unknown`
 
-## 5.14 `claim_support_status_enum`
+## 5.15 `claim_support_status_enum`
 - `no_support`
 - `weak_support`
 - `moderate_support`
@@ -250,13 +258,13 @@ Below are recommended initial enums.
 - `conflicted`
 - `not_researched`
 
-## 5.15 `authority_link_type_enum`
+## 5.16 `authority_link_type_enum`
 - `controlling`
 - `persuasive`
 - `background`
 - `open_question`
 
-## 5.16 `relief_type_enum`
+## 5.17 `relief_type_enum`
 - `damages`
 - `injunction`
 - `preservation`
@@ -267,20 +275,20 @@ Below are recommended initial enums.
 - `case_management`
 - `other`
 
-## 5.17 `task_priority_enum`
+## 5.18 `task_priority_enum`
 - `P0`
 - `P1`
 - `P2`
 - `P3`
 
-## 5.18 `task_status_enum`
+## 5.19 `task_status_enum`
 - `open`
 - `in_progress`
 - `blocked`
 - `done`
 - `canceled`
 
-## 5.19 `task_type_enum`
+## 5.20 `task_type_enum`
 - `verification`
 - `research`
 - `drafting`
@@ -291,7 +299,7 @@ Below are recommended initial enums.
 - `connector_review`
 - `other`
 
-## 5.20 `authority_type_enum`
+## 5.21 `authority_type_enum`
 - `case`
 - `statute`
 - `rule`
@@ -299,13 +307,13 @@ Below are recommended initial enums.
 - `memo`
 - `note`
 
-## 5.21 `sharing_policy_enum`
+## 5.22 `sharing_policy_enum`
 - `no_ai`
 - `local_only`
 - `external_excerpts_only`
 - `external_selected_full_documents`
 
-## 5.22 `agent_run_status_enum`
+## 5.23 `agent_run_status_enum`
 - `queued`
 - `running`
 - `completed`
@@ -313,23 +321,34 @@ Below are recommended initial enums.
 - `partial`
 - `canceled`
 
-## 5.23 `connector_type_enum`
+## 5.24 `connector_type_enum`
 - `mcp`
 - `native`
 - `filesystem`
 - `knowledge_base`
 - `research_source`
 
-## 5.24 `connector_scope_enum`
+## 5.25 `connector_scope_enum`
 - `evidence`
 - `research`
 - `both`
 
-## 5.25 `connector_result_type_enum`
+## 5.26 `connector_result_type_enum`
 - `source_candidate`
 - `authority_candidate`
 - `note_candidate`
 - `metadata_hit`
+
+## 5.27 `draft_span_type_enum`
+- `paragraph`
+- `sentence`
+
+## 5.28 `agent_artifact_type_enum`
+- `synthesis`
+- `consensus`
+- `disagreement`
+- `summary`
+- `memo`
 
 ---
 
@@ -558,6 +577,7 @@ Below are recommended initial enums.
 | metadata_json | JSONB | no | `'{}'::jsonb` | parser output |
 | extracted_from_filename_json | JSONB | no | `'{}'::jsonb` | heuristics |
 | external_provenance_json | JSONB | no | `'{}'::jsonb` | MCP/import provenance |
+| text_simhash | BIGINT | yes |  | near-duplicate fingerprint |
 | updated_at | TIMESTAMPTZ | no | now() |  |
 
 ---
@@ -646,6 +666,21 @@ Below are recommended initial enums.
 
 ---
 
+## Table: `ledger_entry_fact_links`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---:|---|---|
+| id | UUID | no | gen_random_uuid() | PK |
+| ledger_entry_id | UUID | no |  | FK ledger_entries |
+| fact_id | UUID | no |  | FK fact_assertions |
+| link_type | VARCHAR(32) | no | `'promoted_from'` | promoted_from/derived_from/mirrors/split_from |
+| created_at | TIMESTAMPTZ | no | now() |  |
+
+### Constraints
+- unique on `(ledger_entry_id, fact_id, link_type)`
+
+---
+
 ## Table: `proposals`
 
 | Column | Type | Null | Default | Notes |
@@ -703,13 +738,14 @@ Below are recommended initial enums.
 
 ---
 
-## Table: `fact_source_links`
+## Table: `fact_support_links`
 
 | Column | Type | Null | Default | Notes |
 |---|---|---:|---|---|
 | id | UUID | no | gen_random_uuid() | PK |
 | fact_id | UUID | no |  | FK fact_assertions |
-| source_id | UUID | no |  | FK sources |
+| support_origin_type | support_origin_type_enum | no | `source_excerpt` | provenance type |
+| source_id | UUID | yes |  | FK sources; nullable for user-entered facts |
 | excerpt_id | UUID | yes |  | FK source_excerpts |
 | support_type | support_type_enum | no | `supports` |  |
 | strength | strength_label_enum | yes |  |  |
@@ -717,7 +753,8 @@ Below are recommended initial enums.
 | created_at | TIMESTAMPTZ | no | now() |  |
 
 ### Constraints
-- unique on `(fact_id, source_id, excerpt_id, support_type)`
+- unique on `(fact_id, source_id, excerpt_id, support_origin_type, support_type)`
+- check: source-based origin types require `source_id`; non-source origin types may leave `source_id` null
 
 ---
 
@@ -1126,51 +1163,55 @@ Below are recommended initial enums.
 
 ---
 
-## Table: `draft_paragraphs`
+## Table: `draft_spans`
 
 | Column | Type | Null | Default | Notes |
 |---|---|---:|---|---|
 | id | UUID | no | gen_random_uuid() | PK |
 | draft_document_id | UUID | no |  | FK draft_documents |
-| paragraph_order | INTEGER | no |  |  |
+| parent_span_id | UUID | yes |  | self-FK for sentence-under-paragraph |
+| span_type | draft_span_type_enum | no | `paragraph` | paragraph or sentence |
+| span_order | INTEGER | no |  |  |
 | text_content | TEXT | no |  |  |
+| start_offset | INTEGER | yes |  | optional source position in draft |
+| end_offset | INTEGER | yes |  | optional source position in draft |
 | generated_by_ai | BOOLEAN | no | false |  |
 | support_state | VARCHAR(32) | no | `not_checked` | supported/partial/unsupported |
 | created_at | TIMESTAMPTZ | no | now() |  |
 | updated_at | TIMESTAMPTZ | no | now() |  |
 
 ### Constraints
-- unique on `(draft_document_id, paragraph_order)`
+- unique on `(draft_document_id, span_type, span_order)`
 
 ---
 
-## Table: `draft_paragraph_fact_links`
+## Table: `draft_span_fact_links`
 
 | Column | Type | Null | Default | Notes |
 |---|---|---:|---|---|
 | id | UUID | no | gen_random_uuid() | PK |
-| draft_paragraph_id | UUID | no |  | FK draft_paragraphs |
+| draft_span_id | UUID | no |  | FK draft_spans |
 | fact_id | UUID | no |  | FK fact_assertions |
 | link_type | VARCHAR(32) | no | `support` |  |
 | created_at | TIMESTAMPTZ | no | now() |  |
 
 ### Constraints
-- unique on `(draft_paragraph_id, fact_id, link_type)`
+- unique on `(draft_span_id, fact_id, link_type)`
 
 ---
 
-## Table: `draft_paragraph_authority_links`
+## Table: `draft_span_authority_links`
 
 | Column | Type | Null | Default | Notes |
 |---|---|---:|---|---|
 | id | UUID | no | gen_random_uuid() | PK |
-| draft_paragraph_id | UUID | no |  | FK draft_paragraphs |
+| draft_span_id | UUID | no |  | FK draft_spans |
 | authority_id | UUID | no |  | FK authorities |
 | link_type | VARCHAR(32) | no | `support` |  |
 | created_at | TIMESTAMPTZ | no | now() |  |
 
 ### Constraints
-- unique on `(draft_paragraph_id, authority_id, link_type)`
+- unique on `(draft_span_id, authority_id, link_type)`
 
 ---
 
@@ -1263,6 +1304,21 @@ Below are recommended initial enums.
 | user_id | UUID | no |  | FK users |
 | disposition | VARCHAR(64) | no |  | adopt_note/create_task/etc. |
 | notes | TEXT | yes |  |  |
+| created_at | TIMESTAMPTZ | no | now() |  |
+
+---
+
+## Table: `agent_run_artifacts`
+
+| Column | Type | Null | Default | Notes |
+|---|---|---:|---|---|
+| id | UUID | no | gen_random_uuid() | PK |
+| agent_run_id | UUID | no |  | FK agent_runs |
+| artifact_type | agent_artifact_type_enum | no | `summary` | synthesis/consensus/disagreement/etc. |
+| content_text | TEXT | yes |  |  |
+| content_json | JSONB | no | `'{}'::jsonb` | structured summary payload |
+| created_by | VARCHAR(16) | no | `'system'` | system or user |
+| created_by_user_id | UUID | yes |  | FK users |
 | created_at | TIMESTAMPTZ | no | now() |  |
 
 ---
@@ -1469,9 +1525,10 @@ Useful common mixins:
 
 ## Migration 004 — intake core
 - ledger_entries
+- ledger_entry_fact_links
 - proposals
 - fact_assertions
-- fact_source_links
+- fact_support_links
 - fact_actor_links
 
 ## Migration 005 — chronology
@@ -1502,9 +1559,9 @@ Useful common mixins:
 - comments
 - approvals
 - draft_documents
-- draft_paragraphs
-- draft_paragraph_fact_links
-- draft_paragraph_authority_links
+- draft_spans
+- draft_span_fact_links
+- draft_span_authority_links
 
 ## Migration 009 — AI and connectors
 - ai_provider_configs
@@ -1512,6 +1569,7 @@ Useful common mixins:
 - agent_runs
 - agent_run_steps
 - agent_run_dispositions
+- agent_run_artifacts
 - connector_configs
 - connector_runs
 - connector_results
@@ -1621,7 +1679,8 @@ If implementation begins from this schema, the first useful subset is:
 - source_excerpts
 - proposals
 - fact_assertions
-- fact_source_links
+- fact_support_links
+- ledger_entry_fact_links
 - events
 - event_fact_links
 - claim_templates

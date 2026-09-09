@@ -4,7 +4,8 @@
 **Companion document:** `Legal_Matter_Intelligence_PRD.md`  
 **Build posture:** Incremental, local-testable, continuous-improvement workflow  
 **Jurisdiction focus:** New York-first  
-**Priority order:** Claims → Evidence → Chronology → Relief → Drafting  
+**Product-value priority:** Claims → Evidence → Chronology → Relief → Drafting  
+**Implementation order:** Foundations → Evidence → Facts → Chronology → Claims → Relief → Drafting  
 **Additional integration requirement:** MCP connector support for external data sources and knowledge bases
 
 ---
@@ -58,6 +59,9 @@ Build the app in layers:
 ### Product sequencing principle
 Do not overinvest in polished outputs before the underlying interaction model is working well.
 
+### Priority clarification
+Claims are the highest-value product output, but the build sequence is evidence-first because reviewed facts, chronology, and proof links are prerequisites for defensible claim analysis.
+
 ---
 
 ## 4. Milestone Overview
@@ -93,6 +97,7 @@ Create the development and testing discipline required to build safely with real
 - define environment variable strategy
 - define local run/test commands
 - create diagnostic collection script skeleton
+- define tracked sanitized diagnostic bundle path under `handoff/diagnostic_bundles/`
 - create initial backlog format and priority structure
 
 ### Deliverables
@@ -102,6 +107,7 @@ Create the development and testing discipline required to build safely with real
 - `handoff/TESTING.md`
 - `handoff/KNOWN_ISSUES.md`
 - `handoff/DECISIONS.md`
+- `handoff/diagnostic_bundles/` tracked share path
 - diagnostic script placeholder/spec
 - initial README for local setup
 
@@ -229,6 +235,7 @@ Turn the current spreadsheet-style fact/source approach into a first-class struc
 - confidence and verification-task fields
 - inclusion/exclusion rationale
 - restrictions/notes fields
+- ledger-row promotion into proposals/facts with audit history
 
 ### Deliverables
 - in-app source ledger
@@ -265,6 +272,7 @@ Build the high-trust review workflow that separates raw source from approved fac
 - fact proposal cards with source anchor references
 - proposal action system
 - approved facts store
+- accept-and-link smart defaults so approved facts can be attached to chronology or claim context without extra clerical steps
 
 ### Acceptance criteria
 - AI or extraction proposals do not enter the trusted fact set without review
@@ -536,7 +544,9 @@ Enable side-by-side AI analysis of strengths, weaknesses, defenses, and gaps.
 ### Scope
 - multi-provider AI connector layer
 - agent persona registry
+- object-scoped context-assembly pipeline
 - agent-run object model
+- agent-run artifact storage for synthesis/consensus/disagreement
 - side-by-side result comparison UI
 - synthesis panel
 - convert-to-task / convert-to-note actions
@@ -595,17 +605,18 @@ Generate draft text from approved facts and linked authorities.
 - chronology narrative generation
 - statement-of-facts drafting
 - claim section drafting stub
-- paragraph support inspector
+- sentence/span support model and inspector
+- machine-readable support-tag parsing for generated draft text
 - warnings for unsupported sentences
 
 ### Deliverables
 - drafting studio screen
-- paragraph-to-support trace panel
+- span/sentence-to-support trace panel
 - basic chronology narrative generator
 
 ### Acceptance criteria
 - user can generate a chronology narrative or simple claim section from approved facts
-- the app can show what facts and authorities support each paragraph
+- the app can show what facts and authorities support each sentence/span in generated text
 
 ### Dependencies
 Sprint 6, Sprint 9, Sprint 13, Sprint 14

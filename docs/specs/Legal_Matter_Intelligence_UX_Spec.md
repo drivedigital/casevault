@@ -65,7 +65,10 @@ Legal work often involves comparing:
 ### 6. Keyboard-driven workflows matter
 The UI should support fast navigation, selection, filtering, and review actions for power users.
 
-### 7. Modern, professional, non-gimmicky visual language
+### 7. Create-and-link should feel like one action
+When a user creates a fact, event, or claim link from a visible object, the system should automatically create the underlying relationships whenever that can be done safely. Users should not feel forced into clerical graph maintenance.
+
+### 8. Modern, professional, non-gimmicky visual language
 This is not a consumer chat app. Avoid playful visual metaphors that undermine legal seriousness.
 
 ---
@@ -236,6 +239,8 @@ Recommended UX implementation order:
 10. AI Review / multi-agent comparison
 11. Research
 12. Drafting
+
+**Clarification:** this is the recommended **implementation order** for UI delivery. The product's value priority is still claims-first, but the interaction model must begin with evidence and reviewed fact intake.
 
 ---
 
@@ -482,6 +487,8 @@ Tabbed inspector:
 - manually create fact from excerpt
 - manually create event from excerpt
 - link excerpt to actor, claim, or task
+- when a fact is created from an excerpt, the app should automatically link source, page, and excerpt behind the scenes
+- when a proposal is accepted from within a claim or chronology context, offer one-click "accept and attach" behavior rather than a second manual linking step
 
 ## Proposal sidecar details
 Each proposal card should show:
@@ -609,10 +616,13 @@ Provide a stable workspace for approved or review-state fact assertions.
 ## Core actions
 - edit fact
 - supersede fact
-- link/unlink source support
+- link/unlink support provenance
 - link to event
 - link to claim element
 - create task from fact gap
+
+## Warning behavior
+Facts without source-backed support should be visibly marked as user-entered, pending corroboration, or otherwise unsourced so attorneys can distinguish them from excerpt-backed facts at a glance.
 
 ## UX notes
 This is where power users will clean up the factual core. It should feel table-driven and efficient.
@@ -786,6 +796,7 @@ Condensed visual overview of coverage strength across claim elements.
 - run AI review on selected claim or element
 - launch search for more support
 - jump from element to sources
+- one-click attach of the currently selected fact to the current element without modal overhead when context is already clear
 
 ## Best UX behavior
 If a user clicks “weak support,” the system should immediately explain why:
@@ -974,6 +985,7 @@ Generated or user-written synthesis showing:
 - consensus
 - disagreements
 - likely next actions
+- saved synthesis artifacts that can later be reopened as notes, summaries, or memoranda
 
 ## Right-pane manifest should show
 - what context was sent
@@ -981,6 +993,7 @@ Generated or user-written synthesis showing:
 - provider used
 - prompt version
 - timestamp
+- object scope and omitted-material summary so the user can understand how the context packet was assembled
 
 ## Key actions
 - convert finding to task
@@ -1020,12 +1033,13 @@ Generate structured legal work product from approved facts and linked authoritie
 - memo section
 - demand/preservation letter
 
-## Paragraph support inspector
-When a paragraph is selected, show:
+## Support inspector
+When a paragraph or sentence span is selected, show:
 - linked facts
 - linked authorities
 - support state
 - missing support warning
+- machine-readable support tags where present
 
 ## Core actions
 - generate from selected facts
@@ -1035,7 +1049,7 @@ When a paragraph is selected, show:
 - export/print preview
 
 ## UX rule
-The drafting experience should feel like supported composition, not freeform hallucination.
+The drafting experience should feel like supported composition, not freeform hallucination. AI-generated text should support strict tagging/validation modes so unsupported transitions are visible rather than silently polished over.
 
 ---
 
@@ -1147,6 +1161,7 @@ Show:
 - worker health
 - log collection instructions
 - create diagnostic bundle action
+- location of the tracked sanitized bundle path (`handoff/diagnostic_bundles/`) used for `-logs` branch sharing
 
 ---
 

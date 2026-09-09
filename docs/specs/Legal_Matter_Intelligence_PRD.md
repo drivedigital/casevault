@@ -5,6 +5,8 @@
 **Primary deployment posture:** Local-first testing with real evidence on the user's machine; future private cloud capable  
 **Jurisdiction focus:** New York-first  
 **Primary outputs:** Claim analysis, evidence analysis, chronology, relief planning, attorney-reviewable work product
+**Product-value priority:** Claims → Evidence → Chronology → Relief → Drafting  
+**Implementation order:** Foundations → Evidence → Facts → Chronology → Claims → Relief → Drafting
 
 ---
 
@@ -94,6 +96,10 @@ This product addresses those gaps by making **reviewed factual propositions** th
 - support New York-focused claim and procedural workflows
 - enable printable/PDF-ready outputs when analysis views mature
 - support continuous improvement through disciplined backlog and testing loops
+
+### Priority clarification
+- **Product-value priority** reflects which outputs matter most to the user once the system is useful.
+- **Implementation order** reflects dependency order. Claims are the top-value output, but reviewed evidence and facts must be built first so claims remain defensible and traceable.
 
 ---
 
@@ -204,6 +210,9 @@ A page, paragraph, Bates range, timestamp, highlighted quote, or image region wi
 #### Fact Assertion
 A structured proposition extracted from a source or asserted by a user, with status and review metadata.
 
+#### Ledger Entry
+A structured source-ledger row that can remain as a working note, be promoted into a proposal, or be linked to one or more approved facts.
+
 #### Event
 A dated or date-ranged occurrence suitable for chronology and theory mapping.
 
@@ -228,8 +237,14 @@ A verification task, proof task, research task, or drafting task.
 #### Agent Run
 A record of a multi-step AI analysis or discussion.
 
+#### Agent Run Artifact
+A stored synthesis, consensus summary, disagreement note, or user-edited memo produced from one or more agent runs.
+
 #### Draft Section / Work Product
 A draft chronology, statement of facts, claim section, memo section, or relief section generated or edited in-app.
+
+#### Draft Span
+A paragraph- or sentence-level unit of draft text used for support validation and citation traceability.
 
 ### 9.2 Required relationships
 - Workspace has many Matters and Proceeding records
@@ -382,11 +397,14 @@ Turn the source ledger into a first-class structured UI, not just an import form
 - Provide spreadsheet-like and detail views
 - Filter by claim, actor, matter, source status, confidence, and verification state
 - Support import/export via CSV
+- Support promoting a ledger row into a proposal or directly into a reviewed fact with audit history
+- Allow one ledger row to map to one or more approved facts when the working row must be split
 - Link ledger rows to claim elements and chronology entries
 - Support bulk tagging and bulk review actions
 
 ### Acceptance criteria
 - User can maintain source-ledger rows inside the app without leaving for a separate spreadsheet
+- User can promote a ledger row into a proposal or fact without re-entering the source anchor manually
 - Changes to approved rows update related chronology and claim views
 
 ---
@@ -599,14 +617,16 @@ Generate usable draft sections based on approved facts and linked authorities.
 
 ### Requirements
 - Draft only from approved facts by default
-- Expose support chain for draft paragraphs
-- Warn when a draft sentence lacks an approved source-backed basis
-- Link draft paragraphs to facts and authorities used
+- Use paragraph and sentence support spans so narrative text can be traced and validated below the whole-paragraph level
+- Generate machine-readable support tags for AI-generated draft text so the app can validate what facts and authorities support each sentence/span
+- Expose support chain for draft spans in the editor and inspector
+- Warn when any draft sentence or span lacks an approved source-backed basis
+- Link draft spans to facts and authorities used
 - Allow attorney review comments and redlines
 
 ### Acceptance criteria
 - User can generate a chronology narrative or claim section from approved facts
-- Draft sentences are traceable to sources and facts used
+- Draft sentences/spans are traceable to supporting facts and authorities used
 
 ---
 
@@ -632,6 +652,7 @@ Allow the user to connect multiple AI providers and run structured agent analysi
   - drafting critic
   - settlement evaluator
   - procedural risk reviewer
+- Use an explicit context-assembly pipeline so agent runs receive only scoped, relevant claim/event/fact/excerpt material rather than the whole matter by default
 - Record for each agent run:
   - provider/model
   - prompt template and version
@@ -642,6 +663,7 @@ Allow the user to connect multiple AI providers and run structured agent analysi
   - output
   - synthesis
   - user disposition
+- Store agent-run synthesis, consensus, disagreement, and memo artifacts as durable reviewable objects
 - Support side-by-side or panel-based comparison of multiple agent opinions
 - Permit users to convert agent suggestions into tasks, notes, or proposals
 
@@ -822,6 +844,8 @@ Initial posture is **basic protections with strong repo hygiene**, suitable for 
 - Strong `.gitignore` from day one
 - Exclude evidence and sensitive runtime files from remote repository by default
 - Store API credentials in local environment files only
+- Keep raw diagnostics local under ignored paths such as `data/diagnostics/`
+- Create a separate sanitized share bundle under a tracked path such as `handoff/diagnostic_bundles/` for `-logs` branch exchange
 - Redact secrets from logs and diagnostics
 - Make external AI sharing opt-in and explicit
 - Allow matter-level AI-sharing policy configuration
@@ -962,9 +986,10 @@ The repo must include a script that helps the local user collect and send diagno
 - exclude `.env` and provider secrets
 - warn if logs appear to contain sensitive evidence text
 - optionally include screenshots or user notes
-- create a predictable diagnostic bundle directory
+- create a raw local diagnostic bundle directory under an ignored path such as `data/diagnostics/`
+- generate a sanitized share bundle under a tracked path such as `handoff/diagnostic_bundles/`
 - switch/create the `-logs` branch
-- commit and push the diagnostic bundle
+- commit and push the sanitized diagnostic bundle only
 - print success/failure instructions
 
 ### Acceptance criteria

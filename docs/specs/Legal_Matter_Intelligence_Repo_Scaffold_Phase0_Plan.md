@@ -39,12 +39,13 @@ By the end of Phase 0, the repository should contain:
 7. worker scaffold
 8. shared package folders
 9. `handoff/` workflow files
-10. local setup scripts
-11. log collection script skeleton
-12. README with local startup instructions
-13. branch and handoff protocol docs
-14. initial dependency manifests
-15. basic health-check routes/process wiring
+10. tracked `handoff/diagnostic_bundles/` share path
+11. local setup scripts
+12. log collection script skeleton
+13. README with local startup instructions
+14. branch and handoff protocol docs
+15. initial dependency manifests
+16. basic health-check routes/process wiring
 
 ---
 
@@ -77,7 +78,8 @@ legal-matter-intelligence/
 │   ├── BACKLOG.md
 │   ├── TESTING.md
 │   ├── KNOWN_ISSUES.md
-│   └── DECISIONS.md
+│   ├── DECISIONS.md
+│   └── diagnostic_bundles/        # tracked sanitized log bundles
 ├── docs/
 │   ├── architecture/
 │   ├── prompts/
@@ -464,8 +466,9 @@ Phase 0 should define and scaffold, but not necessarily fully finish, `scripts/c
 - gather system/env summary
 - redact secrets
 - warn about possible sensitive evidence content
-- package into `data/diagnostics/<timestamp>/`
-- optionally prepare a `-logs` branch workflow
+- package raw logs into `data/diagnostics/<timestamp>/`
+- generate a sanitized share bundle under tracked `handoff/diagnostic_bundles/<timestamp>/`
+- prepare the `-logs` branch workflow around the sanitized bundle only
 
 ### Minimum Phase 0 requirement
 - script file exists
@@ -557,6 +560,7 @@ The initial README should include:
 
 ## Task 0.9 — Create `handoff/` docs
 - seed with initial content and templates
+- add tracked `handoff/diagnostic_bundles/` directory
 
 ## Task 0.10 — Add local setup scripts
 - bash + PowerShell placeholders or working versions
@@ -586,7 +590,8 @@ Recommended exact order:
 10. Alembic init
 11. setup scripts
 12. log collection script stub
-13. verify local startup path
+13. verify sanitized share-bundle path for `-logs` branches
+14. verify local startup path
 
 Reason: safety and workflow should come before any app code.
 
@@ -607,6 +612,7 @@ Phase 0 is complete when all of the following are true:
 - [ ] `handoff/` files exist and are populated with templates
 - [ ] README explains setup and safety rules
 - [ ] log collection script exists as at least a scaffold
+- [ ] sanitized tracked diagnostic bundle path exists for `-logs` branches
 - [ ] branch/handoff workflow is documented
 
 ---
