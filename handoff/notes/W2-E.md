@@ -124,6 +124,20 @@ integrator (no action needed to unblock F/G):
   sources — a future drift would only be caught by the gate if the
   integration runs it (it does, per merge protocol).
 
+## GitHub automation status
+- Branch `arena/01a089c9-casevault` pushed. Deliverable commit
+  `de1ca88b5370102b450b363afa1705fc997da73a` (migration, models, stubs,
+  tests); this note amendment follows as a second commit on the same
+  branch. Merge the branch/PR — both commits are the workstream.
+- PR opened: https://github.com/drivedigital/casevault/pull/4 (base
+  `arena/01a0899f-casevault`) with this note (incl. both proof outputs) as
+  its body. `gh pr edit` to reformat the body onto the PR template FAILED
+  on this installation (exit 1, "GraphQL: Projects (classic) is being
+  deprecated … repository.pullRequest.projectCards") — same
+  permissions/automation flakiness the policy calls out; the PR body
+  already carries all template content, so nothing is missing for review.
+  Integrator: merge by PR or by sha `de1ca88` as preferred.
+
 ## What the next agent must know
 - W2-F: fill `routers/ledger.py` (tags `["ledger"]`, mounted at
   `/api/v1`), read/write via the `LedgerEntry` model; `tags` in/out
