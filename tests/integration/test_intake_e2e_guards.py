@@ -364,16 +364,48 @@ def test_cleanup_after_run_runs_even_after_a_deviation(monkeypatch):
     fixtures = {"uid": "abcd1234", "matter_a": "m-ours", "matter_b": "m-ours-b"}
     client = _FakeClient("abcd1234", "s-ours", "m-ours")
     log = intake_smoke.FlowLog()
-    intake_smoke.cleanup_after_run(client, "postgresql://postgres@/db", fixtures, False, log)
+    error = intake_smoke.cleanup_after_run(
+        client, "postgresql://postgres@/db", fixtures, False, log
+    )
+    assert error is None
     assert calls["db_url"] == "postgresql://postgres@/db"
     assert "m-ours" in calls["ids"]["matter_ids"]
 
     # --keep-fixtures must keep, and a missing client must not raise.
     calls.clear()
-    intake_smoke.cleanup_after_run(client, "db", fixtures, True, log)
+    assert intake_smoke.cleanup_after_run(client, "db", fixtures, True, log) is None
     assert not calls
-    intake_smoke.cleanup_after_run(None, "db", fixtures, False, log)
+    assert intake_smoke.cleanup_after_run(None, "db", fixtures, False, log) is None
     assert not calls
+
+
+def test_cleanup_failure_is_not_reported_as_success(monkeypatch):
+    """Cleanup failure must be distinguishable (integrator caveat on the merge).
+
+    `cleanup_after_run` returns the redacted reason instead of swallowing it,
+    `main()` turns that into a non-zero exit in required/CI mode, and the pytest
+    wrapper fails there too — a run whose synthetic rows survived is not green.
+    """
+
+    def boom(db_url, ids, log):
+        raise RuntimeError("delete failed: postgresql://user:pw@host/db")
+
+    monkeypatch.setattr(intake_smoke, "cleanup_fixtures", boom)
+    fixtures = {"uid": "abcd1234", "matter_a": "m-ours", "matter_b": "m-ours-b"}
+    client = _FakeClient("abcd1234", "s-ours", "m-ours")
+    log = intake_smoke.FlowLog()
+    error = intake_smoke.cleanup_after_run(client, "db", fixtures, False, log)
+    assert error and "delete failed" in error
+    assert "pw@" not in error  # redaction still applies to the failure path
+
+    main_source = inspect.getsource(intake_smoke.main)
+    assert "CLEANUP FAILURE" in main_source
+    assert "required mode: synthetic rows left behind" in main_source
+    wrapper = (REPO_ROOT / "tests" / "integration" / "test_intake_e2e.py").read_text(
+        encoding="utf-8"
+    )
+    assert "cleanup_error and REQUIRED" in wrapper
+    assert 'pytest.fail(f"fixture cleanup failed' in wrapper
 
 
 def test_main_wires_the_tracked_fixtures_into_cleanup():

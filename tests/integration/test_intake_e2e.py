@@ -173,6 +173,7 @@ def test_intake_e2e_full_flow(e2e_target):
     client, db_url, _exchange = e2e_target
     log = intake_smoke.FlowLog()
     fixtures: dict = {}
+    cleanup_error: str | None = None
     try:
         try:
             intake_smoke.probe_intake_routers(client, log, required=REQUIRED)
@@ -211,9 +212,14 @@ def test_intake_e2e_full_flow(e2e_target):
     finally:
         # Always remove the synthetic rows this run created, even after a
         # deviation or a partial flow.
-        if fixtures:
-            try:
-                ids = intake_smoke.collect_fixtures(client, fixtures)
-                intake_smoke.cleanup_fixtures(db_url, ids, log)
-            except Exception as exc:  # noqa: BLE001 - cleanup never masks the result
-                log.note(f"fixture cleanup skipped: {intake_smoke.redact(exc)}")
+        cleanup_error = intake_smoke.cleanup_after_run(client, db_url, fixtures, False, log)
+
+    if cleanup_error and REQUIRED:
+        # A previously green run must not stay green when the rows it created
+        # survived (integrator caveat on the integrated verifier, 2026-09-10).
+        pytest.fail(f"fixture cleanup failed: {cleanup_error}")
+    if cleanup_error:
+        warnings.warn(
+            f"synthetic rows may remain in the target database: {cleanup_error}",
+            stacklevel=2,
+        )

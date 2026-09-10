@@ -419,6 +419,54 @@ def _queued_job_result(job_id: str | None) -> dict | None:
         return None
 
 
+def _require_job_result(
+    step: str,
+    log: FlowLog,
+    job_id: str | None,
+    expected_created: int,
+    expected_skipped: int,
+    contract: str = "4.4",
+) -> dict | None:
+    """Assert the queued job's OWN result payload (not just RQ's FINISHED).
+
+    RQ reporting a job as finished is not success: `generate_fact_proposals`
+    never raises, so a failed job also ends up FINISHED (with
+    status="failed" inside the result). The committed proposals are the primary
+    proof; this additionally pins the counters the worker reported. A result
+    that is unreadable is a loud NOTE (the committed state still has to hold),
+    reported in the run summary as `unreadable_job_results`.
+    """
+    result = _queued_job_result(job_id)
+    short = str(job_id)[:8]
+    if not isinstance(result, dict):
+        log.note(
+            f"job {short}: result payload not readable from redis — asserting committed "
+            "state only (counted as unreadable_job_results)"
+        )
+        return None
+    if result.get("status") != "complete":
+        check(
+            step,
+            f"RQ job {short} result",
+            'status="complete"',
+            f"status={result.get('status')!r} "
+            f"reason={redact(str(result.get('reason') or ''))[:160]!r}",
+            contract,
+        )
+    if result.get("created") != expected_created or result.get("skipped") != expected_skipped:
+        check(
+            step,
+            f"RQ job {short} result",
+            f"created={expected_created} skipped={expected_skipped}",
+            f"created={result.get('created')!r} skipped={result.get('skipped')!r}",
+            contract,
+        )
+    log.ok(
+        f"job {short} result: status=complete created={expected_created} skipped={expected_skipped}"
+    )
+    return result
+
+
 def _job_failure_summary(job_ids: list[str | None]) -> str:
     parts = []
     for job_id in job_ids:
@@ -700,22 +748,29 @@ def cleanup_fixtures(db_url: str, ids: dict, log: FlowLog) -> None:
 
 def cleanup_after_run(
     client, db_url: str, fixtures: dict, keep_fixtures: bool, log: FlowLog
-) -> None:
+) -> str | None:
     """Remove what this run created — including after a mid-flow deviation.
 
     `fixtures` is filled in incrementally by run_flow specifically so a failure
     part-way still has an id-scoped cleanup path. Gating this on a successful
     return value (the earlier shape) leaked synthetic rows on every deviation.
+
+    Returns None on success, or the redacted error text on failure. It never
+    raises, so the caller decides: a cleanup failure must NOT read as a green
+    verification (integrator caveat on the integrated verifier, 2026-09-10) —
+    `main()` fails the run when required/CI mode is on, and the pytest wrapper
+    fails there too, while a manual non-required run reports it loudly.
     """
     if keep_fixtures:
         log.note("fixtures kept (--keep-fixtures)")
-        return
+        return None
     if client is None or not fixtures:
-        return
+        return None
     try:
         cleanup_fixtures(db_url, collect_fixtures(client, fixtures), log)
     except Exception as exc:  # noqa: BLE001 - cleanup never masks the result
-        log.note(f"fixture cleanup skipped: {redact(exc)}")
+        return redact(str(exc) or type(exc).__name__)
+    return None
 
 
 def run_flow(
@@ -844,6 +899,8 @@ def run_flow(
             f"queued job produced 3 proposals in {wait['waited_s']}s "
             f"(statuses={wait['statuses'] or 'unreadable'})"
         )
+        if _require_job_result("generate", log, job_ids[0], 3, 0) is None:
+            generation.setdefault("unreadable_job_results", []).append(job_ids[0])
     else:
         if gen["created"] != 3 or gen["skipped"] != 0:
             check(
@@ -875,6 +932,8 @@ def run_flow(
             f"re-run job finished with no new proposals (idempotent, "
             f"{wait['waited_s']}s, statuses={wait['statuses'] or 'unreadable'})"
         )
+        if _require_job_result("generate", log, job_ids[1], 0, 3) is None:
+            generation.setdefault("unreadable_job_results", []).append(job_ids[1])
     else:
         if gen2.get("created") != 0 or gen2.get("skipped") != 3:
             check(
@@ -933,23 +992,8 @@ def run_flow(
                 f"total={cap_wait['total']} — the queued job ignored the cap and used its default",
                 "4.4",
             )
-        cap_result = _queued_job_result(cap_job)
-        if isinstance(cap_result, dict):
-            if cap_result.get("created") != 2 or cap_result.get("skipped") != 1:
-                check(
-                    "generate-cap",
-                    "POST /proposals/generate (cap, queued job result)",
-                    "created=2 skipped=1 (3rd paragraph past the cap counts as skipped)",
-                    f"created={cap_result.get('created')} skipped={cap_result.get('skipped')} "
-                    f"reason={cap_result.get('reason')!r}",
-                    "4.4",
-                )
+        if _require_job_result("generate-cap", log, cap_job, 2, 1) is not None:
             log.ok(f"queued cap job: created=2 skipped=1 in {cap_wait['waited_s']}s")
-        else:
-            log.note(
-                "queued cap job result not readable (rq/redis unavailable to the verifier); "
-                "the committed count above is the assertion"
-            )
     else:
         if cap.get("created") != 2 or cap.get("skipped") != 1:
             check(
@@ -1933,6 +1977,7 @@ def main(argv: list[str] | None = None) -> int:
     fixtures: dict = {}
     client = None
     exit_code = EXIT_OK
+    cleanup_error: str | None = None
     try:
         try:
             run_migrations(db_url, log)
@@ -1958,14 +2003,27 @@ def main(argv: list[str] | None = None) -> int:
                 exit_code = EXIT_FAIL
     finally:
         # Always remove what this run created — deviations included.
-        cleanup_after_run(client, db_url, fixtures, args.keep_fixtures, log)
+        cleanup_error = cleanup_after_run(client, db_url, fixtures, args.keep_fixtures, log)
         if not args.keep_uploads:
             shutil.rmtree(scratch, ignore_errors=True)
         else:
             print(f"kept scratch uploads at {scratch}")
 
     if exit_code != EXIT_OK:
+        if cleanup_error:
+            print(f"CLEANUP FAILURE: {cleanup_error}")
         return exit_code
+
+    if cleanup_error:
+        # A run whose synthetic rows survived is not a green verification.
+        print(f"CLEANUP FAILURE: {cleanup_error}")
+        if required:
+            print("required mode: synthetic rows left behind -> verification failed")
+            return EXIT_FAIL
+        print(
+            "WARNING: synthetic rows may remain in the target database "
+            f"(non-required run; set {REQUIRE_ENV}=1 to make this fatal)"
+        )
 
     assert result is not None
     generation = result.get("generation") or {}
@@ -1973,7 +2031,8 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"generation mode: {generation.get('mode', 'inline')} "
         f"(jobs={generation.get('job_ids') or 'none'}; "
-        f"waits={[w.get('waited_s') for w in generation.get('waits', [])] or 'n/a'})"
+        f"waits={[w.get('waited_s') for w in generation.get('waits', [])] or 'n/a'}; "
+        f"job results unreadable={generation.get('unreadable_job_results') or 'none'})"
     )
     print(
         f"fixtures: matter_a={result['matter_a']} fact={result['fact_id']} "
