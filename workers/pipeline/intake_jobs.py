@@ -54,10 +54,14 @@ def generate_fact_proposals(
     try:
         from sqlalchemy import select
 
+        from workers.pipeline.jobs import _connect, _ensure_app_importable
+
+        # RQ starts without pytest's apps/api path; bootstrap before app imports.
+        _ensure_app_importable()
+
         from app.models.enums import ProposalType, ReviewState
         from app.models.intake import Proposal
         from app.models.source import Source, SourcePage
-        from workers.pipeline.jobs import _connect
 
         session = _connect(database_url)
         source = session.get(Source, source_id)

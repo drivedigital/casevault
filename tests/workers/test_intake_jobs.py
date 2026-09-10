@@ -256,3 +256,54 @@ def test_queued_job_consumes_the_forwarded_cap(db, workspace):
         str(source.id), str(workspace.id), max_proposals=2, database_url=TEST_DB_URL
     )
     assert result["created"] == 2 and result["skipped"] == 3
+
+
+def test_generation_in_fresh_process_without_pythonpath(db, workspace):
+    """Exercise the worker import environment, not pytest's injected API path."""
+    import json
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    source = seed_source(db, workspace, "\n\n".join(_para(i) for i in range(3)))
+    env = dict(os.environ)
+    env.pop("PYTHONPATH", None)
+    script = """
+import importlib.util
+import json
+import sys
+assert importlib.util.find_spec("app") is None
+from workers.pipeline.intake_jobs import generate_fact_proposals
+print(json.dumps(generate_fact_proposals(
+    sys.argv[1], sys.argv[2], max_proposals=int(sys.argv[3]), database_url=sys.argv[4]
+)))
+"""
+    for cap, created, total in [(1, 1, 1), (2, 2, 3), (2, 0, 3)]:
+        child = subprocess.run(
+            [sys.executable, "-c", script, str(source.id), str(workspace.id),
+             str(cap), TEST_DB_URL],
+            cwd=Path(__file__).resolve().parents[2], env=env,
+            capture_output=True, text=True, timeout=30, check=True,
+        )
+        result = json.loads(child.stdout)
+        assert result == {
+            "job": "generate_fact_proposals", "status": "complete",
+            "created": created, "skipped": 3 - created, "reason": None,
+        }, child.stderr
+        db.expire_all()
+        rows = db.query(Proposal).filter(Proposal.source_id == source.id).all()
+        assert len(rows) == total
+        assert len({r.proposed_structured_json["provenance_key"] for r in rows}) == total
+
+
+def test_bootstrap_failure_returns_failed(monkeypatch):
+    from workers.pipeline import jobs
+
+    def fail():
+        raise RuntimeError("synthetic bootstrap failure")
+
+    monkeypatch.setattr(jobs, "_ensure_app_importable", fail)
+    result = generate_fact_proposals("source", "workspace")
+    assert result["status"] == "failed"
+    assert result["created"] == 0
+    assert result["reason"] == "RuntimeError: synthetic bootstrap failure"

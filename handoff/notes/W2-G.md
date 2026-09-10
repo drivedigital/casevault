@@ -316,3 +316,135 @@ lint/typecheck/build clean — GATE GREEN.
 - The `/home/user/lab` scratch tree (pre-merge reconstruction rig) is retired;
   nothing in it is part of this branch. `python scripts/agent_pg.py stop` after
   any further local runs.
+
+## Normal-worker post-merge fix (2026-09-10)
+
+PR #9 is already integrated. This follow-up fast-forwards the existing assigned
+branch to integration `e36caae46d95ca125848336f8993af6f4d1814f0`; new focused PR.
+No contract changes, migrations, hub edits, or unrelated implementation changes.
+
+### Cause and fix
+
+A fresh `python -m workers.run_worker` process does not inherit pytest's API
+pythonpath. `generate_fact_proposals` imported app models before `_connect`
+could bootstrap that path. Call the existing `_ensure_app_importable` inside
+the job's try block, before app imports. Bootstrap exceptions still produce the
+existing failed result rather than escaping the job.
+
+### Automated proof
+
+- `bash scripts/verify_all.sh`: **95 passed**, migration upgrade/downgrade/upgrade,
+  ruff, web lint/typecheck/build; **GATE GREEN**.
+- `.venv/bin/python -m pytest -q tests/workers/test_intake_jobs.py`: **11 passed**.
+- Fresh subprocess regression removes PYTHONPATH and first asserts `app` cannot
+  be found; runs real Postgres generation in three separate interpreters with
+  caps 1/2/2, checks complete results, committed totals 1/3/3 and unique provenance.
+- Negative probe: remove only the job bootstrap invocation, run
+  `test_generation_in_fresh_process_without_pythonpath`: **1 failed**, reason
+  `ModuleNotFoundError: No module named 'app'`; restore it: **11 passed**.
+- Dedicated bootstrap-failure test confirms status=failed, created=0, reason
+  `RuntimeError: synthetic bootstrap failure`, with no exception escaping.
+
+### Real Redis / normal RQ worker proof
+
+Redis 6.2.14 executable installed locally via `pip install redislite` (real server,
+not a mock; no dependency-file change). RQ 2.12.0, real embedded Postgres test DB.
+Launched separate long-lived processes from repository root:
+
+```bash
+.venv/bin/redis-server --bind 127.0.0.1 --port 6387 --save '' --appendonly no
+
+eval "$(.venv/bin/python scripts/agent_pg.py env)"
+export DATABASE_URL="$TEST_DATABASE_URL" REDIS_URL=redis://127.0.0.1:6387/0
+env -u PYTHONPATH .venv/bin/python -m workers.run_worker
+```
+
+No API import-path workaround in the worker. Seeded a unique synthetic user,
+workspace, text source and page containing three distinct eligible paragraphs
+in **casevault_test**. Used `enqueue_proposal_generation` (extract queue), fetched
+real RQ jobs, blocked on `job.latest_result(timeout=30)` and checked return values
+in addition to refreshed RQ status. Queried proposals in the independent seed
+session after each committed run; all rows system-created/proposed, unique keys.
+
+| Job | Requested cap | RQ | Result status | Created | Skipped | Committed total |
+|---|---:|---|---|---:|---:|---:|
+| c5b6e1d7-b743-44f8-b804-8d594c5ae102 | 1 | finished | complete | 1 | 2 | 1 |
+| c4d4c46e-1618-4b3e-a219-a9e6451dd478 | 2 | finished | complete | 2 | 1 | 3 |
+| a1bc2c45-947b-4523-adfd-6b9afdebd60b | 2 | finished | complete | 0 | 3 | 3 |
+
+All reasons null; fetched kwargs exactly matched requested limits. The second
+run processes remaining paragraphs; the third proves no duplicate creation once
+all eligible paragraphs have provenance (the existing per-run cap semantics).
+
+Cleanup in finally: scoped deletion by fixture IDs, then queries verified **0**
+proposals, source_pages, sources, workspaces and users for those IDs. Deleted all
+three RQ jobs and asserted **0** remaining job keys. Stopped normal worker and
+nonpersistent Redis. No source files or real case data were used.
+
+Fixture IDs: source `b96a2602-6442-4312-9272-404924298457`, workspace
+`75640efd-4e04-4563-8e62-7478e8bfd1bb`, user
+`044f5c4c-f5dc-49ec-8574-e6aede90e88b`.
+
+Local transcripts: `/tmp/w2g-normal-gate.log`, `/tmp/w2g-normal-negative.log`,
+`/tmp/w2g-normal-proof.log` (ephemeral; essential results preserved above).
+
+Reproducible seed/enqueue/assert/cleanup driver (run from repo root after the
+above environment setup using `env -u PYTHONPATH .venv/bin/python -c
+'exec(open("/tmp/w2g-normal-proof.py").read())'`; save this block to that file):
+
+```python
+import os, json, uuid
+from workers.pipeline.jobs import _connect
+session = _connect(os.environ['TEST_DATABASE_URL'])
+from app.models.identity import User
+from app.models.workspace import Workspace
+from app.models.source import Source, SourcePage
+from app.models.intake import Proposal
+from app.models.enums import SourceType
+from workers.pipeline.intake_jobs import enqueue_proposal_generation
+from redis import Redis
+from rq.job import Job
+from sqlalchemy import select, func, delete
+r = Redis.from_url(os.environ['REDIS_URL'])
+u = User(email=f'w2g-normal-{uuid.uuid4()}@example.invalid', display_name='Synthetic worker proof')
+session.add(u); session.flush()
+w = Workspace(name='Synthetic normal-worker proof', created_by_user_id=u.id)
+session.add(w); session.flush()
+s = Source(workspace_id=w.id, source_type=SourceType.text, title='Synthetic normal-worker proof', storage_path='synthetic/no-file.txt', page_count=1)
+session.add(s); session.flush()
+session.add(SourcePage(source_id=s.id, page_number=1, page_label='1', ocr_text='\n\n'.join(f'Synthetic paragraph {i}: this is fabricated worker verification text, not case data.' for i in range(3))))
+session.commit()
+ids = (s.id, w.id, u.id)
+jobs = []
+print('fixture', *map(str, ids), flush=True)
+try:
+    for cap, created, total in [(1,1,1),(2,2,3),(2,0,3)]:
+        queued = enqueue_proposal_generation(str(s.id),str(w.id),max_proposals=cap)
+        assert queued['queued'], queued
+        job = Job.fetch(queued['job_id'],connection=r); jobs.append(job)
+        result = job.latest_result(timeout=30)
+        assert result is not None
+        value = result.return_value
+        assert value == dict(job='generate_fact_proposals',status='complete',created=created,skipped=3-created,reason=None), value
+        assert job.get_status(refresh=True).value == 'finished'
+        assert job.kwargs == {'max_proposals':cap}
+        session.expire_all()
+        rows = list(session.scalars(select(Proposal).where(Proposal.source_id==ids[0])))
+        assert len(rows)==total
+        assert len({p.proposed_structured_json['provenance_key'] for p in rows})==total
+        assert all(p.created_by_system and p.review_state.value=='proposed' for p in rows)
+        print(json.dumps(dict(job_id=job.id,rq_status=job.get_status().value,kwargs=job.kwargs,result=value,committed=total)),flush=True)
+finally:
+    session.rollback()
+    for model, condition in [(Proposal,Proposal.source_id==ids[0]),(SourcePage,SourcePage.source_id==ids[0]),(Source,Source.id==ids[0]),(Workspace,Workspace.id==ids[1]),(User,User.id==ids[2])]:
+        session.execute(delete(model).where(condition))
+    session.commit()
+    for model, condition in [(Proposal,Proposal.source_id==ids[0]),(SourcePage,SourcePage.source_id==ids[0]),(Source,Source.id==ids[0]),(Workspace,Workspace.id==ids[1]),(User,User.id==ids[2])]:
+        count=session.scalar(select(func.count()).select_from(model).where(condition)); assert count==0
+        print('cleanup',model.__tablename__,count,flush=True)
+    for job in jobs: job.delete()
+    assert all(not r.exists(job.key) for job in jobs)
+    print('cleanup Redis job keys: 0',flush=True)
+    session.close()
+
+```
