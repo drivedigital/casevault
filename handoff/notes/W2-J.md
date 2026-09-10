@@ -320,6 +320,41 @@ RQ (the job swallows its exceptions) — check the worker log … (contract 4.4)
 - Verified both ways: the verifier stays green on the queued path once the worker
   bootstraps the path, and fails loudly (with the reason) when it does not.
 
+- **Fix verified end-to-end (not applied here — G file):** the one-line patch below,
+  applied to a scratch worktree of the merged tip with a **plain**
+  `python -m workers.run_worker` (no `PYTHONPATH`), turns the queued run green:
+
+```diff
+--- a/workers/pipeline/intake_jobs.py
++++ b/workers/pipeline/intake_jobs.py
+@@ -52,6 +52,9 @@ def generate_fact_proposals(
+     skipped = 0
+     session = None
+     try:
++        from workers.pipeline.jobs import _ensure_app_importable
++
++        _ensure_app_importable()
+         from sqlalchemy import select
+
+         from app.models.enums import ProposalType, ReviewState
+```
+
+```
+$ REDIS_URL=<real redis> TEST_DATABASE_URL=<disposable> INTAKE_REQUIRE=1 \
+    python scripts/intake_smoke.py --require-intake      # repo tree
+  PASS: queued job produced 3 proposals in 2.1s
+  PASS: re-run job finished with no new proposals (idempotent, 1.5s)
+  PASS: queued cap job: created=2 skipped=1 in 2.0s
+SMOKE GREEN — generation mode: queued; cleaned up 24 synthetic row(s)
+
+# and the same worker WITHOUT the patch (earlier run) failed every queued job:
+ModuleNotFoundError: No module named 'app'  →  RQ: "Job OK", nothing committed
+```
+
+  With the patch the worker's own `apps/api` path bootstrap makes the job run
+  wherever the checkout lives, which is the contract the enqueue side already
+  relies on (`_ensure_app_importable()` in `enqueue_proposal_generation`).
+
 **Verifier fix made here (my bug, found by the same run):** `main()` gated fixture
 cleanup on a successful flow return, so a mid-flow deviation leaked the rows
 created so far. Cleanup is now driven by the incrementally-filled `fixtures` dict
