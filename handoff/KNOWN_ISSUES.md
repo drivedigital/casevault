@@ -20,6 +20,14 @@ Current defects and limitations, newest first. Triage per Roadmap §9
   (`arena/01a08429-casevault-logs`, local-run reports) but the script's
   own push path is still untested.
 
+## 2026-09-10
+
+- **[Low] Global nav links to `/evidence`, which has no page.** Clicking
+  "Evidence" from any screen 404s until Sprint 3 (WS-C) lands the route.
+- **[Low] `make test` cannot run in Docker-less agent sandboxes.** Workaround
+  for agents: `scripts/agent_pg.py` (embedded Postgres, git-ignored
+  `data/pgdata/`). The local tester path (`make infra-up`) is unchanged.
+
 ## 2026-09-08 — Phase 1
 
 - **[Medium] No audit entries yet.** Phase 1 mutations (matter/actor CRUD,

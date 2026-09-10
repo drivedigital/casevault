@@ -214,3 +214,39 @@ feature code lands (safety + workflow before app code).
 - Docker not available in the build sandbox, so `infra-up` and
   DB-connectivity were NOT verified here — first thing to test locally.
 - See `handoff/KNOWN_ISSUES.md` and open decisions in `handoff/DECISIONS.md`.
+
+---
+
+## 2026-09-10 — Parallel-build coordination (Wave 0: plan + contract freeze)
+
+**Branch:** `arena/01a0899f-casevault` · Roadmap Sprints 3–5 planning
+
+### What changed
+- `handoff/PARALLEL_PLAN.md` (new): workstream decomposition for multi-agent
+  parallel work — ownership map, merge protocol, definition of done, kickoff
+  prompt template, Wave 2 preview.
+- `docs/contracts/sprint3_evidence.md` (new, v1.0-proposed): frozen interface
+  contract for Sprint 3 (migration 0003 schema, REST endpoints, storage keys,
+  worker job payloads, web routes/types) — the coordination artifact that lets
+  WS-A/B/C/D build without blocking on each other.
+- `scripts/agent_pg.py` (new): embedded-Postgres harness for agent sandboxes
+  with no Docker (`start | env | status | psql | stop`), using the git-ignored
+  `data/pgdata/` cluster; `pgserver` stays an on-demand install, not a
+  requirements entry.
+- `handoff/notes/README.md` (new): per-workstream note convention so parallel
+  branches don't conflict on `WORKLOG.md`.
+
+### Builder verification (sandbox, embedded Postgres 16)
+- [x] `python scripts/agent_pg.py start` → `casevault` + `casevault_test` created
+- [x] `alembic upgrade head` on a fresh DB → 0001 + 0002 applied
+- [x] `pytest` — 8 passed; `ruff check apps workers scripts tests` — clean
+- [x] `npm ci` (workspaces) — clean install
+- [x] Baseline confirmed against the contract's assumptions: `/evidence` has no
+      page yet (nav links to it — logged in KNOWN_ISSUES); pgvector deferred;
+      workers importable without redis.
+
+### Needs confirmation before Wave 1 starts
+1. Agent topology (separate Arena sessions vs. local agents vs. sequential).
+2. Whether this session coordinates only, or also implements WS-A.
+3. First parallel wave: Sprint 3 (roadmap order) vs. tester-first modules.
+

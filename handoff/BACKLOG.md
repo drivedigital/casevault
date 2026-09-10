@@ -63,3 +63,12 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 Tracked in `handoff/DECISIONS.md` (auth mode, embedding table design,
 rollback depth, polymorphic comment FKs, confidence/strength enum split).
+
+## Coordination (added 2026-09-10)
+
+- [~] parallel-build plan + Sprint 3 interface freeze (`handoff/PARALLEL_PLAN.md`,
+      `docs/contracts/sprint3_evidence.md`) — awaiting owner confirmation of
+      agent topology and first wave
+- [x] agent sandbox Postgres harness (`scripts/agent_pg.py`, no Docker needed)
+- [ ] Wave 1 (Sprint 3) fan-out: WS-A sources core · WS-B storage/pipeline ·
+      WS-C evidence UI · WS-D verification
