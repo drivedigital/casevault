@@ -639,3 +639,32 @@ DB fallback concerns addressed. Caveat: cleanup remains best-effort, logging
 failures without changing green status; final proof must distinguish cleanup
 failure from success (prefer failure status in required/CI mode). CI automatic
 gitleaks-token fix remains WS-D-owned and absent from this J-only change.
+
+## 2026-09-10 — W2-J integrated; real-worker regression escalated
+
+Merged PR #3 head `5755cc3` as `a4e20f0`. Full strict gate independently green
+on candidate and committed merge: `INTAKE_REQUIRE=1 INTAKE_ALLOW_APP_DB=1 bash
+scripts/verify_all.sh` -> 93 tests, migrations round-trip, ruff, web lint,
+typecheck/build. Existing image performance warning remains. J-only five-file
+diff preserves evidence recovery and G implementation. New verifier checks
+queued job results/committed proposals, not RQ FINISHED alone; cleanup failure
+handling and negative tests are included. Local green uses deterministic
+inline generation; it is NOT a claim the normal worker path is green.
+
+**New product blocker (found by J, independently reproduced):** in a fresh
+Python process with PYTHONPATH unset, importing the intake job and invoking it
+returns `status=failed`, `ModuleNotFoundError: No module named 'app'`. The normal
+worker bootstrap does not add apps/api to its import path. Existing pytest
+pythonpath hides the defect; RQ labels a non-raising failed-result job FINISHED.
+G was assigned a focused bootstrap fix plus fresh-subprocess and real-worker
+proof on a new PR (posted to merged PR #9). Never-raise contract is unchanged.
+W2-J is integrated as verification, not Wave 2 sign-off; queued verification
+must rerun without PYTHONPATH workaround after G fixes the product.
+
+WS-D `f9f1838` exists on new session branch `arena/01a08a04-casevault`, while
+PR #10 still points at old `de18118`. The new deliverable includes the narrow
+automatic-token CI change. Its reported remaining PR-event gitleaks failure
+has no available detailed log; cause remains UNKNOWN, not established as a
+permissions issue or established as absence of a secret. No broad permission
+change approved on speculation. WS-D merge/review remains pending.
+Evidence UI follow-up is still not visible in fetched remote refs.

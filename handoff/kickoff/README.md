@@ -21,7 +21,7 @@ as-shipped contract. This folder now assigns **Wave 2**.
 | `WS-B` → WS-C recovery | evidence UI recovery | `01a089ce` / PR #11 | ✅ **merged** (`5da141c`, full gate 34 tests); old storage PR #8 closed, refactor deferred. UI follow-ups assigned separately. |
 | `WS-A` (archived brief) | sources core | `01a089cd`, note `afef55b` | Retired scope; sources core already integrated. No second migration `0003`. |
 | `W2-G.md` | intake API (proposals, facts, links, generation) | `01a089cc` / PR #9 | ✅ **merged** (`4d13527`, head `93656db`); all four findings and RQ follow-up resolved, full gate 72 tests. |
-| `W2-J.md` | intake E2E verification + CI | `01a089cd` / PR #3 | **Unblocked for merged-tip proof** at `4d13527`; address preflight findings, rebase J-only diff, run full verification. |
+| `W2-J.md` | intake E2E verification + CI | `01a089cd` / PR #3 | ✅ **merged** (`a4e20f0`, head `5755cc3`), strict full gate 93 tests. Found real-worker G import defect; sign-off blocked pending G follow-up. |
 
 Wave 1's briefs (`WS-A..WS-D.md`) are archived under `handoff/notes/archive/wave1/`;
 three of them were picked up after the fact — see the stop/rework rows above.

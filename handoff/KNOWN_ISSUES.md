@@ -103,3 +103,10 @@ Current defects and limitations, newest first. Triage per Roadmap §9
   record; audit storage remains deferred.
 - Queued proposal-generation `created/skipped=0` are placeholders, not final
   job results. Real Redis worker E2E proof remains pending verification.
+
+### Blocking: normal intake worker import (2026-09-10)
+W2-J discovered and integrator reproduced that `generate_fact_proposals`
+fails to import `app` in a fresh worker process without external PYTHONPATH.
+It returns a failed result while RQ can mark the job FINISHED. G follow-up
+assigned: bootstrap app imports before model imports and prove with a clean
+subprocess and real worker. Inline test gates do not clear this blocker.
