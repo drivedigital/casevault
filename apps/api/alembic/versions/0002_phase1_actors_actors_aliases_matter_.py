@@ -52,7 +52,11 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('matter_id', 'actor_id', 'role_label', name='uq_matter_actor_roles__matter__actor__role')
     )
-    op.drop_index(op.f('uq_users__email'), table_name='users')
+    # NOTE (fixed 2026-09-10): autogenerate originally emitted
+    # `op.drop_index('uq_users__email')` here because the functional index
+    # was missing from model metadata. That silently removed the
+    # case-insensitive unique-email guarantee created in 0001. The index is
+    # now declared on the User model; 0003 re-creates it where missing.
     # ### end Alembic commands ###
 
 
@@ -70,5 +74,5 @@ def downgrade() -> None:
     op.drop_table('actors')
     # `sa.Enum` does not drop its Postgres type on downgrade; do it explicitly
     # so `downgrade base` -> `upgrade head` is repeatable.
-    op.execute("DROP TYPE IF EXISTS actor_type_enum")
+    sa.Enum(name='actor_type_enum').drop(op.get_bind(), checkfirst=True)
     # ### end Alembic commands ###

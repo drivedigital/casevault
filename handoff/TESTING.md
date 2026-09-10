@@ -69,6 +69,37 @@ make migrate      # Alembic upgrade head (0001 + 0002)
 - [ ] `make test` — 8 passing (requires `make infra-up`)
 - [ ] `make lint` clean
 
+## Phase 2 test checklist (evidence ingestion, 2026-09-10)
+
+Run after `git pull && make migrate` (Migration 0003) with the stack up.
+
+```bash
+make api    # :8100
+make web    # :3000
+```
+
+- [ ] `/evidence` page loads (was a dangling nav link before Sprint 3)
+- [ ] Upload a .txt file with a title → appears in the list as `text`,
+      review status `uploaded`, OCR `complete`, 1 page
+- [ ] Open the source detail page → extracted text shows under
+      "Extracted text"; "Open stored file" downloads the original bytes
+- [ ] Upload the SAME file again → flagged `duplicate` with a "dup of"
+      pointer in the list and a banner on the detail page
+- [ ] Upload a real PDF → stays `queued`/`not_started`; run
+      `make process-jobs` (no redis needed) → pipeline `complete`,
+      OCR `skipped` (stub — engine integration is a later sprint)
+- [ ] With redis up (`make infra-up`): upload a PDF → the RQ worker
+      (`make worker`) picks it up from the `ingest` queue
+- [ ] On a source: change proof classification and review status → saves;
+      set both included AND excluded → conflict message (409)
+- [ ] Link a source to a matter (from /evidence upload form or the matter
+      page's Evidence sources card) → visible on BOTH sides; unlink works
+- [ ] Filter the list by type/review status; search by title
+- [ ] `git check-ignore data/uploads` still ignored; uploaded files land
+      under `data/uploads/<workspace>/<yyyy>/<mm>/`
+- [ ] `make test` — 17 passing
+- [ ] `make lint` clean
+
 ## Agent-side wave gate (added 2026-09-10)
 
 For agent/automation environments without Docker, the same checks run without

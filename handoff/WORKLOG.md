@@ -5,6 +5,67 @@ Fields: Date / Branch / What changed / Why / Files affected / What needs local t
 
 ---
 
+## 2026-09-10 — Phase 2 / Sprint 3: evidence ingestion (upload, storage, dedupe, viewer, pipeline stubs)
+
+**Branch:** `arena/01a08429-casevault`
+
+### What changed
+- **Migration 0003** (schema draft §6.4): `sources`, `source_matter_links`,
+  `source_metadata`, `source_pages`, `source_excerpts` + 3 native PG enums
+  (source_type / source_status / evidence_review_status). VECTOR(1536)
+  columns deferred per the embedding decision. Verified
+  upgrade→downgrade→re-upgrade on a scratch DB.
+- **Migration repair (pre-existing bugs found while testing 0003):**
+  0002's upgrade had silently DROPPED the `uq_users__email` functional
+  index (autogenerate artifact — the index wasn't in model metadata);
+  0001's downgrade tried to CREATE an index after dropping its table.
+  Fixed both, declared the index on the `User` model, and 0003's upgrade
+  heals existing databases (`CREATE UNIQUE INDEX IF NOT EXISTS`). All
+  downgrades now drop their enum types explicitly.
+- **Storage adapter** (`services/storage.py`): local filesystem under
+  `data/uploads/<workspace>/<yyyy>/<mm>/<uuid>__<sanitized-name>`; DB stores
+  only the relative path; path-traversal-safe resolution; sha256 computed
+  on save.
+- **Source service + API** (`/api/v1`): `POST /sources` (multipart upload,
+  100 MB guard), `GET /sources` (filter by matter/type/review-status +
+  title search), `GET/PATCH /sources/{id}` (manual status transitions,
+  include/exclude with check-constraint conflict → 409),
+  `GET /sources/{id}/file` (viewer download), `/sources/{id}/pages`
+  (extracted text), `/sources/{id}/matters` + `/matters/{id}/sources` +
+  `/matters/{id}/source-links` + `POST /matters/{id}/sources` +
+  `DELETE /source-matter-links/{id}` (link management both directions).
+- **Duplicate detection**: same sha256 within a workspace → record kept
+  (provenance) but `evidence_review_status=duplicate` + `duplicate_of`
+  pointer in metadata; surfaced in list + detail UI.
+- **Pipeline**: text/markdown/email/note sources ingest INLINE at upload
+  (page written, statuses complete — no redis needed). Binary types
+  enqueue best-effort onto the `ingest` rq queue (upload never fails if
+  redis is down — stays `queued`). `process_source` worker job: real for
+  text, explicit STUB for pdf/image (ocr_status=skipped + reason in
+  metadata); `describe_image` VLM stub registered. New `make process-jobs`
+  runs queued sources directly without redis.
+- **Web**: `/evidence` repository page (upload form with matter link +
+  proof classification, filterable/searchable list, duplicate badges) and
+  `/evidence/[id]` viewer (metadata, status editing, matter links,
+  extracted text per page, file open, pipeline-status hints). Matter
+  detail page gained an Evidence sources card. (The /evidence nav link
+  previously pointed at a non-existent route.)
+
+### Verification
+pytest 17/17 (9 new: upload/inline-ingest, duplicate flag, classification
++ worker stub, filename traversal safety, lifecycle + check-constraint
+409, matter link round trip, filters/search, size guards, workspace
+scoping). Ruff/eslint/tsc/next build clean (16 routes). Live in sandbox:
+upload → dup → pdf → `make process-jobs` → link/unlink → pages/file →
+both web pages render through the :3000 proxy.
+
+### Local testing needed
+`git pull && make migrate` (0003 applies), then exercise the Phase 2
+checklist in handoff/TESTING.md — especially a real PDF upload (only fake
+bytes were tested here) and `make worker` with redis up.
+
+---
+
 ## 2026-09-09 — Local verification round: fixes from the macOS run + CI flake repair
 
 **Branch:** `arena/01a08429-casevault`

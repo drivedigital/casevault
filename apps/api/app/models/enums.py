@@ -47,6 +47,39 @@ class WorkspaceRole(StrEnum):
     editor_limited = "editor_limited"
 
 
+class SourceType(StrEnum):
+    pdf = "pdf"
+    image = "image"
+    email = "email"
+    text = "text"
+    markdown = "markdown"
+    spreadsheet = "spreadsheet"
+    note = "note"
+    other = "other"
+
+
+class SourceStatus(StrEnum):
+    primary = "primary"
+    derived = "derived"
+    testimony = "testimony"
+    working_note = "working_note"
+    public_record = "public_record"
+
+
+class EvidenceReviewStatus(StrEnum):
+    uploaded = "uploaded"
+    processing = "processing"
+    reviewed = "reviewed"
+    cited = "cited"
+    included = "included"
+    excluded = "excluded"
+    duplicate = "duplicate"
+    privileged = "privileged"
+    settlement_restricted = "settlement_restricted"
+    background_only = "background_only"
+    impeachment_only = "impeachment_only"
+
+
 # Matter link types are plain strings (Schema Draft: VARCHAR(64)); these are
 # the canonical values used by the UI.
 MATTER_LINK_TYPES = [

@@ -7,6 +7,12 @@ tests — migrations themselves are verified separately by CI's
 `alembic upgrade head` step.
 """
 import os
+import tempfile
+
+# Redirect evidence storage to a scratch dir BEFORE the app/settings import
+# so upload tests never write into the real ./data tree.
+_STORAGE_ROOT = tempfile.mkdtemp(prefix="casevault-test-storage-")
+os.environ["LOCAL_STORAGE_ROOT"] = _STORAGE_ROOT
 
 import pytest
 from fastapi.testclient import TestClient

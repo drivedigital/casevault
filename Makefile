@@ -30,6 +30,9 @@ api: ## Run FastAPI with reload (port 8100)
 worker: ## Run RQ worker (requires redis)
 	$(PY) -m workers.run_worker
 
+process-jobs: ## Process queued source-ingest jobs directly (no redis needed)
+	$(PY) -m workers.run_process
+
 ping-job: ## Run the worker ping job directly (no redis required)
 	$(PY) -m workers.run_ping
 

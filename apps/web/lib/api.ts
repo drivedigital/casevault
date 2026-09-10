@@ -4,6 +4,10 @@ import type {
   Matter,
   MatterActor,
   MatterLink,
+  Source,
+  SourceMatterLink,
+  SourcePage,
+  SourceStatus,
   Workspace,
 } from "./types";
 
@@ -90,4 +94,72 @@ export const api = {
       body: JSON.stringify({ actor_id: actorId, role_label: roleLabel, notes }),
     }),
   deleteRole: (roleId: string) => apiFetch<void>(`/matter-roles/${roleId}`, { method: "DELETE" }),
+
+  // --- evidence sources (Sprint 3) ---
+
+  listSources: (params?: {
+    matter_id?: string;
+    source_type?: string;
+    evidence_review_status?: string;
+    q?: string;
+  }) => {
+    const qs = new URLSearchParams(
+      Object.entries(params ?? {}).filter(([, v]) => v) as [string, string][],
+    ).toString();
+    return apiFetch<Source[]>(`/sources${qs ? `?${qs}` : ""}`);
+  },
+  uploadSource: (
+    file: File,
+    options?: { title?: string; source_status?: SourceStatus; matter_id?: string },
+  ) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (options?.title) form.append("title", options.title);
+    if (options?.source_status) form.append("source_status", options.source_status);
+    if (options?.matter_id) form.append("matter_id", options.matter_id);
+    // Note: no JSON content-type — the browser sets the multipart boundary.
+    return fetch(`${BASE}/sources`, { method: "POST", body: form }).then(async (resp) => {
+      if (!resp.ok) {
+        let detail = resp.statusText;
+        try {
+          detail = (await resp.json()).detail ?? detail;
+        } catch {
+          /* non-JSON error body */
+        }
+        throw new ApiError(resp.status, String(detail));
+      }
+      return resp.json() as Promise<Source>;
+    });
+  },
+  getSource: (id: string) => apiFetch<Source>(`/sources/${id}`),
+  updateSource: (
+    id: string,
+    payload: Partial<
+      Pick<
+        Source,
+        | "title"
+        | "source_status"
+        | "evidence_review_status"
+        | "included_flag"
+        | "excluded_flag"
+        | "exclusion_reason"
+        | "authentication_notes"
+        | "restrictions_notes"
+      >
+    >,
+  ) => apiFetch<Source>(`/sources/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  sourceFileUrl: (id: string) => `${BASE}/sources/${id}/file`,
+  listSourcePages: (id: string) => apiFetch<SourcePage[]>(`/sources/${id}/pages`),
+  listSourceMatters: (id: string) => apiFetch<SourceMatterLink[]>(`/sources/${id}/matters`),
+  linkSourceToMatter: (matterId: string, sourceId: string, linkReason?: string) =>
+    apiFetch<SourceMatterLink>(`/matters/${matterId}/sources`, {
+      method: "POST",
+      body: JSON.stringify({ source_id: sourceId, link_reason: linkReason ?? null }),
+    }),
+  listMatterSources: (matterId: string) =>
+    apiFetch<Source[]>(`/matters/${matterId}/sources`),
+  listMatterSourceLinks: (matterId: string) =>
+    apiFetch<SourceMatterLink[]>(`/matters/${matterId}/source-links`),
+  deleteSourceMatterLink: (linkId: string) =>
+    apiFetch<void>(`/source-matter-links/${linkId}`, { method: "DELETE" }),
 };
