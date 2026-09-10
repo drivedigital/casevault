@@ -795,3 +795,20 @@ macOS-safe worker fix must test this exact UI -> queue -> worker flow, not only
 proposal generation. Do not weaken original-file preservation or mark OCR
 complete on enqueue. Local tester should avoid repeated enqueue until worker
 strategy/diagnostic is in place; failed/queued statuses need explicit inspection.
+
+## 2026-09-10 — W2-W integrated with dependency floor and qualified proof
+
+Recovered stale local Git metadata without discarding restored integration
+content: compared with remote 433db40 using a temporary index, backed up the
+restored diff/untracked files outside the repo, reconciled the session branch
+and restored two missing remote additions (CI permissions and OCR crash report).
+Then merged PR #16 head 6575372 as f9e6a1c, including integrator-requested
+rq>=2.2,<3 floor and corrected Linux-vs-Mac environment-proof wording.
+
+Fresh dependencies installed; RQ 2.12.0 exposes SpawnWorker. Independent full
+strict gate passed on candidate AND committed merge: 116 tests, migration
+upgrade/downgrade/re-upgrade through 0004, ruff, web lint/typecheck/build.
+Existing image-performance warning and two upstream Python deprecations remain.
+No native macOS execution performed: local tester must still verify normal
+Darwin launcher selects SpawnWorker and runs two sequential OCR jobs without
+SIGABRT. No blanket fork-safety, GSS, or TLS override introduced.
