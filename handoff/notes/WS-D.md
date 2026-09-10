@@ -79,3 +79,39 @@
         evidence_review_status only) — documented.
    - The evidence job duplicates the python job's postgres service block
      by design (separate runner = real isolation for the e2e).
+
+## 2026-09-10 (turn 2) — rebase onto Wave-2 tip + reprocess check updated
+
+**Context:** the integration tip moved to `b0be226` (Wave 2 E/F/H/I merged;
+W2-EV shipped `POST /sources/{id}/reprocess` per contract §6). PR #6's
+pull_request CI checks failed 3× (python/pytest, secrets/gitleaks,
+evidence/smoke) while the paired push runs on the same commits were green —
+not a flake: **push runs test my branch, pull_request runs test the PR merge
+ref**, i.e. my stale base + Wave 2. Reproduced locally on a scratch merge
+tree: 35/36, exactly the integrator's WORKLOG diagnosis — the smoke's
+reprocess check asserted the old 404 deviation.
+
+**Changes this turn:**
+- Rebased this branch onto `b0be226` (no conflicts; integrator did not touch
+  `.github/`, `scripts/`, Makefile, pyproject, requirements-dev).
+- Smoke reprocess section rewritten to assert the **shipped** shape:
+  - 202 `ReprocessOut` with exactly `{queued, job_id, reason}`
+  - degraded queue (dead `REDIS_URL`): `queued=false`, `job_id=null`,
+    `reason` set (deterministic — statuses are committed before the
+    best-effort enqueue, per W2-EV's design)
+  - both stages `["ingest","ocr"]` → 202; invalid stage → 422
+  - placed after the worker-idempotency check because `ingest` re-queues
+    `processing_status` and would break the `already_complete` assertion
+- Deviation ① (reprocess 404) **resolved by W2-EV** — removed from the
+  smoke's deviation list; 5 remain, all documented in the delta table.
+- Smoke now self-reports to `$GITHUB_STEP_SUMMARY` (crash traceback +
+  uvicorn log tail + result line) because this sandbox cannot download CI
+  logs (egress-blocked `results-receiver.actions.githubusercontent.com`);
+  psycopg2 connects retry ×3 for service-container warmup; API boot wait
+  raised to 90 s (`CASEVAULT_SMOKE_API_TIMEOUT`), default timeout was
+  implicated in one genuinely-slow-runner failure before the stale-assert
+  cause was identified.
+
+**Proof on the rebased tree:** `scripts/pipeline_smoke.py` **39/39 GREEN**,
+`bash scripts/verify_all.sh` **GATE GREEN** (pytest incl. Wave-2 suites +
+this wrapper, migrations up/down/up through 0004, ruff, web lint/build).

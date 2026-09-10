@@ -5,8 +5,8 @@ Starts the real API (uvicorn) against a scratch Postgres database and drives
 the evidence flow over HTTP exactly as docs/contracts/sprint3_evidence.md §7-D
 requires: bootstrap → upload text + PDF + image → source rows, sha256,
 duplicate handling, page rows + OCR text where expected → include/exclude
-exclusivity → matter link/unlink → reprocess (shipped worker path) without
-redis → file download byte-equality.
+exclusivity → matter link/unlink → reprocess endpoint (degraded queue, no
+redis) + worker path → file download byte-equality.
 
 Environment:
 - DATABASE_URL (or TEST_DATABASE_URL) set → use that server (compose / CI).
@@ -359,12 +359,15 @@ def flow(c: httpx.Client, smoke: Smoke, surl: str) -> None:
     r = upload(c, "photo-smoke.png", PNG_CONTENT, "image/png")
     smoke.check("classified source_type=image", r.status_code == 201 and r.json()["source_type"] == "image")
 
-    print("\n— reprocess (§3.2 vs delta: no endpoint; shipped path = worker)")
+    print("\n— reprocess (§3.2 W2-EV shipped: POST /sources/{id}/reprocess -> 202 ReprocessOut)")
     r = c.post(f"/api/v1/sources/{pdf_id}/reprocess", json={"stages": ["ocr"]})
-    smoke.check("POST /sources/{id}/reprocess observed 404 (documented deviation)",
-                r.status_code == 404, f"status {r.status_code}")
-    record_deviation("3.2", "POST /sources/{id}/reprocess -> 202 ReprocessOut",
-                     "404 — shipped path is make process-jobs / RQ ingest queue")
+    body = r.json() if r.status_code == 202 else {}
+    smoke.check("reprocess ocr stage -> 202 ReprocessOut {queued, job_id, reason}",
+                r.status_code == 202 and set(body) == {"queued", "job_id", "reason"},
+                f"status {r.status_code} body {body}")
+    smoke.check("degraded queue (dead REDIS_URL): queued=false, job_id=null, reason set",
+                body.get("queued") is False and body.get("job_id") is None and bool(body.get("reason")),
+                f"body {body}")
 
     from workers.pipeline.jobs import process_source
 
@@ -379,6 +382,13 @@ def flow(c: httpx.Client, smoke: Smoke, surl: str) -> None:
     smoke.check("worker job idempotent (§5)",
                 process_source(pdf_id, database_url=surl).get("status") == "already_complete"
                 and process_source(text_id, database_url=surl).get("status") == "already_complete")
+
+    r = c.post(f"/api/v1/sources/{pdf_id}/reprocess", json={"stages": ["ingest", "ocr"]})
+    smoke.check("reprocess both stages -> 202 (statuses re-queued before enqueue)",
+                r.status_code == 202 and r.json().get("queued") is False, f"status {r.status_code} {r.text[:120]}")
+    smoke.check("reprocess invalid stage -> 422",
+                c.post(f"/api/v1/sources/{pdf_id}/reprocess",
+                       json={"stages": ["bogus"]}).status_code == 422)
 
     print("\n— lifecycle patch (§3.2 PATCH; delta: include+exclude -> 409)")
     r = c.patch(f"/api/v1/sources/{text_id}",
