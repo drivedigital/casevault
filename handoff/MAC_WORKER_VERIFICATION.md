@@ -1,30 +1,42 @@
 # Local Verification Report: macOS Worker Stability
+
 **Date:** 2026-09-10
-**Status:** Verified Stable
+**Status:** Stable in the locally reported configuration; scope limited below.
+**Provenance:** Local tester report committed as `04e84cf`.
 
 ## Environment
-- **Tested SHA:** `4672182cbac06be265e8a019ceC8b1eae0d575b`
-- **Runtime:** Python 3.12.14 (Homebrew), macOS 26.6.2 (ARM-64)
-- **Infra:** Postgres 16, Redis 7 (Docker)
-- **Worker Model:** `rq.SpawnWorker` (Selected via `sys.platform == 'darwin'`)
+- **Reported tested short SHA:** `4672182`. Its repository-resolved full SHA is
+  `4672182cbac06be265e8a019ce6e8b1eae0d575b`; the original report's full SHA
+  contained a transcription error.
+- **Runtime:** Python 3.12.14 (Homebrew), macOS 26.6.2 (ARM-64).
+- **Infrastructure:** PostgreSQL 16 and Redis 7 (Docker).
+- **Worker model:** `rq.SpawnWorker`, reportedly selected by the Darwin default.
 
-## Test Execution
-**Trigger:** Sequential upload of two PDF sources.
-- **Job 1 ID:** `f0203a2d-1213-4043-bc85-747d77708954`
-- **Job 2 ID:** `949f8924-4afe-4b9a-8dde-a6cb061e323d`
+## Reported test execution
+Trigger: sequential upload of two PDF sources.
+- Job 1: `f0203a2d-1213-4043-bc85-747d77708954`.
+- Job 2: `949f8924-4afe-4b9a-8dde-a6cb061e323d`.
 
-### Results Table
-| Metric | Result | Observation |
-| :--- | :--- | :--- |
-| **Process Stability** | ✅ Pass | No `SIGABRT` or `OBJC` crashes. Worker remained alive. |
-| **Job Lifecycle** | ✅ Pass | Both jobs transitioned `queued` $\rightarrow$ `started` $\rightarrow$ `finished`. |
-| **Final State** | ✅ Pass | `ocr_status` updated to `skipped` (expected for stub). |
+| Check | Local tester result |
+|---|---|
+| Process stability | No SIGABRT/OBJC crash; worker remained alive |
+| Lifecycle | Both jobs moved queued → started → finished |
+| Persisted OCR status | `skipped`, expected for the current OCR stub |
+| Original-file preservation | Byte equality reported for one source |
 
-## Original-File Preservation
-Verified that the file upload process maintains binary integrity:
-- **Source File:** `140196_Maureen_LUPO_v_Maureen_LUPO_VERIFIED_CLAIM_1-2.pdf`
-- **Verified SHA256:** `e6c16a1033107fc2b7e917f0f5067825246af8fcb6a29035e47762fc77024760`
-- **Outcome:** Bytes preserved exactly in `data/uploads/`.
+The identifying source filename and checksum have been omitted from the current
+report. This edit does not remove them from Git history. Future verification
+must use explicitly synthetic fixtures and exclude identifying evidence metadata.
 
-## Conclusion
-The transition to **Python 3.12** combined with the **`SpawnWorker`** process model resolves the macOS fork-safety crash. The system is now stable for PDF ingestion on Darwin.
+## Interpretation and remaining checks
+This report supports stability of **Python 3.12 + SpawnWorker** for the tested
+PDF uploads. It does not separately isolate the effect of changing Python from
+3.14, establish Python 3.14 compatibility, demonstrate OCR-engine extraction,
+or document the original **Reprocess OCR button** sequence.
+
+The integrator reviewed the report but did not execute native Mac tests.
+To close the exact original reproduction, the local tester should use synthetic
+fixtures, record the exact tested SHA/launcher/runtime, trigger two sequential
+Reprocess OCR requests, inspect actual job results and persisted states, and
+verify original bytes and absence of new native crashes. No blanket GSS or
+Objective-C fork-safety override should be needed for the supported worker path.

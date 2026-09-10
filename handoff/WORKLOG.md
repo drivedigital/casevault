@@ -812,3 +812,25 @@ Existing image-performance warning and two upstream Python deprecations remain.
 No native macOS execution performed: local tester must still verify normal
 Darwin launcher selects SpawnWorker and runs two sequential OCR jobs without
 SIGABRT. No blanket fork-safety, GSS, or TLS override introduced.
+
+## 2026-09-10 — WS-D integrated; Mac report reconciled
+
+Reconciled restored worktree against remote 04e84cf (only missing new Mac report),
+backing up restored content before metadata alignment. Merged WS-D PR #14 head
+0b3ce1c as 57e5ae6. CI conflict was comments around the already-integrated token
+block; kept one token block, both intake/evidence jobs and scoped PR read access.
+Also corrected invalid newer root permission `contents: write-all` (from 433db40)
+to `contents: read`. No write grant or scanner bypass. YAML validation asserts all
+five jobs and read-only permissions. Full strict gate passed candidate AND merge:
+119 tests, migration round-trip, ruff, web lint/typecheck/build; real private
+Redis and offline evidence scenarios required (no dependency skips). Existing
+image-performance warning and two Python deprecations remain. GitHub execution
+of the repaired workflow still pending; old PR check predates this repair.
+
+Reviewed local Mac report 04e84cf: two PDF uploads stable on Python 3.12.14 +
+SpawnWorker, OCR skipped, byte preservation reported. Resolved malformed full
+SHA from its unambiguous 4672182 prefix; removed case-identifying filename and
+checksum from current report (historical Git versions still retain them).
+Scoped conclusion: mitigated in tested configuration, not proof of Python 3.14
+or original Reprocess OCR click sequence. Request exact sequence on synthetic
+fixtures before native reproduction closure. No Mac execution by integrator.

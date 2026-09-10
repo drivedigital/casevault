@@ -1,5 +1,11 @@
 # Branch reconciliation — 2026-09-10
 
+**Latest update:** WS-D PR #14 integrated as `57e5ae6`, strict full gate 119 tests.
+W2-W PR #16 integrated as `f9e6a1c`; native Mac Python 3.12 upload stability
+reported in MAC_WORKER_VERIFICATION.md. Original UI follow-up remains outstanding.
+GitHub CI for the repaired workflow still needs confirmation. The tables below
+are historical audit records, not current merge blockers.
+
 Audit base: integration `72e8237`. Fetched all remote head refs; compared
 ancestry, outstanding diffs, and GitHub PR state. **Not fully reconciled.**
 No branches deleted or switched. Archived/superseded work is intentionally

@@ -152,3 +152,16 @@ Durable fix candidate assigned to worker owner: Darwin-safe process model
 startup import fix preserved, dependency-version compatibility explicit.
 Fresh-process tests plus actual Mac local-tester proof required before closure.
 No native macOS reproduction or confirmed workaround success in this sandbox.
+
+### Consolidated update — 2026-09-10, merge 57e5ae6
+- WS-D PR #14 is now integrated. Independent strict gate passes **119 tests**,
+  including evidence flows with/without Redis; original-v1 deviations remain
+  explicit. Earlier entries calling this verifier unmerged are historical.
+- Corrected newer workflow's invalid `contents: write-all` value to `contents:
+  read`; secrets job retains `pull-requests: read` and automatic token. Local
+  validation passes; current GitHub execution/scanner result still pending.
+- Mac report 04e84cf supports stability on Python 3.12 + SpawnWorker for two PDF
+  uploads. It does not establish Python 3.14 compatibility or the exact original
+  Reprocess OCR button sequence. See MAC_WORKER_VERIFICATION.md for scoped proof.
+- Evidence UI follow-up remains incomplete. Actual OCR extraction for PDF/images
+  remains stubbed; `skipped` is not extraction success.
