@@ -115,3 +115,9 @@ subprocess and real worker. Inline test gates do not clear this blocker.
 `e3332bd` (fresh-process regression and strict 95-test gate pass). Independent
 J normal-worker/Redis E2E rerun requested; do not confuse the passed subprocess
 regression with final live-queue sign-off.
+
+**Queued verification update:** integrator independently proved real normal-worker
+intake generation, complete job results, idempotency and cap=2 with PYTHONPATH
+unset; J follow-up integrated as `15174cd`, strict 96-test gate green. The
+normal-worker verification blocker is closed. Remaining wave blockers include
+WS-D's unexplained secrets CI failure and the incomplete evidence UI follow-up.

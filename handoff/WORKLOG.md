@@ -696,3 +696,41 @@ patch remains incomplete/unmerged. Closed superseded PR 10 (preserved branch)
 and requested J follow-up PR plus current-tip proof. Main/dev-logs unrelated
 histories and archive branches are intentionally not merged. No feature code
 changed; no branch deleted/switched.
+
+## 2026-09-10 — queued proof completed; J follow-up reconciled
+
+Reviewed and integrated J successor head `b6e7b44` as `15174cd` (four-file
+verification/note diff). Follow-up adds explicit cap/bulk/link assertions,
+queued result checks, and required-mode cleanup failure propagation. Full
+strict gate passed on candidate and committed merge: **96 tests**, migrations,
+ruff, web lint/typecheck/build. No product code or CI edits in this merge.
+
+Independent integrator real-worker proof used Redis 6.2.14 from sandbox-only
+redislite (no dependency manifest changes), private nonpersistent Unix socket
+`.cache/integrator-redis/redis.sock`, and normal `python -m workers.run_worker`
+with PYTHONPATH unset and DATABASE_URL pinned to disposable casevault_test.
+- Existing integrated smoke: initial result complete, created=3; repeat complete,
+  created=0/skipped=3; queried actual RQ results, not FINISHED alone.
+- J follow-up smoke: jobs `4fab1f06-3491-4976-8018-c415d57fec5c` and
+  `70237263-c4ea-47b6-9658-bc503038b848` passed generation/repeat checks.
+- Cap job `16628e0d-7560-417d-99f4-180f91d3490f`: cap=2, result complete,
+  created=2/skipped=1, committed count=2. No import-path workaround.
+- Smoke reported cleanup of 24 synthetic rows; worker stopped, private Redis
+  stopped with persistence disabled, socket removed; subsequent gates recreated
+  disposable casevault_test. No shared queues used and no real evidence.
+This closes the normal-worker queued verification blocker independently.
+
+## 2026-09-10 — WS-D candidate verified but secrets check unresolved
+
+PR #14 head `0b3ce1c` candidate against `7dd8e91`: clean merge, strict gate
+**98 tests** green including real Redis and offline evidence scenarios. Separate
+standalone evidence suite: **3 passed**, 25 checks, 8 explicit original-v1 gaps,
+0 scenarios skipped. Synthetic artifacts and schema isolation verified by suite;
+reprocess 202 and original-byte equality in both modes. Candidate merge aborted;
+WS-D still not integrated. Current J follow-up would add one more guard test.
+
+Retried CI diagnostics: secrets annotations contain only Node deprecation;
+detailed Actions log fetch still EOF. Cause unknown. No scanner bypass or
+speculative token permission expansion. Request WS-D/owner obtain the actual
+failing gitleaks step output before approving PR #14. Evidence UI follow-up
+also remains incomplete. Wave 2 final sign-off not claimed.

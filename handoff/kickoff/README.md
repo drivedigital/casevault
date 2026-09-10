@@ -17,11 +17,11 @@ as-shipped contract. This folder now assigns **Wave 2**.
 | `W2-H.md` | `/ledger` UI | `01a089cc` / PR #2 | ✅ **merged** (`e62daae`) |
 | `W2-I.md` | `/ai-review` UI | `01a089cd` / PR #3 | ✅ **merged** (`0ba7a0c`, cherry-picked; shared-file union resolution) |
 | `W2-EV.md` | evidence follow-ups | `01a089cb` / PR #1 | ✅ **merged** (`c7842bb`) |
-| `WS-D` (archived brief) | independent evidence E2E | `01a089cf` / PR #10 | Verification delivered at `de18118`; **rerun against recovery merge `5da141c`**. Old PR #6 closed. |
+| `WS-D` (archived brief) | independent evidence E2E | `01a08a04` / PR #14 | Local candidate gate 98 tests and both Redis modes pass; **unmerged** pending unexplained secrets CI failure. PR #10 closed as superseded. |
 | `WS-B` → WS-C recovery | evidence UI recovery | `01a089ce` / PR #11 | ✅ **merged** (`5da141c`, full gate 34 tests); old storage PR #8 closed, refactor deferred. UI follow-ups assigned separately. |
 | `WS-A` (archived brief) | sources core | `01a089cd`, note `afef55b` | Retired scope; sources core already integrated. No second migration `0003`. |
 | `W2-G.md` | intake API (proposals, facts, links, generation) | `01a089cc` / PR #9 | ✅ **merged** (`4d13527`, head `93656db`); all four findings and RQ follow-up resolved, full gate 72 tests. |
-| `W2-J.md` | intake E2E verification + CI | `01a089cd` / PR #3 | ✅ **merged** (`a4e20f0`, head `5755cc3`), strict full gate 93 tests. Found real-worker G import defect; sign-off blocked pending G follow-up. |
+| `W2-J.md` | intake E2E verification + CI | `01a089cd`, head `b6e7b44` | ✅ **reconciled** via `15174cd`; strict gate 96 tests, real queued caps/results/idempotency independently green. |
 
 Wave 1's briefs (`WS-A..WS-D.md`) are archived under `handoff/notes/archive/wave1/`;
 three of them were picked up after the fact — see the stop/rework rows above.

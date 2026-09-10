@@ -21,7 +21,16 @@ not merged merely to make ancestry appear clean.
 | dev-logs | e39b1ca | Unrelated report/patch history; uploaded UI patch reviewed, stale and incomplete; not applied |
 | main | bfdaf22 | Unrelated Phase-0 history; intentionally untouched, no main release reconciliation authorized |
 
-## Outstanding work
+## Update after follow-up integration
+
+J head `b6e7b44` is now contained via merge `15174cd`; the earlier five-commit
+J backlog below is resolved (including rebased successor commits). Integrator
+verified normal-worker queued generation, idempotency, and cap=2 against real
+Redis without PYTHONPATH. Full merged gate: 96 tests. WS-D PR 14 local candidate
+gate passed 98 tests on the prior base, with both Redis modes; still unmerged
+because its failing secrets check is unexplained. UI follow-up remains open.
+
+## Outstanding work (original audit; J item resolved above)
 
 1. Review/gate WS-D PR 14. Latest checked GitHub checks: evidence/intake/python/
    web pass; secrets fails (run 34449294532, job 102781076787). Retried detailed
