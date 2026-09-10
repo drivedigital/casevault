@@ -5,6 +5,53 @@ Fields: Date / Branch / What changed / Why / Files affected / What needs local t
 
 ---
 
+## 2026-09-10 — Integrator: agent policy + Wave 2 contract and briefs
+
+**Branch:** `arena/01a0899f-casevault`
+
+### What changed
+- `handoff/AGENT_POLICY.md` (new, in force): the binding rulebook for agent
+  sessions — roles (owner / integrator / implementer / verifier / local tester),
+  how work is divided (write sets, one migration per wave per owner, hub-file
+  ownership table, append-only shared files, no mid-wave response-shape
+  changes), the workstream lifecycle (base branch → implement → gate → note →
+  PR → ordered merge), and the coordination protocols: contract change control,
+  branch/merge/conflict policy, verification, handoff notes, communication
+  (repo is the channel, integrator is the hub), escalation ladder, ten hard
+  rules, and the definition of done.
+- `docs/contracts/wave2_intake_core.md` v1.0 (frozen): migration `0004`
+  (ledger_entries incl. the `tags_json` extension, proposals, fact_assertions,
+  fact_source_links / fact_actor_links with `NULLS NOT DISTINCT` uniques, five
+  enums), the ledger REST contract (filters, CSV import/export, bulk ops),
+  the intake REST contract (proposal review actions, facts, links, generation
+  job) with the **review-state floor** spelled out, the Web/UI contracts for
+  `/ledger` and `/ai-review`, the evidence follow-up endpoints (WS-EV), and the
+  per-workstream verification requirements.
+- `handoff/kickoff/W2-E.md` … `W2-J.md` + `W2-EV.md`: paste-ready prompts with
+  write sets, proof requirements and constraints; `handoff/kickoff/README.md`
+  rewritten for Wave 2 (roster, step-0 base-branch reset, environment, rules).
+- `handoff/PARALLEL_PLAN.md`: §4a Wave 2 roster + critical path, Wave 3 preview
+  (chronology `0005`, proof graph `0006`), readiness checklist updated.
+
+### Why
+Wave 1 proved the failure mode: a session that started before the contract
+existed needed a full integration pass. Wave 2 sessions get frozen interfaces,
+explicit write sets, and a binding policy before anyone writes code.
+
+### Verified
+- Docs-only change; `bash scripts/verify_all.sh` was green on the previous tip
+  (migrations up/down/up, 17 tests, ruff, web build) and no code changed here.
+
+### What needs local testing
+- Nothing new for the tester this turn; the Sprint 3 Phase 2 checklist in
+  `handoff/TESTING.md` remains the current local test plan.
+
+### Blockers / risks
+- Wave 2 needs 5–7 agent sessions; W2-E is on the critical path and must land
+  first. If session budget is tight, merge W2-H + W2-I into one UI workstream.
+
+---
+
 ## 2026-09-10 — Integrator: Sprint 3 merged into the integration branch
 
 **Branch:** `arena/01a0899f-casevault` (merge commit `2e440d6`)

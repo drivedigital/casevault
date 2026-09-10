@@ -8,8 +8,10 @@ therefore **superseded**. Wave 2 will fan out with contracts frozen first.
 This session is the **integrator only**; other
 workstreams run in separate agent sessions on their own branches and open PRs
 into `arena/01a0899f-casevault`.
-**Companion:** `docs/contracts/sprint3_evidence.md` v1.0 (frozen) ·
-**Kickoff briefs:** `handoff/kickoff/WS-A.md` … `WS-D.md` ·
+**Binding rules:** `handoff/AGENT_POLICY.md` (division of labor + coordination
+protocols — read this first) ·
+**Wave 2 contract:** `docs/contracts/wave2_intake_core.md` v1.0 (frozen) ·
+**Kickoff briefs:** `handoff/kickoff/W2-*.md` ·
 **Wave gate:** `scripts/verify_all.sh`
 
 Purpose: allow several coding agents to build this repo **in parallel without
@@ -49,6 +51,10 @@ Baseline proof on this branch (2026-09-10, embedded Postgres via
                                  WS-C  web evidence UI              WS-G  facts + chronology seed
                                  WS-D  verification + CI            WS-H  verification
 ```
+
+**Wave 2 roster (current):** W2-E spine → W2-F ledger API ∥ W2-G intake API ∥
+W2-H ledger UI ∥ W2-I inbox UI → W2-J verification, with W2-EV (evidence
+follow-ups) in parallel. Merge order E → F → G → J. Details: §4a.
 
 Rules that make it work:
 
@@ -99,16 +105,42 @@ WS-B merge (the contract API is frozen, so this is safe).
 
 ---
 
-## 4. Wave 2 preview (do not start before Wave 1 merges)
+## 4a. Wave 2 workstreams (intake core — Sprints 4 + 5)
+
+Sprints 4 (source ledger) and 5 (proposal review / facts) share **one**
+migration in the schema draft (004), so the wave is cut as:
+
+| WS | Deliverable | Owns (write) | Depends on | Merge |
+|---|---|---|---|---|
+| **E** | migration `0004` (ledger_entries, proposals, fact_assertions, fact_source_links, fact_actor_links + 5 enums), models, router stubs, `main.py` registration, conftest cleanup | `alembic/versions/0004_*.py`, `models/intake.py`, `models/enums.py` (append), `models/__init__.py`, `app/main.py`, `routers/{ledger,proposals,facts}.py` (stubs), `tests/api/conftest.py`, `tests/api/test_intake_schema.py` | — | **1st** |
+| **F** | ledger CRUD/filters/CSV/bulk API | `schemas/ledger.py`, `services/ledger_service.py`, `services/ledger_csv.py`, `routers/ledger.py`, `tests/api/test_ledger.py` | E | 2nd |
+| **G** | proposal review + facts + links + generation job | `schemas/intake.py`, `services/{proposal_service,fact_service}.py`, `routers/{proposals,facts}.py`, `workers/pipeline/intake_jobs.py`, two test files | E | 2nd |
+| **H** | `/ledger` UI + nav entry | `app/ledger/**`, `components/ledger-*.tsx`, `components/nav.tsx`, `lib/{api,types}.ts` (append) | contract | 2nd |
+| **I** | `/ai-review` inbox + facts tab | `app/ai-review/**`, `components/review-*.tsx`, `lib/{api,types}.ts` (append) | contract | 2nd |
+| **J** | e2e smoke + integration test + CI job | `scripts/intake_smoke.py`, `tests/integration/test_intake_e2e.py`, `.github/workflows/ci.yml` (append) | E, F, G | 3rd |
+| **EV** | excerpts API + per-source reprocess (Sprint 3 follow-ups) | evidence module files (append only) + `tests/api/test_source_excerpts.py` | — | parallel |
+
+Critical path: **E** (schema + stubs) — F, G and J cannot start until it merges.
+H and I start immediately against the contract. Full briefs:
+`handoff/kickoff/W2-*.md`. Contract: `docs/contracts/wave2_intake_core.md` §1–§7.
+
+The review-state floor (contract §4.1) is the wave's non-negotiable invariant:
+every creation path leaves a fact `proposed`; only `POST /facts/{id}/approve`
+produces `accepted`. W2-G tests it and W2-J tries to falsify it.
+
+---
+
+## 4b. Wave 3 preview (chronology, Sprint 6) — not started
 
 | WS | Sprint | Migration | Notes |
 |---|---|---|---|
-| E | 4 — source ledger + CSV import/export, filters, bulk tag | `0004` `ledger_entries` | depends on sources for `linked_source_id` |
-| F | 5 — proposals + review inbox + `fact_assertions` + `fact_source_links` | `0005` | audit rows are **not** available (Migration 010); record review metadata on the rows themselves |
-| G | 6 — events/chronology (`events`, `event_fact_links`, `event_actor_links`, `event_tags`) | `0006` | after F (facts are the input) |
-| H | verification + handoff consolidation for E/F/G | — | same role as WS-D |
+| K | 6 — events/chronology (`events`, `event_fact_links`, `event_actor_links`, `event_tags`) | `0005` | consumes the **accepted** fact set (`GET /facts?review_state=accepted`); audit rows are still unavailable (Migration 010) |
+| L | 7 — proof-graph link tables + object side panels | `0006` | after K |
+| M | verification for K/L | — | same role as W2-J |
 
-Wave 2 contracts get their own frozen docs before any code starts.
+Wave 3 contracts get their own frozen doc(s) before any session starts.
+Reserved revision numbers: `0005` = chronology (WS-K), `0006` = proof graph
+(WS-L). Nobody else creates a migration in those ranges.
 
 ---
 
@@ -215,8 +247,11 @@ and open a PR into arena/01a0899f-casevault with the proof output in the body.
       shipped code (`2e440d6`)
 - [x] Lesson recorded: a contract only coordinates sessions that start *after*
       it is frozen — freeze first, then spawn (see DECISIONS 2026-09-10)
-- [ ] Wave 2 contracts (Sprint 4 ledger `0004`, Sprint 5 proposals/facts `0005`)
-      — freeze **before** any session starts
+- [x] `handoff/AGENT_POLICY.md` in force — division of labor, protocols, hard
+      rules, escalation ladder (the binding document for every agent session)
+- [x] Wave 2 contract frozen (`docs/contracts/wave2_intake_core.md` v1.0) and
+      seven paste-ready briefs written (`handoff/kickoff/W2-*.md`)
+- [ ] Wave 2 fan-out: spawn W2-E first (critical path), then F/G/H/I, then J
 - [ ] WS-D equivalent for Sprint 3: independent end-to-end verification of the
       merged evidence flow (`scripts/pipeline_smoke.py`) — still valuable, the
       shipped test suite is the author's own

@@ -1,70 +1,83 @@
-# Wave 1 kickoff — Sprint 3 (evidence repository / upload / OCR)
+# Agent kickoff — Wave 2 (intake core: ledger + review inbox + facts)
 
-Four agent sessions run in parallel against this branch. Each has one file here
-containing a **paste-ready prompt** plus reference detail. Contract:
-`docs/contracts/sprint3_evidence.md` **v1.0 (frozen)**. Plan:
-`handoff/PARALLEL_PLAN.md`.
+**Wave 1 (Sprint 3 evidence module) is delivered and integrated** — see
+`handoff/notes/` for its record and `docs/contracts/sprint3_evidence.md` for the
+as-shipped contract. This folder now assigns **Wave 2**.
 
-| WS | Brief | Deliverable | Starts when | Merge order |
+**Read first:** `handoff/AGENT_POLICY.md` (binding rules) ·
+`docs/contracts/wave2_intake_core.md` **v1.0 (frozen)** (the interfaces) ·
+`handoff/PARALLEL_PLAN.md` §4a (the plan).
+
+## Wave 2 roster
+
+| Brief | Workstream | Deliverable | Starts | Merge order |
 |---|---|---|---|---|
-| A | `WS-A.md` | migration `0003` + sources API | immediately | **1st** |
-| B | `WS-B.md` | storage service + ingest/OCR jobs | immediately (contract-driven) | **2nd** |
-| C | `WS-C.md` | `/evidence` + `/evidence/[id]` UI | immediately (contract-driven) | **3rd** |
-| D | `WS-D.md` | e2e smoke + CI evidence job | A + B merged | **4th** |
+| `W2-E.md` | **spine** | migration `0004` + models + router stubs | now | **1st (critical path)** |
+| `W2-F.md` | ledger API | CRUD, filters, CSV import/export, bulk | after E | 2nd |
+| `W2-G.md` | intake API | proposal review, facts, links, generation job | after E | 2nd |
+| `W2-H.md` | ledger UI | `/ledger` table, filters, CSV dialogs, bulk | now (contract-only) | 2nd |
+| `W2-I.md` | inbox UI | `/ai-review` queue + accepted-facts tab | now (contract-only) | 2nd |
+| `W2-J.md` | verification | e2e smoke script + integration test + CI job | after E, F, G | 3rd |
+| `W2-EV.md` | evidence follow-ups | excerpts API + per-source reprocess | now | parallel |
+
+F and G share no files. H and I share only the append-only sections of
+`lib/api.ts` / `lib/types.ts`. E is short and lands first — everyone else is
+waiting on that merge, so keep it to schema + models + stubs + tests.
 
 ## Step 0 — base every session on the integration branch (required)
 
-`origin/main` and `arena/01a0899f-casevault` have **unrelated histories**
-(main is a squashed Phase-0 snapshot), so a session branched from `main` does
-not contain Phase 1 and will not merge. First action in every session:
+`origin/main` and `arena/01a0899f-casevault` have **unrelated histories** (main
+is a squashed Phase-0 snapshot), so a session branched from `main` lacks Phase 1
+and Sprint 3 and cannot merge. First action in every session:
 
 ```bash
 git fetch origin arena/01a0899f-casevault
 git reset --hard FETCH_HEAD        # your own session branch = integration tip
+git push --force-with-lease origin HEAD   # only if the branch was already pushed
 ```
 
-If your session already pushed its branch and `reset` is rejected:
-
-```bash
-git push --force-with-lease origin HEAD
-```
-
-Then confirm you are on the right base: `git log --oneline -1` must show
-`Wave 0: parallel-build plan, Sprint 3 interface freeze, agent PG harness`
-or a later integration commit, and `ls apps/api/app/models/` must list
-`source.py`-ready Phase 1 modules (`actor.py`, `matter.py`, `identity.py`).
+Confirm: `git log --oneline -3` shows `Integrator: align Sprint 3 docs…` (or a
+later commit), and `ls apps/api/app/routers/` lists `sources.py`.
 
 ## Environment (sandbox, no Docker needed)
 
 ```bash
-bash scripts/setup_local.sh                 # venv + deps + data dirs + .env.local
-.venv/bin/pip install pgserver              # once — embedded Postgres 16
+bash scripts/setup_local.sh        # venv + deps + data dirs + .env.local
+.venv/bin/pip install pgserver     # once — embedded Postgres 16
 python scripts/agent_pg.py start
-bash scripts/verify_all.sh                  # the wave gate: migrations up/down/up, pytest, ruff, web
+bash scripts/verify_all.sh         # the wave gate (add --no-web for API-only)
+python scripts/agent_pg.py stop    # when finished
 ```
 
-`scripts/verify_all.sh --no-web` is the fast python-only gate.
+## The rules that keep the wave mergeable
 
-## Rules that keep the wave mergeable
+Summarised from `handoff/AGENT_POLICY.md` — the full document is binding:
 
-1. Write only files in your brief's write set; hub files have exactly one owner.
-2. Only WS-A creates an Alembic migration this wave (`0003`); only WS-A edits
-   `models/enums.py`, `models/__init__.py`, `app/main.py`; only WS-C edits
-   `lib/api.ts` / `lib/types.ts`.
-3. Contract deviations are **reported**, not invented: cite the contract section
-   in your PR, keep the code inside the contract, and let the integrator
-   sequence a contract bump.
-4. PR base is `arena/01a0899f-casevault` (**not** `main`), body filled from
-   `.github/pull_request_template.md`.
-5. Write `handoff/notes/<WS>.md`; never append to `WORKLOG.md` (integrator
-   consolidates per wave).
-6. No files under `data/`, no secrets, no real evidence in a diff.
+1. **One workstream = one session = one branch = one PR.** Write only your write
+   set; report overlap instead of sharing files.
+2. **Contracts are frozen before sessions start.** Implement as written; a
+   deviation is a `## Contract gaps` note to the integrator (§4.1), never a
+   silent divergence.
+3. **Hub files have one owner per wave** (AGENT_POLICY §2) — `main.py`,
+   `models/enums.py`, `nav.tsx`, `conftest.py`, CI, Makefile.
+4. **Append-only** for `apps/web/lib/api.ts` and `lib/types.ts`: your own
+   commented section at the end, no reordering or reformatting of existing lines.
+5. **No breaking response-shape changes mid-wave** — that is a contract version
+   bump scheduled by the integrator.
+6. **Real Postgres, no mocks merge.** Gate output goes in your note; tests never
+   write to `data/` and never contain real evidence.
+7. **Handoff notes, not worklog edits:** `handoff/notes/<WS>.md` in the §4.4
+   format; the integrator consolidates `WORKLOG.md` / `BACKLOG.md` /
+   `KNOWN_ISSUES.md` / `TESTING.md` / `DECISIONS.md` per wave.
+8. **PR base is `arena/01a0899f-casevault`, never `main`.** If `gh` is blocked by
+   permissions, push the branch and report branch + sha + proof to the owner.
+9. **Stop rules:** anything touching evidence, secrets, or real case data — stop
+   and escalate. Conflict outside your write set — abort the rebase, report,
+   wait.
 
-## What the integrator (this session) does
+## What the integrator does
 
-- Reviews each PR against the contract and write set.
-- Merges in order A → B → C → D, re-running `scripts/verify_all.sh` after each.
-- Resolves shared-surface conflicts, sequences contract changes, maintains
-  `handoff/WORKLOG.md`, `BACKLOG.md`, `KNOWN_ISSUES.md`, `TESTING.md`.
-- Owns `/api/v1` consistency, migrations already applied, and the wave's
-  end-of-wave handoff to the local tester.
+Reviews each PR against contract + write set, merges in the fixed order,
+re-runs `scripts/verify_all.sh` after every merge, sequences contract changes,
+resolves shared-surface conflicts, maintains the handoff docs, and hands the
+integrated wave to the local tester.

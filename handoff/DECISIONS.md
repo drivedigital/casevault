@@ -3,6 +3,37 @@
 Short, durable records of architectural/product decisions so context
 survives across turns. Newest first.
 
+## 2026-09-10 (Wave 2 planning)
+
+- **Coordination is now governed by `handoff/AGENT_POLICY.md`.** Division of
+  labor (one workstream = one session = one branch = one PR), hub-file
+  ownership per wave, append-only shared files, contract change control,
+  verification/handoff/communication protocols, hard rules, and an escalation
+  ladder. `PARALLEL_PLAN.md` is the plan; the policy is the rulebook.
+- **Review-state floor, interpreted concretely (contract §4.1).** Saving a
+  proposal (`accept` / `accept_with_edits`), generating proposals, and manual
+  `POST /facts` all create facts with `review_state = proposed`. Only
+  `POST /facts/{id}/approve` produces `accepted` (stamping
+  `approved_by_user_id` / `approved_at`). Clients can never set `review_state`,
+  `approved_*`, `supersedes_fact_id`, or `created_from_proposal_id`; those
+  fields are rejected (422), not ignored. `GET /facts?review_state=accepted` is
+  the trusted set that chronology and claims will read.
+- **Migration 0004 is reserved to workstream W2-E; 0005/0006 to Wave 3.** One
+  migration per wave, one owner — the single structural rule that keeps parallel
+  branches mergeable.
+- **`ledger_entries.tags_json` (JSONB, default `'[]'`) is a deliberate
+  extension** to the schema draft: its ledger table has no tag column, but PRD
+  §10.4 requires tag filters and bulk tagging. Stored as a JSON array of short
+  strings, validated in the service layer.
+- **Import is partial-success by design.** A CSV row that fails validation is
+  reported and skipped; the import continues, `dry_run` writes nothing, and a
+  malformed header is a 422 with the expected column list. Bulk review actions
+  follow the same per-id-result contract.
+- **No response-shape changes during a wave.** The evidence module's
+  `GET /sources` keeps its bare-array shape until the integrator schedules
+  pagination (backlog); new list endpoints in Wave 2 use the
+  `{items,total,limit,offset}` envelope from the start.
+
 ## 2026-09-10 (Wave 1 integration)
 
 - **Storage adapter shape as shipped (supersedes contract §4).**
