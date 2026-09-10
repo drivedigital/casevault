@@ -1,3 +1,30 @@
+# Current assignments — evidence UI closure (2026-09-10)
+
+**Active briefs:** [EU-D](EU-D.md), [EU-L](EU-L.md), [EU-V](EU-V.md),
+[EU-M](EU-M.md). Binding acceptance/write sets:
+`docs/contracts/evidence_ui_closure.md` **v1.0 FROZEN**.
+
+| Brief | Assignment | Suggested agent | Start/status |
+|---|---|---|---|
+| EU-D | Detail: Status, downloads/PDF, errors, OCR refresh | Former W2-I/J or new UI session | Ready for owner relay; one detail owner |
+| EU-L | List/upload/row/matter error handling | Former W2-F or available UI session | Ready in parallel with D |
+| EU-V | Independent browser acceptance | Former WS-D verifier | Plan/tooling now; final run after D+L |
+| EU-M | Native Mac Reprocess + local browser proof | Existing local tester | Exact worker reproduction now; new UI proof after D+L |
+
+No sessions are assumed started until owner confirms. Three Arena assignments
+plus the existing local tester; integrator remains coordinator. Other agents
+stand by. No Wave 3 or OCR-engine work is authorized.
+
+**Branch safety:** use your CURRENT session's assigned branch; preserve work
+before rebasing. Do not use the historical blanket hard-reset recipe below for
+an existing session. No other-session branch pushes; no stale WS-C patch replay.
+Shared hubs, dependencies, CI and backend/worker are read-only in this wave unless
+integrator explicitly approves a change. See closure contract for exact paths.
+
+---
+
+## Historical Wave 2 kickoff/reference
+
 # Agent kickoff — Wave 2 (intake core: ledger + review inbox + facts)
 
 **Wave 1 (Sprint 3 evidence module) is delivered and integrated** — see

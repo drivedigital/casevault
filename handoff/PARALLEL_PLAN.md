@@ -256,3 +256,18 @@ and open a PR into arena/01a0899f-casevault with the proof output in the body.
       merged evidence flow (`scripts/pipeline_smoke.py`) — still valuable, the
       shipped test suite is the author's own
 - [ ] CI evidence job wired into PR checks for this branch
+
+## Evidence UI closure wave (2026-09-10) — active assignments
+
+Three Arena workstreams + existing local tester, no new feature wave:
+- EU-D: detail-page owner, includes all Status/download/PDF/OCR/error work.
+- EU-L: list/upload/row-error owner, parallel and disjoint from detail.
+- EU-V: independent browser verifier, tooling/checklist now, final run after D+L.
+- EU-M: report-only native Mac tester, exact Reprocess reproduction now and new
+  UI acceptance after merged D+L tip is supplied.
+
+Frozen contract: docs/contracts/evidence_ui_closure.md v1.0. Paste-ready briefs
+in handoff/kickoff/EU-*.md. Read those instead of reusing old WS-C assignments.
+All shared hubs/CI/dependencies/backend/worker remain integrator-controlled.
+Merge order D/L by readiness -> V; full strict gate after every merge. Owner
+must confirm session allocation; suggested assignees are not confirmed active.

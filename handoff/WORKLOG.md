@@ -834,3 +834,14 @@ checksum from current report (historical Git versions still retain them).
 Scoped conclusion: mitigated in tested configuration, not proof of Python 3.14
 or original Reprocess OCR click sequence. Request exact sequence on synthetic
 fixtures before native reproduction closure. No Mac execution by integrator.
+
+## 2026-09-10 — new evidence UI closure assignments frozen
+
+Created evidence_ui_closure.md v1.0 before new sessions start, plus EU-D/EU-L/
+EU-V/EU-M paste-ready briefs. Explicitly split by files: one owner for the entire
+detail page, one for list, independent browser verifier, local report-only tester.
+Specified dirty-draft behavior, downloads and attachment-safe PDF preview, errors,
+bounded OCR polling, native Mac exact reproduction, synthetic-only proof, tooling
+approval and strict hub ownership. No dependency/CI/product edits in this planning
+change. Suggested agent reuse recorded; owner confirmation of actual sessions
+still needed. Wave 3/OCR engine remains unauthorized.
