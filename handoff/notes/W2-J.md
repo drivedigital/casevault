@@ -2,12 +2,12 @@
 
 Contract: `docs/contracts/wave2_intake_core.md` v1.0 (frozen)
 Branch: `arena/01a089cd-casevault` · PR #3
-**Status:** integrator findings 1–5 addressed; **full merged-tip proof done** on
-the current integration tip `908e96f` (W2-G merged at `4d13527`, head `93656db`).
-Inline generation is green in the gate; the **queued generation path has one open
-deviation against W2-G** (worker cannot import `app`; the job swallows the error
-and RQ still reports success) — reported below, minimal change identified, no
-feature code touched in this PR.
+**Status:** ✅ **final queued verification PASSED** on the worker-fix merge.
+Tested SHA `409b234` (branch head, rebased onto the integration tip `72e8237`,
+which contains the worker-bootstrap merge `e3332bd` / fix `fac1568`). Inline and
+real-queued runs both green with the worker launched normally (no `PYTHONPATH`);
+limits (cap), idempotency and cleanup all verified; zero residue afterwards.
+Full detail in §H. Sign-off now rests with the integrator.
 
 ## What changed
 
@@ -112,6 +112,73 @@ $ bash scripts/verify_all.sh --no-web          # on the rehearsal tree
 GATE GREEN — python, migrations, lint and web all pass.
 ```
 
+### A1. Hardened verifier rehearsed against the real W2-G code
+
+Added after the merge gate passed, then rehearsed on the same tree
+(`/tmp/w2j_pre`, G head `c174051`, fresh disposable DB):
+
+| new coverage | result against real G |
+|---|---|
+| **2b. `max_proposals` cap** (`generate max_proposals=2` on a 3-paragraph source) | `created=2 skipped=1` and exactly 2 rows stored — contracts §4.4; in queued mode this is the assertion that proves the cap actually reaches the **worker** (RQ kwargs path, G review finding 3) |
+| **5b. bulk partial success** (matter-carrying fixtures) | 1 of 2 ids ok with the failing id reported (no rollback), exactly 1 `proposed` fact created, read-back `proposed`; reject: 1 of 2 ok, `created_facts` empty, rejected state committed |
+| **5b note. matter-less generator output** | `ok=false` "Facts require a matter…" — **not failed**, this is contract tension 4.4+4.2+2 below |
+| **5c. forbidden acceptance paths** | `review_state` on POST/PATCH 422, unknown review-body field 422, accept with no matter 422 and the proposal left `proposed` |
+| **7. source-link uniqueness** | same tuple + different `strength` → 409 (strength not in the key), new `support_type` → 201, repeat → 409, list shows 2 links; §4.3/§2 |
+| **8. actor-link uniqueness** | NULL role duplicates NULL → 409, `role_in_fact=witness` → 201, repeat → 409, list shows 2 links |
+
+```
+$ TEST_DATABASE_URL=<disposable> INTAKE_REQUIRE=1 python scripts/intake_smoke.py --require-intake
+STEP: 2b. POST /proposals/generate with max_proposals=2 (cap honored in this shape)
+  PASS: inline cap run: created=2 skipped=1
+STEP: 5b. bulk review is partial-success and never approves
+  PASS: bulk accept: 1 of 2 ids ok, fact <id> created `proposed` (failing id: 'Proposal already reviewed (accepted)…')
+  PASS: bulk reject: 1 of 2 ids ok, no facts created, good id committed
+  NOTE: bulk accept of a matter-less generated proposal cannot commit: 'Facts require a matter…'
+STEP: 5c. forbidden acceptance paths on proposals (422, state untouched)   → all PASS
+STEP: 7/8. link uniqueness …                                              → both PASS
+SMOKE GREEN — all intake steps passed; deviations: none
+  PASS: cleaned up 24 synthetic row(s) created by this run
+
+$ pytest tests/integration/test_intake_e2e_guards.py -q          → 20 passed
+$ INTAKE_REQUIRE=1 pytest tests/integration/test_intake_e2e.py   → 1 passed
+$ bash scripts/verify_all.sh --no-web                            → 93 passed, ruff clean, GATE GREEN
+leftovers afterwards: matters=0 sources=0 proposals=0 facts=0 source_links=0 actor_links=0
+```
+
+**Lesson recorded for the next agent:** the first rehearsal of step 7 reported a
+false deviation (`new support_type → 409`) because the patch had left *two* copies
+of the probe in the file, so the second copy replayed a now-duplicate tuple. The
+verifier's own bugs surface exactly like product deviations do — when a new probe
+fails, isolate it below the flow (four raw requests against a fresh schema) before
+reporting it, and dedupe after every patch. Product-side, the isolated probe
+confirmed G is contract-correct here.
+
+### A2. Queued mode with the hardened probes (cap through the RQ kwargs path)
+
+Same real Redis + real worker setup as §G, running the repo tree (merged tip):
+
+```
+$ REDIS_URL=<real redis> TEST_DATABASE_URL=<disposable> INTAKE_REQUIRE=1 \
+    python scripts/intake_smoke.py --require-intake
+  NOTE: generation ENQUEUED (queued=true job_id=d767eb3f-…): created/skipped are placeholders…
+  PASS: queued job produced 3 proposals in 2.1s
+  PASS: re-run job finished with no new proposals (idempotent, 1.5s, 2 jobs)
+STEP: 2b. POST /proposals/generate with max_proposals=2 (cap honored in this shape)
+  PASS: queued cap job: created=2 skipped=1 in 2.0s
+  PASS: cleaned up 24 synthetic row(s) created by this run
+SMOKE GREEN — all intake steps passed; deviations: none
+generation mode: queued (jobs=[d767eb3f…, 355da3c5…]; waits=[2.1, 1.5, 2.0])
+
+# RQ registry (third job is the cap probe):
+d767eb3f FINISHED {'status': 'complete', 'created': 3, 'skipped': 0}  args/kwargs: (source, ws) {'max_proposals': 10}
+355da3c5 FINISHED {'status': 'complete', 'created': 0, 'skipped': 3}  args/kwargs: (source, ws) {'max_proposals': 10}
+bdecc477 FINISHED {'status': 'complete', 'created': 2, 'skipped': 1}  args/kwargs: (source, ws) {'max_proposals': 2}
+```
+
+The third job's `kwargs={'max_proposals': 2}` and `created=2 skipped=1` are the
+end-to-end proof that the cap travels with the RQ job (the G review's third
+finding) — a regression to the default would show 3 created here.
+
 ### B. Fail-closed matrix (exact commands, exit codes)
 
 | case | command | result |
@@ -156,6 +223,18 @@ $ cd /tmp && env -u PYTHONPATH pytest /repo/tests/integration/test_intake_e2e.py
 ```
 
 ### F. CI
+
+CI runs the new `intake` job (purely additive) plus the existing `python`, `web`
+and `secrets` jobs. The most recent heads (`d62e5ce7`, `2c99ec85`, `0aaac90a`,
+`81dcff79`) are **fully green — all four jobs success**, including the gitleaks
+`secrets` job, so this workstream's CI is clean end-to-end.
+
+One earlier run of the *same* commit (`5755cc32`) showed `secrets: failure` while
+its sibling run passed — the known WS-D gitleaks flake: the documented
+`GITHUB_TOKEN` env block for `gitleaks/gitleaks-action@v2` (`handoff/WORKLOG.md`)
+is still missing, so its unauthenticated owner-type lookup can flip into license
+enforcement on rate-limited runners. The diff to `.github/workflows/ci.yml` here
+is append-only (no deletions, no edits to that job); WS-D owns the fix.
 
 `.github/workflows/ci.yml` gains one **additive** job (`intake`) with
 `INTAKE_REQUIRE=1` + `INTAKE_ALLOW_APP_DB=1`, running the guard suite, the e2e
@@ -240,12 +319,124 @@ RQ (the job swallows its exceptions) — check the worker log … (contract 4.4)
 - Verified both ways: the verifier stays green on the queued path once the worker
   bootstraps the path, and fails loudly (with the reason) when it does not.
 
+- **Fix verified end-to-end (not applied here — G file):** the one-line patch below,
+  applied to a scratch worktree of the merged tip with a **plain**
+  `python -m workers.run_worker` (no `PYTHONPATH`), turns the queued run green:
+
+```diff
+--- a/workers/pipeline/intake_jobs.py
++++ b/workers/pipeline/intake_jobs.py
+@@ -52,6 +52,9 @@ def generate_fact_proposals(
+     skipped = 0
+     session = None
+     try:
++        from workers.pipeline.jobs import _ensure_app_importable
++
++        _ensure_app_importable()
+         from sqlalchemy import select
+
+         from app.models.enums import ProposalType, ReviewState
+```
+
+```
+$ REDIS_URL=<real redis> TEST_DATABASE_URL=<disposable> INTAKE_REQUIRE=1 \
+    python scripts/intake_smoke.py --require-intake      # repo tree
+  PASS: queued job produced 3 proposals in 2.1s
+  PASS: re-run job finished with no new proposals (idempotent, 1.5s)
+  PASS: queued cap job: created=2 skipped=1 in 2.0s
+SMOKE GREEN — generation mode: queued; cleaned up 24 synthetic row(s)
+
+# and the same worker WITHOUT the patch (earlier run) failed every queued job:
+ModuleNotFoundError: No module named 'app'  →  RQ: "Job OK", nothing committed
+```
+
+  With the patch the worker's own `apps/api` path bootstrap makes the job run
+  wherever the checkout lives, which is the contract the enqueue side already
+  relies on (`_ensure_app_importable()` in `enqueue_proposal_generation`).
+
 **Verifier fix made here (my bug, found by the same run):** `main()` gated fixture
 cleanup on a successful flow return, so a mid-flow deviation leaked the rows
 created so far. Cleanup is now driven by the incrementally-filled `fixtures` dict
 (`cleanup_after_run`), and the deviation run above proves it: `cleaned up 5
 synthetic row(s)`, target counts back to `0/0/0/0`. Regression tests: 20 guards
 (5 new for the queued path, 2 for cleanup-after-deviation incl. the wiring).
+
+### H. Final verification on the worker-fix merge (tested SHA `409b234`)
+
+Branch head `409b234` = integration tip `72e8237` + this workstream's remaining
+verification commits (J-only, zero deletions). Environment: embedded Postgres 16,
+real Redis 6.2.14, real RQ worker 2.12 launched **normally** —
+`.venv/bin/python -m workers.run_worker`, i.e. exactly `make worker`, with only
+`REDIS_URL` and `DATABASE_URL` set and **no `PYTHONPATH`**.
+
+**Gate (whole repo, this SHA):**
+
+```
+$ INTAKE_REQUIRE=1 INTAKE_ALLOW_APP_DB=1 bash scripts/verify_all.sh
+==> Database             fresh casevault_test created
+==> Migrations           upgrade 0001..0004 -> downgrade base -> upgrade head
+==> pytest (real Postgres)  96 passed, 2 warnings
+==> ruff                 All checks passed!
+==> web: lint / typecheck / build
+GATE GREEN — python, migrations, lint and web all pass.
+```
+
+**Inline (no Redis reachable) — separated result:**
+
+```
+$ INTAKE_REQUIRE=1 python scripts/intake_smoke.py --require-intake      # exit 0
+SMOKE GREEN — all intake steps passed; deviations: none
+generation mode: inline (jobs=none; waits=n/a; job results unreadable=none)
+  PASS: inline cap run: created=2 skipped=1        <- §4.4 limit
+  PASS: re-run created nothing (idempotent)        <- §4.4 idempotency
+  PASS: cleaned up 24 synthetic row(s) created by this run
+$ INTAKE_REQUIRE=1 pytest tests/integration/test_intake_e2e.py -q       → 1 passed
+$ pytest tests/integration/test_intake_e2e_guards.py -q                 → 21 passed
+```
+
+**Queued (real Redis + normal worker) — separated result:**
+
+```
+$ REDIS_URL=<redis> TEST_DATABASE_URL=<disposable> INTAKE_REQUIRE=1 \
+    python scripts/intake_smoke.py --require-intake                     # exit 0
+  NOTE: generation ENQUEUED (queued=true job_id=f653043f-…): created/skipped are
+        placeholders, not job results — verifying committed proposals
+  PASS: queued job produced 3 proposals in 2.1s
+  PASS: job f653043f result: status=complete created=3 skipped=0
+  PASS: re-run job finished with no new proposals (idempotent, 1.5s)
+  PASS: job c5ba941c result: status=complete created=0 skipped=3
+  PASS: job 97b4d003 result: status=complete created=2 skipped=1
+  PASS: queued cap job: created=2 skipped=1 in 2.0s
+  PASS: cleaned up 24 synthetic row(s) created by this run
+SMOKE GREEN — generation mode: queued (jobs=[f653043f…, c5ba941c…];
+              waits=[2.1, 1.5, 2.0]; job results unreadable=none)
+
+$ INTAKE_E2E_QUEUED=1 INTAKE_REQUIRE=1 pytest tests/integration/test_intake_e2e.py -q
+1 passed
+
+# RQ registry, straight from redis (args/kwargs + result payloads):
+f653043f finished {'status': 'complete', 'created': 3, 'skipped': 0}  kwargs={'max_proposals': 10}
+c5ba941c finished {'status': 'complete', 'created': 0, 'skipped': 3}  kwargs={'max_proposals': 10}
+97b4d003 finished {'status': 'complete', 'created': 2, 'skipped': 1}  kwargs={'max_proposals': 2}
+3bfff678 finished {'status': 'complete', 'created': 3, 'skipped': 0}  kwargs={'max_proposals': 10}
+7ec740c0 finished {'status': 'complete', 'created': 0, 'skipped': 3}  kwargs={'max_proposals': 10}
+29d39d2c finished {'status': 'complete', 'created': 2, 'skipped': 1}  kwargs={'max_proposals': 2}
+```
+
+The last three are the queued-mode pytest run. Every job result is
+`status=complete` with the expected counters — no `FAILED` result hiding behind an
+RQ `FINISHED`, which was the whole point of the previous blocker.
+
+**Requested properties, one line each:**
+
+| property | evidence |
+|---|---|
+| committed proposals, not RQ state | pass/fail is decided on `GET /proposals` counts; RQ status is only used to stop waiting |
+| job result asserted | `status=complete` + exact `created/skipped` for all six jobs above |
+| limits | queued and inline cap runs: `max_proposals=2` → exactly 2 committed, 3rd paragraph `skipped=1` |
+| idempotency | re-run job `created=0 skipped=3`, committed count stayed 3, in both modes |
+| cleanup | `cleaned up 24 synthetic row(s)` each run; after both runs `proposals=matters=sources=pages=facts=source_links=actor_links=ledger=actors=0` |
+| no workaround | worker command line was exactly `.venv/bin/python -m workers.run_worker` (verified with `ps`), no `PYTHONPATH` |
 
 ## Contract gaps
 
