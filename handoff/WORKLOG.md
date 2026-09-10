@@ -734,3 +734,24 @@ detailed Actions log fetch still EOF. Cause unknown. No scanner bypass or
 speculative token permission expansion. Request WS-D/owner obtain the actual
 failing gitleaks step output before approving PR #14. Evidence UI follow-up
 also remains incomplete. Wave 2 final sign-off not claimed.
+
+## 2026-09-10 — secrets-check diagnosis continued (no bypass)
+
+No new feature branches pushed since last fetch. Integration push CI at
+`a454461` is successful (run 34450422380); this does not clear PR #14's
+separate failing pull_request secrets check. Run 34449294532 secrets action
+fails in ~2 seconds; only artifact is evidence-verification, no gitleaks SARIF.
+Upstream v2 action source reads PR commits before scanning; writing review
+comments is only attempted after findings. This narrows investigation but
+establishes neither a permission fault nor absence of findings.
+
+Attempted `gh run rerun 34449294532 --failed`; GitHub/CLI refused with generic
+"cannot be rerun; its workflow file may be broken". No successful retry was
+launched, no workflow corruption concluded. Detailed log download remains
+unavailable; annotations contain only Node deprecation.
+
+WS-D authorized via PR #14 comment to add token-presence boolean and PR-commit
+API HTTP-status preflight diagnostics to step summary, without response bodies,
+credential output, permissions changes, or weakening scanner failure behavior.
+Owner may instead supply redacted failing action output from GitHub UI. No
+product changes or additional merges in this diagnostic pass.
