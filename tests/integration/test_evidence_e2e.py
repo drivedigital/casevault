@@ -6,6 +6,7 @@ import zlib
 
 import pytest
 from scripts.pipeline_smoke import (
+    ContractGap,
     PrerequisiteUnavailable,
     SmokeFailure,
     SmokeReport,
@@ -19,10 +20,7 @@ def test_evidence_e2e(tmp_path_factory):
     # Never reuse LOCAL_STORAGE_ROOT: tests/api/conftest.py mutates it at collection.
     artifacts = tmp_path_factory.mktemp("evidence")
     try:
-        report = run_smoke(
-            artifacts,
-            require_reprocess=os.environ.get("EVIDENCE_REQUIRE_REPROCESS") == "1",
-        )
+        report = run_smoke(artifacts)
     except PrerequisiteUnavailable as exc:
         reason = f"evidence integration prerequisites unavailable: {exc}"
         if os.environ.get("EVIDENCE_REQUIRE_DEPS") == "1":
@@ -33,6 +31,7 @@ def test_evidence_e2e(tmp_path_factory):
     assert any(check.startswith("no-redis:") for check in report.checks)
     assert any(check.startswith("redis:") for check in report.checks)
     assert sum("all 4 originals byte-equal" in check for check in report.checks) == 2
+    assert sum("/reprocess 202" in check for check in report.checks) == 2
 
 
 def test_synthetic_fixtures_are_real_file_structures():
@@ -72,11 +71,10 @@ def test_synthetic_fixtures_are_real_file_structures():
     assert "café" in fixtures["text"].content.decode("utf-8")
 
 
-def test_original_contract_and_required_reprocess_gates_fail_closed():
-    report = SmokeReport()
-    report.gap("reprocess-deferred", "3.2", "POST /sources/{id}/reprocess", "202", "404")
-    report.enforce()  # Explicitly accepted as-shipped backlog, not an implemented endpoint.
+def test_original_contract_gate_fails_closed():
+    gap = ContractGap("flag-conflict-status", "3.2", "PATCH /sources/{id}", "422", "409")
+    report = SmokeReport(gaps={gap.code: gap})
+    report.enforce()  # Explicitly approved as-shipped difference, not original-v1 conformance.
     with pytest.raises(SmokeFailure, match="observed contract gaps"):
         report.enforce(strict_v1=True)
-    with pytest.raises(SmokeFailure, match="required 202, observed 404"):
-        report.enforce(require_reprocess=True)
+    SmokeReport().enforce(strict_v1=True)

@@ -36,23 +36,25 @@ not prerequisites for the as-shipped stub; the stub assertions always run.
 
 ## What green means
 
-The Sprint 3 contract now **supersedes original v1.0 with its 2026-09-10
-as-shipped override**. Default green verifies that override, not the original
-unimplemented endpoints/OCR engines. Every observed original-v1 difference
-is emitted as `GAP` with section, endpoint, expected and observed behavior.
+The Sprint 3 contract **supersedes original v1.0 with its 2026-09-10
+as-shipped override**. This verifier also requires the merged WS-EV reprocess
+addition (`docs/contracts/wave2_intake_core.md` v1.0 §6; merged at `c7842bb`).
+Default green verifies those interfaces, not the original unimplemented OCR
+engines or response shapes. Every observed original-v1 difference is emitted
+as `GAP` with section, endpoint, expected and observed behavior.
 
 - `python scripts/pipeline_smoke.py --strict-v1`: run both scenarios, then fail
   on *any* reported original-v1 difference (currently expected to be red).
-- `python scripts/pipeline_smoke.py --require-reprocess`: require the WS-EV
-  per-source endpoint. Pytest equivalent: `EVIDENCE_REQUIRE_REPROCESS=1`.
-- If `/reprocess` is registered, its 202 response, real job ID/queued flag,
-  status transitions, worker execution and repeated extraction are tested
-  automatically in both Redis modes. A registered endpoint returning 404 is
-  a failure, **not** the deferred-route fallback. The integrator should pin
-  `EVIDENCE_REQUIRE_REPROCESS=1` after merging WS-EV, to catch route removal.
-- If the endpoint is not yet registered, the verifier actually POSTs it in
-  both modes, records its 404 as a deferred gap, and verifies the shipped
-  direct/RQ repeat-processing paths. It never claims those are HTTP reprocess.
+- `/reprocess` is **mandatory**. Its 202 response, real job ID/queued flag,
+  relevant status transitions, worker execution and repeated extraction are
+  tested in both Redis modes. A missing route, 404 or 500 fails; there is no
+  OpenAPI-detection/accepted-404 fallback on this merged tip.
+- Both stages together, each stage alone and the no-body OCR default run.
+  The RQ scenario checks **every** enqueued stage's target, source/workspace
+  arguments, completion result and failure registry—not only the one ID
+  returned in the response. The offline scenario calls the same stage jobs
+  directly in subprocesses; it does not mistake the generic completed-source
+  no-op runner for an OCR-only reprocess.
 
 Coverage: bootstrap; distinct text/PDF/image uploads and duplicate provenance;
 SQL source/metadata/page rows; independent sha256/size/storage checks; exact
@@ -64,8 +66,13 @@ all original download bytes, content types and attachment filenames.
 Fixtures are generated from tiny Python text: a valid two-page PDF with real
 xref offsets, a CRC-valid RGB PNG checkerboard (not pretend OCR text), and a
 UTF-8/CRLF text file. Fixture structure and strict-mode fail-closed behavior have
-additional tests. There is no claim of browser-interaction coverage; the full
-wave gate separately lints, typechecks and builds the integrated evidence UI.
+additional tests. A **mandatory static route-entrypoint guard** also requires
+the `/evidence` and `/evidence/{id}` Next pages. This catches missing WS-C files
+that `next build` otherwise silently omits. Missing pages fail the smoke/CI job
+after both API scenarios complete; they are not accepted as an as-shipped gap.
+There is no claim of browser-interaction coverage; the full wave gate separately
+lints, typechecks and builds the UI. See the WS-D note for the independent HTTP
+probe: both evidence routes currently return 404 on `c7842bb`.
 
 ## Isolation and artifacts
 
