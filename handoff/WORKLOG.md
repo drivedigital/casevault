@@ -511,3 +511,52 @@ unaffected and do **not** need to be rebuilt.
 `bash scripts/verify_all.sh` → migrations up/down/up clean, `pytest` 8 passed,
 `ruff` clean, web lint/typecheck/build clean (15 routes) — GATE GREEN.
 
+
+## 2026-09-10 — W2-G independent review: changes requested
+
+Reviewed PR #9, `c82e5e6`, in an uncommitted candidate merge onto `b0be226`.
+Full `bash scripts/verify_all.sh` independently passed: migration round-trip,
+66 pytest tests, ruff, web lint/typecheck/production build. Nevertheless the
+candidate is **not approved**. The candidate merge was aborted; no G feature
+code is on the integration branch. Focused synthetic/mocked probes exposed
+cases absent from the suite:
+
+1. `proposal_service._validate_refs`: when `excerpt_id` is provided without
+   `source_id`, only the excerpt is loaded; its owning source/workspace is
+   never checked. A foreign-workspace excerpt can be attached and exposed by
+   `proposal_out`. Always validate excerpt ownership via its source, including
+   the excerpt-only case; add cross-workspace API regression coverage.
+2. `proposal_service.generate`: `str(db.get_bind().url)` masks a SQLAlchemy
+   URL password as `***`. Synthetic URL round-trip confirmed password loss.
+   Embedded socket authentication hides this defect; password-authenticated
+   inline generation will receive an invalid connection URL. Preserve the
+   actual connection credentials internally without logging/exposing them;
+   add password-bearing synthetic URL coverage.
+3. Queued generation ignores `payload.max_proposals`: the enqueue helper gets
+   only source/workspace IDs and the worker defaults to 50. A mock enqueue
+   probe for `max_proposals=1` confirmed only two arguments. Pass the limit
+   through helper and RQ kwargs; cover queued and inline parity without Redis.
+4. `FactUpdate(statement_text=None)` is schema-valid but `update_fact` calls
+   `.strip()` and raises AttributeError (confirmed with a mock session).
+   Reject explicit null for non-nullable PATCH fields with 422, while keeping
+   omission/no-change and nullable-field clearing; audit proposal PATCH too.
+
+W2-G owns the fixes and regression tests. Re-run the complete gate, push on
+its existing session branch, and report the new PR #9 SHA. W2-J stays blocked
+until the corrected G implementation is integrated. No new wave authorized.
+
+### Remote roster checked at review time
+
+- W2-E / EV / F / H / I: integrated; F tip `7c53b92` unchanged.
+- W2-G: PR #9 `c82e5e6`, changes requested above.
+- W2-I/J + WS-A: branch `arena/01a089cd-casevault` at `afef55b`; PR #3
+  still mixes J verification, already-integrated I, and A's verification note.
+  Needs J-only rebase/diff and merged-tip proof after G; A scope retired.
+- WS-B/WS-C recovery: PR #11 `865c624`, UI delivered, awaiting integrator
+  review/gate. Superseded storage PR #8 and old PR #5 are closed. Original
+  WS-C and WS-B commits have remote archive refs; recovery no longer blocked.
+- WS-D: PR #10 `de18118`, verification code complete but evidence sign-off
+  blocked until recovered UI is integrated and tests rerun. PR #6 is closed.
+  Separate older D session at `cd40299` is not another active merge candidate.
+- Existing PR secret-scan configuration lacks automatic `GITHUB_TOKEN` env;
+  coordinate the CI fix with verification owner, never supply a personal token.
