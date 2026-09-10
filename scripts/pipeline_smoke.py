@@ -7,10 +7,10 @@ Run after scripts/setup_local.sh, with the venv activated and Postgres running::
     python scripts/pipeline_smoke.py
     python scripts/pipeline_smoke.py --strict-v1
 
-The default target is sprint3_evidence.md's 2026-09-10 AS-SHIPPED override.
+The default target is sprint3_evidence.md's 2026-09-10 AS-SHIPPED override,
+plus the merged reprocess follow-up in wave2_intake_core.md v1.0 section 6.
 Original-v1 differences are printed as GAPs, never described as implemented.
---strict-v1 makes those gaps fatal. --require-reprocess pins the additive
-WS-EV endpoint as required once the integrator merges that follow-up.
+--strict-v1 makes those gaps fatal. Reprocess is always required: no 404 fallback.
 
 No existing API/worker/Redis is used. Each run migrates a disposable PostgreSQL
 schema (no public search-path fallback), starts Uvicorn and a private Redis,
@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import errno
 import hashlib
+import json
 import os
 import shutil
 import signal
@@ -102,9 +103,7 @@ class SmokeReport:
                 flush=True,
             )
 
-    def enforce(self, *, strict_v1: bool = False, require_reprocess: bool = False) -> None:
-        if require_reprocess and "reprocess-deferred" in self.gaps:
-            raise SmokeFailure("§3.2 POST /sources/{id}/reprocess: required 202, observed 404")
+    def enforce(self, *, strict_v1: bool = False) -> None:
         if strict_v1 and self.gaps:
             raise SmokeFailure(f"original Sprint 3 v1.0 has {len(self.gaps)} observed contract gaps")
 
@@ -481,50 +480,74 @@ class EvidenceRun:
             equal(queue.failed_job_registry.count, 0, f"RQ {name} has no failed jobs")
 
     def reprocess(self, sources: dict[str, dict], fixtures: dict[str, Fixture]) -> None:
-        path = f"/sources/{sources['text']['id']}/reprocess"
-        paths = self.client.get("/openapi.json").json()["paths"]
-        registered = any(
-            route.endswith("/reprocess") and route.startswith(API_PREFIX + "/sources/")
-            and "post" in methods for route, methods in paths.items()
-        )
-        if not registered:
-            self.request("POST", path, 404, json={"stages": ["ocr"]})
-            self.report.gap(
-                "reprocess-deferred", "3.2, 5", "POST /sources/{id}/reprocess (both Redis modes)",
-                "202; queued=false + reason without Redis, queued=true + job_id with Redis",
-                "404: endpoint absent; explicitly deferred by the as-shipped override / WS-EV",
-            )
-            self.run_jobs(list(sources.values()), repeat=True)
-            for kind, source in sources.items():
-                self.extraction(source["id"], fixtures[kind])
-            self.report.passed(f"{self.mode}: direct/RQ repeat is idempotent; /reprocess remains DEFERRED")
-            return
+        self.run_jobs(list(sources.values()), repeat=True)
+        for kind, source in sources.items():
+            self.extraction(source["id"], fixtures[kind])
+        self.report.passed(f"{self.mode}: repeat direct/RQ ingest is idempotent")
 
-        # Additive WS-EV path: once registered, a 404/500 is a failure, never a fallback.
-        # Empty JSON also tests the default stages; both explicit stages are exercised.
-        for kind, payload in (("text", {"stages": ["ingest", "ocr"]}), ("pdf", {}),
-                              ("image", {"stages": ["ocr"]}), ("text", {})):
+        # WS-EV is merged: 404 is now a hard failure, never an accepted backlog gap.
+        # Exercise both stages, each stage alone, and the no-body default on a repeated source.
+        for kind, payload in (
+            ("text", {"stages": ["ingest", "ocr"]}),
+            ("pdf", {"stages": ["ingest"]}),
+            ("image", {"stages": ["ocr"]}),
+            ("text", None),
+        ):
             source_id = sources[kind]["id"]
-            result = self.request("POST", f"/sources/{source_id}/reprocess", 202, json=payload).json()
+            before = self.detail(source_id)
+            stages = payload["stages"] if payload is not None else ["ocr"]
+            body = {"json": payload} if payload is not None else {}
+            result = self.request("POST", f"/sources/{source_id}/reprocess", 202, **body).json()
+            equal(type(result["queued"]), bool, "reprocess queued must be a JSON boolean")
             equal(result["queued"], self.connection is not None, "§3.2 reprocess queued flag")
             queued = self.detail(source_id)
-            equal(queued["processing_status"], "queued", "reprocess processing status before worker")
-            equal(queued["ocr_status"], "queued", "reprocess OCR status before worker")
+            # Wave 2 §6 queues the relevant status, not unrelated stages.
+            for stage, column in (("ingest", "processing_status"), ("ocr", "ocr_status")):
+                equal(queued[column], "queued" if stage in stages else before[column],
+                      f"reprocess {column} before worker for stages={stages}")
+            self.persisted(queued, fixtures[kind])
             if self.connection is None:
                 equal(result["job_id"], None, "offline reprocess job_id")
                 require(isinstance(result["reason"], str) and bool(result["reason"].strip()),
                         "offline reprocess requires an actionable reason")
-                self.run_jobs([sources[kind]])
+                for stage in stages:
+                    # Call the *same* stage target RQ uses, in a fresh process. The generic
+                    # process_source runner is a no-op for OCR-only on complete sources.
+                    output = self.command([
+                        "-c", (
+                            "import json, sys; from workers.pipeline import jobs; "
+                            "result = getattr(jobs, sys.argv[1] + '_source')(sys.argv[2], sys.argv[3]); "
+                            "print(json.dumps(result))"
+                        ),
+                        stage, source_id, self.workspace_id,
+                    ])
+                    direct_result = json.loads(output.splitlines()[-1])
+                    equal(direct_result["status"], "complete", f"direct {stage} stage result")
+                    equal(direct_result["source_id"], source_id, "direct stage source identity")
             else:
                 require(isinstance(result["job_id"], str) and bool(result["job_id"]),
                         "online reprocess requires a real job_id")
                 equal(result["reason"], None, "online reprocess reason")
-                job = Job.fetch(result["job_id"], connection=self.connection)
-                equal(job.args[0], source_id, "reprocess job targets the requested source")
-                equal(job.get_status(), "queued", "reprocess job is really queued")
-                self.drain_worker([job])
+                jobs = []
+                for stage in ("ingest", "ocr"):
+                    queued_jobs = Queue(stage, connection=self.connection).jobs
+                    equal(len(queued_jobs), int(stage in stages), f"exact {stage} stage job count")
+                    for job in queued_jobs:
+                        equal(job.func_name, f"workers.pipeline.jobs.{stage}_source", "RQ stage target")
+                        equal(job.args, (source_id, self.workspace_id), "RQ source/workspace arguments")
+                        equal(job.get_status(), "queued", "reprocess job is really queued")
+                        jobs.append(job)
+                require(result["job_id"] in {job.id for job in jobs}, "202 job_id must identify a queued job")
+                self.drain_worker(jobs)  # Check *all* stages, not just the one ID in the response.
             self.extraction(source_id, fixtures[kind])
-        self.report.passed(f"{self.mode}: /reprocess 202, queued state, worker completion, repeat safety")
+            after = self.detail(source_id)
+            for name in (
+                "id", "title", "source_type", "original_filename", "storage_path", "sha256",
+                "file_size_bytes", "source_status", "evidence_review_status", "included_flag",
+                "excluded_flag", "exclusion_reason", "duplicate_of",
+            ):
+                equal(after[name], before[name], f"reprocess preserves source.{name}")
+        self.report.passed(f"{self.mode}: /reprocess 202, both/single/default stages, completion + repeat safety")
 
     def lifecycle(self, source_id: str) -> None:
         path = f"/sources/{source_id}"
@@ -684,7 +707,9 @@ class EvidenceRun:
                          params={"workspace_id": other_workspace})
         self.request("PATCH", f"/sources/{text_source['id']}", 404,
                      params={"workspace_id": other_workspace}, json={"title": "MUST NOT CHANGE"})
-        self.report.passed(f"{self.mode}: wrong-workspace detail/file/pages/patch return 404")
+        self.request("POST", f"/sources/{text_source['id']}/reprocess", 404,
+                     params={"workspace_id": other_workspace}, json={"stages": ["ocr"]})
+        self.report.passed(f"{self.mode}: wrong-workspace detail/file/pages/patch/reprocess return 404")
 
         self.reprocess(sources, fixtures)
         for kind, source in {**sources, "copy": duplicate}.items():
@@ -704,9 +729,27 @@ class EvidenceRun:
         self.report.passed(f"{self.mode}: all 4 originals byte-equal after processing, patches and unlink")
 
 
+def verify_web_route_entrypoints(report: SmokeReport) -> None:
+    """Catch a missing WS-C delivery even when next build succeeds without those routes.
+
+    This is deliberately only a source-entrypoint guard; it does not pretend to
+    replace a browser walk. CI's Python job need not install Node/build artifacts.
+    """
+    missing = []
+    for suffix, route in (("evidence", "/evidence"), ("evidence/[id]", "/evidence/{id}")):
+        directory = REPO_ROOT / "apps" / "web" / "app" / suffix
+        if not any((directory / f"page.{ext}").is_file() for ext in ("tsx", "ts", "jsx", "js")):
+            missing.append(route)
+    require(
+        not missing,
+        "§6 / §7 WS-C: expected Next page entrypoints for " + ", ".join(missing)
+        + "; observed missing apps/web/app/evidence pages. Owning UI workstream must restore them.",
+    )
+    report.passed("WS-C evidence index/detail route entrypoints exist (static guard, not a browser walk)")
+
+
 def run_smoke(
     artifact_root: Path, *, database_url: str | None = None, strict_v1: bool = False,
-    require_reprocess: bool = False,
 ) -> SmokeReport:
     artifact_root = artifact_root.resolve()
     binary = check_prerequisites(artifact_root)
@@ -737,7 +780,8 @@ def run_smoke(
             with live_api(online_env, artifact_root, "redis") as client:
                 EvidenceRun(client, db, online_env, artifact_root, report, connection).run()
     report.passed("API/worker/Redis processes stopped; only the generated DB schema removed")
-    report.enforce(strict_v1=strict_v1, require_reprocess=require_reprocess)
+    verify_web_route_entrypoints(report)
+    report.enforce(strict_v1=strict_v1)
     print(f"EVIDENCE GREEN (as-shipped): {len(report.checks)} checks; "
           f"{len(report.gaps)} original-v1 gaps; 0 scenarios skipped.", flush=True)
     return report
@@ -746,14 +790,13 @@ def run_smoke(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--strict-v1", action="store_true", help="fail on every observed original-v1 gap")
-    parser.add_argument("--require-reprocess", action="store_true", help="fail if WS-EV reprocess is absent")
     args = parser.parse_args(argv)
     parent = REPO_ROOT / "data" / "temp"
     parent.mkdir(parents=True, exist_ok=True)
     artifacts = Path(tempfile.mkdtemp(prefix="evidence-smoke-", dir=parent))
     print(f"Synthetic artifacts and diagnostic logs: {artifacts}", flush=True)
     try:
-        run_smoke(artifacts, strict_v1=args.strict_v1, require_reprocess=args.require_reprocess)
+        run_smoke(artifacts, strict_v1=args.strict_v1)
     except PrerequisiteUnavailable as exc:
         print(f"EVIDENCE BLOCKED: {exc}", file=sys.stderr)
         return 2
