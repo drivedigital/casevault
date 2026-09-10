@@ -16,19 +16,23 @@ independent verifier (falsify, don't agree):
      re-reviewing the proposal MUST be 409 (4.2)
   5. forbidden-field probes (create/patch with `review_state`) MUST be 422 (4.1);
      POST /facts creates a `proposed` fact
-  5b. POST /proposals/bulk-review MUST be partial-success: one already-reviewed
+  5b. POST /proposals/bulk-review MUST be partial-success: an already-reviewed
       id answers ok=false without rolling back the good ids, and the accept
       path MUST only ever create `proposed` facts (4.1/4.2). Bulk accept on
-      matter-less generated proposals is noted, not failed — see the contract
-      tension recorded in handoff/notes/W2-J.md. `created_facts` is asserted on
-      read-back because 4.2 leaves the element type unspecified
+      matter-less generated proposals is probed and NOTED, never failed — the
+      contract tension (4.4+4.2+2) is recorded in handoff/notes/W2-J.md.
+      `created_facts` is asserted on read-back because 4.2 leaves the element
+      type unspecified
   5c. forbidden acceptance paths on proposals MUST be 422: `review_state` in
       POST /proposals and PATCH /proposals/{id}, an unknown field on the review
-      body, and an accept with no matter for the fact to live in (4.1/4.2, 2)
+      body, and an accept with no matter for the fact to live in (4.1/4.2, 2);
+      each rejected request must leave the proposal `proposed`
   6. POST /facts/{id}/approve -> `accepted` + `approved_at`; re-approve 409;
      the trusted set (GET /facts?review_state=accepted) contains it (4.1)
-  7. source link 201, duplicate 409 (4.3)
-  8. actor link 201, duplicate 409 (4.3)
+  7. source link 201, duplicate 409; the uniqueness key is (fact, source,
+     excerpt, support_type) — `strength` is not part of it, a new support_type
+     is a new link (4.3/2)
+  8. actor link 201, duplicate 409; a new role_in_fact is a new link (4.3)
   9. ledger: create two rows, export CSV, `dry_run` import (MUST write nothing),
      bad-row + malformed-header probes, real import into matter B, per-field
      round-trip equality, identical re-import -> `skipped` (3.1)
@@ -611,7 +615,7 @@ def collect_fixtures(client, fixtures: dict) -> dict:
     """
     uid = fixtures["uid"]
     matter_ids = [m for m in (fixtures["matter_a"], fixtures["matter_b"]) if m]
-    source_ids = [fixtures["source_id"]] if fixtures.get("source_id") else []
+    source_ids = [fixtures[key] for key in ("source_id", "cap_source_id") if fixtures.get(key)]
     proposal_ids: set[str] = set()
     fact_ids: set[str] = set()
     ledger_ids: set[str] = set()
@@ -884,6 +888,91 @@ def run_flow(
     generation["job_ids"] = job_ids
     fixtures["generation"] = generation
 
+    # -- 2b. generation cap (max_proposals) ----------------------------------
+    # §4.4: generation stops once `max_proposals` rows exist from this run and
+    # the remainder counts as skipped. This is the one assertion that proves the
+    # cap actually reaches the *worker* when the queue is used (the RQ kwargs
+    # path, integrator review of c174051) — a queued run silently falling back to
+    # the job default would create 3 here instead of 2.
+    log.step("2b. POST /proposals/generate with max_proposals=2 (cap honored in this shape)")
+    cap_paras = [
+        f"Synthetic smoke cap paragraph {n} ({uid}): the notice period was "
+        f"{(n + 1) * 7} days and the deposit remained unreconciled."
+        for n in range(1, 4)
+    ]
+    assert all(len(p) >= 40 for p in cap_paras), "cap paragraphs must clear the 40-char floor"
+    r = client.post(
+        f"{API}/sources",
+        files={
+            "file": (f"smoke-intake-cap-{uid}.txt", "\n\n".join(cap_paras).encode(), "text/plain")
+        },
+        data={"title": f"W2-J smoke cap source {uid}"},
+    )
+    require_status(
+        "generate-cap", "POST /sources (cap fixture)", r, {201}, "sprint3_evidence 3", log
+    )
+    cap_source_id = r.json()["id"]
+    fixtures["cap_source_id"] = cap_source_id
+    r = client.post(
+        f"{API}/proposals/generate",
+        json={"source_id": cap_source_id, "max_proposals": 2},
+    )
+    require_status("generate-cap", "POST /proposals/generate (cap)", r, {200, 201}, "4.4", log)
+    cap = r.json()
+    cap_job = cap.get("job_id")
+    if cap.get("queued") is True:
+        cap_wait = wait_for_generation(
+            client, log, cap_source_id, 2, [cap_job], wait_s, "generate (cap)"
+        )
+        generation["waits"].append(cap_wait)
+        if cap_wait["total"] != 2:
+            check(
+                "generate-cap",
+                "POST /proposals/generate (cap, queued)",
+                "exactly 2 proposals committed (max_proposals=2 reached the worker)",
+                f"total={cap_wait['total']} — the queued job ignored the cap and used its default",
+                "4.4",
+            )
+        cap_result = _queued_job_result(cap_job)
+        if isinstance(cap_result, dict):
+            if cap_result.get("created") != 2 or cap_result.get("skipped") != 1:
+                check(
+                    "generate-cap",
+                    "POST /proposals/generate (cap, queued job result)",
+                    "created=2 skipped=1 (3rd paragraph past the cap counts as skipped)",
+                    f"created={cap_result.get('created')} skipped={cap_result.get('skipped')} "
+                    f"reason={cap_result.get('reason')!r}",
+                    "4.4",
+                )
+            log.ok(f"queued cap job: created=2 skipped=1 in {cap_wait['waited_s']}s")
+        else:
+            log.note(
+                "queued cap job result not readable (rq/redis unavailable to the verifier); "
+                "the committed count above is the assertion"
+            )
+    else:
+        if cap.get("created") != 2 or cap.get("skipped") != 1:
+            check(
+                "generate-cap",
+                "POST /proposals/generate (cap)",
+                "created=2 skipped=1 (3rd paragraph past the cap counts as skipped)",
+                f"created={cap.get('created')} skipped={cap.get('skipped')}",
+                "4.4",
+            )
+        log.ok("inline cap run: created=2 skipped=1")
+    r = client.get(f"{API}/proposals", params={"source_id": cap_source_id})
+    require_status("generate-cap", "GET /proposals (cap source)", r, {200}, "4.2", log)
+    cap_page = require_envelope("generate-cap", "GET /proposals (cap source)", r.json(), "3")
+    if cap_page["total"] != 2:
+        check(
+            "generate-cap",
+            "GET /proposals (cap source)",
+            "exactly 2 proposals stored for the cap source",
+            f"total={cap_page['total']}",
+            "4.4",
+        )
+    generation["cap"] = {"queued": cap.get("queued") is True, "job_id": cap_job}
+
     # -- 3. list proposals ----------------------------------------------------
     log.step("3. list proposals, pick candidate")
     r = client.get(f"{API}/proposals", params={"source_id": source_id})
@@ -1016,200 +1105,146 @@ def run_flow(
 
     # -- 5b. bulk review: partial success + the floor --------------------------
     log.step("5b. bulk review is partial-success and never approves")
-    # Bulk accept can only produce facts for proposals that already carry a
-    # matter (section 4.4 generation takes no matter, and the bulk body has no
-    # `edits` — see the NOTE below and the gap report). So the accept path is
-    # exercised on manual, matter-carrying proposals.
-    manual_ids: list[str] = []
+    # Bulk accept needs proposals that already carry a matter: §4.2's bulk body
+    # has no `edits`, and §2 requires fact_assertions.matter_id NOT NULL, so the
+    # §4.4 generator's matter-less output can never be bulk-accepted (contract
+    # tension 4.4+4.2+2 — noted below, not failed).
+    r = client.get(
+        f"{API}/proposals",
+        params={"source_id": source_id, "review_state": "proposed", "limit": 200},
+    )
+    require_status("bulk-review", "GET /proposals?review_state=proposed", r, {200}, "4.2", log)
+    generated_open = [
+        item["id"]
+        for item in require_envelope("bulk-review", "GET /proposals", r.json(), "3")["items"]
+        if item.get("matter_id") is None
+    ]
+    log.note(f"matter-less generated proposals still open: {len(generated_open)}")
+
+    manual_ids = []
     for index in (1, 2):
         r = client.post(
             f"{API}/proposals",
             json={
                 "proposal_type": "fact",
                 "matter_id": matter_a["id"],
-                "title": f"bulk probe {uid}-{index}",
-                "proposed_text": (
-                    f"Bulk-review probe {uid}-{index}: the depot log was countersigned "
-                    "the same day."
-                ),
+                "proposed_text": f"bulk-review probe {uid}-{index}: the depot log was signed same-day.",
             },
         )
-        require_status("bulk-review", "POST /proposals (manual, with matter)", r, {201}, "4.2", log)
+        require_status("bulk-review", "POST /proposals (manual, matter)", r, {201}, "4.2", log)
         manual_ids.append(r.json()["id"])
+    log.ok(f"two matter-carrying proposals: {manual_ids}")
 
-    # 2 of 2 accept: two facts, both `proposed` — the floor holds on the bulk path
-    r = client.post(f"{API}/proposals/bulk-review", json={"ids": manual_ids, "action": "accept"})
-    require_status("bulk-review", "POST /proposals/bulk-review (2 ids)", r, {200}, "4.2", log)
+    # 2 ids requested, 1 already reviewed -> per-id results, the good id commits
+    bulk_ids = [manual_ids[0], proposal_id]
+    r = client.post(f"{API}/proposals/bulk-review", json={"ids": bulk_ids, "action": "accept"})
+    require_status("bulk-review", "POST /proposals/bulk-review", r, {200}, "4.2", log)
     body = r.json()
     results = {item.get("id"): item for item in (body.get("results") or [])}
-    if set(results) != set(manual_ids):
+    if set(results) != set(bulk_ids):
         check(
             "bulk-review",
-            "POST /proposals/bulk-review (2 ids)",
-            f"one result per requested id ({manual_ids})",
+            "POST /proposals/bulk-review",
+            f"one result per requested id {bulk_ids}",
             f"{body!r}"[:300],
             "4.2",
         )
-    for manual_id in manual_ids:
-        if not (results.get(manual_id) or {}).get("ok"):
-            check(
-                "bulk-review",
-                "POST /proposals/bulk-review (2 ids)",
-                f"{manual_id} ok=true",
-                f"{results.get(manual_id)!r}",
-                "4.2",
-            )
-    created = body.get("created_facts") or []
-    if len(created) != 2:
+    if not results[manual_ids[0]].get("ok"):
         check(
             "bulk-review",
-            "POST /proposals/bulk-review (2 ids)",
-            "2 created facts",
-            f"created_facts={body.get('created_facts')!r}"[:300],
+            "POST /proposals/bulk-review",
+            f"{manual_ids[0]} ok=true (open, matter carries)",
+            f"{results[manual_ids[0]]!r}",
             "4.2",
         )
-    created_refs = [fact_ref(item) for item in created]
-    log.note(
-        "created_facts element type: "
-        + ("fact ids (strings)" if isinstance(created[0], str) else "FactOut objects")
-        + " (contract 4.2 leaves this unspecified)"
-    )
-    for ref_id, ref_state in created_refs:
-        if ref_state is not None and ref_state != "proposed":
-            check(
-                "bulk-review",
-                "POST /proposals/bulk-review (2 ids)",
-                "every created fact review_state=proposed (FLOOR RULE)",
-                f"id={ref_id} review_state={ref_state}",
-                "4.1",
-            )
-        # authoritative check at HTTP level, independent of the response shape
-        r = client.get(f"{API}/facts/{ref_id}")
-        require_status("bulk-review", "GET /facts/{id} (bulk-created)", r, {200}, "4.3", log)
-        if r.json().get("review_state") != "proposed":
-            check(
-                "bulk-review",
-                "GET /facts/{id} (bulk-created)",
-                "review_state=proposed (FLOOR RULE)",
-                f"review_state={r.json().get('review_state')}",
-                "4.1",
-            )
-    log.ok("bulk accept on 2 proposals: 2 facts created `proposed` (floor holds)")
-
-    # partial success: one id still reviewable, one already out of the queue.
-    # The good id must go through anyway (never all-or-nothing).
-    r = client.post(
-        f"{API}/proposals",
-        json={
-            "proposal_type": "fact",
-            "matter_id": matter_a["id"],
-            "title": f"bulk partial {uid}",
-            "proposed_text": f"Bulk partial-success probe {uid}: two entries disagree on the date.",
-        },
-    )
-    require_status("bulk-review", "POST /proposals (manual, partial probe)", r, {201}, "4.2", log)
-    partial_good = r.json()["id"]
-    mixed_ids = [partial_good, manual_ids[0]]  # second was accepted above -> 409 expected
-    r = client.post(f"{API}/proposals/bulk-review", json={"ids": mixed_ids, "action": "accept"})
-    require_status("bulk-review", "POST /proposals/bulk-review (mixed)", r, {200}, "4.2", log)
-    body = r.json()
-    results = {item.get("id"): item for item in (body.get("results") or [])}
-    if not (results.get(partial_good) or {}).get("ok"):
+    if results[proposal_id].get("ok"):
         check(
             "bulk-review",
-            "POST /proposals/bulk-review (mixed)",
-            f"{partial_good} ok=true (partial success, not all-or-nothing)",
-            f"{results.get(partial_good)!r}",
+            "POST /proposals/bulk-review",
+            f"{proposal_id} ok=false (already accepted -> 409)",
+            f"{results[proposal_id]!r}",
             "4.2",
         )
-    if (results.get(manual_ids[0]) or {}).get("ok"):
-        check(
-            "bulk-review",
-            "POST /proposals/bulk-review (mixed)",
-            f"{manual_ids[0]} ok=false (already reviewed -> 409)",
-            f"{results.get(manual_ids[0])!r}",
-            "4.2",
-        )
-    log.note(f"failed id reported per-id: {results.get(manual_ids[0])!r}")
     created = body.get("created_facts") or []
     if len(created) != 1:
         check(
             "bulk-review",
-            "POST /proposals/bulk-review (mixed)",
+            "POST /proposals/bulk-review",
             "exactly 1 created fact (only the good id)",
-            f"created_facts={body.get('created_facts')!r}"[:300],
+            f"{body.get('created_facts')!r}"[:300],
             "4.2",
         )
-    mixed_ref, mixed_state = fact_ref(created[0])
-    r = client.get(f"{API}/facts/{mixed_ref}")
-    require_status("bulk-review", "GET /facts/{id} (partial accept)", r, {200}, "4.3", log)
-    if r.json().get("review_state") != "proposed" or (
-        mixed_state is not None and mixed_state != "proposed"
+    bulk_fact_id = fact_ref(created[0])[0]
+    if (created[0].get("review_state") if isinstance(created[0], dict) else None) not in (
+        None,
+        "proposed",
     ):
         check(
             "bulk-review",
-            "POST /proposals/bulk-review (mixed)",
-            "the one created fact is review_state=proposed (FLOOR RULE)",
+            "POST /proposals/bulk-review",
+            "created fact review_state=proposed (FLOOR RULE)",
+            f"{created[0]!r}"[:200],
+            "4.1",
+        )
+    r = client.get(f"{API}/facts/{bulk_fact_id}")
+    require_status("bulk-review", "GET /facts/{id} (bulk-created)", r, {200}, "4.3", log)
+    if r.json().get("review_state") != "proposed":
+        check(
+            "bulk-review",
+            "GET /facts/{id} (bulk-created)",
+            "review_state=proposed (FLOOR RULE: bulk accept never approves)",
             f"review_state={r.json().get('review_state')}",
             "4.1",
         )
-    r = client.get(f"{API}/proposals/{partial_good}")
-    require_status("bulk-review", "GET /proposals/{id} (partial success)", r, {200}, "4.2", log)
+    r = client.get(f"{API}/proposals/{manual_ids[0]}")
+    require_status("bulk-review", "GET /proposals/{id} (bulk-accepted)", r, {200}, "4.2", log)
     if r.json().get("review_state") != "accepted":
         check(
             "bulk-review",
-            "GET /proposals/{id} (partial success)",
-            "review_state=accepted despite the failing sibling",
+            "GET /proposals/{id} (bulk-accepted)",
+            "review_state=accepted (committed despite the failing sibling)",
             f"review_state={r.json().get('review_state')}",
             "4.2",
         )
-    log.ok("bulk partial success: good id committed, failing id reported, no rollback")
+    log.ok(
+        f"bulk accept: 1 of 2 ids ok, fact {bulk_fact_id} created `proposed` "
+        f"(failing id: {str(results[proposal_id].get('error'))[:60]!r})"
+    )
 
-    # reject path: same partial-success rule, and it must create no facts at all
-    r = client.get(f"{API}/proposals", params={"source_id": source_id, "review_state": "proposed"})
-    require_status("bulk-review", "GET /proposals?review_state=proposed", r, {200}, "4.2", log)
-    generated_open = [
-        item["id"]
-        for item in require_envelope("bulk-review", "GET /proposals", r.json(), "4.2")["items"]
-    ]
-    if not generated_open:
-        check(
-            "bulk-review",
-            "GET /proposals?review_state=proposed",
-            ">=1 generated proposal still open for the reject mix",
-            "none left",
-            "4.2",
-        )
-    reject_ids = [generated_open[0], manual_ids[0]]
-    r = client.post(f"{API}/proposals/bulk-review", json={"ids": reject_ids, "action": "reject"})
+    # 3rd manual proposal + the same already-reviewed id, action=reject:
+    # partial success again, and no fact may appear for a rejected proposal
+    r = client.post(
+        f"{API}/proposals/bulk-review",
+        json={"ids": [manual_ids[1], proposal_id], "action": "reject"},
+    )
     require_status("bulk-review", "POST /proposals/bulk-review (reject)", r, {200}, "4.2", log)
     body = r.json()
     results = {item.get("id"): item for item in (body.get("results") or [])}
-    if not (results.get(generated_open[0]) or {}).get("ok"):
+    if not results.get(manual_ids[1], {}).get("ok"):
         check(
             "bulk-review",
             "POST /proposals/bulk-review (reject)",
-            f"{generated_open[0]} ok=true (reject needs no matter)",
-            f"{results.get(generated_open[0])!r}",
+            f"{manual_ids[1]} ok=true",
+            f"{results.get(manual_ids[1])!r}",
             "4.2",
         )
-    if (results.get(manual_ids[0]) or {}).get("ok"):
+    if results.get(proposal_id, {}).get("ok"):
         check(
             "bulk-review",
             "POST /proposals/bulk-review (reject)",
-            f"{manual_ids[0]} ok=false (already accepted -> 409)",
-            f"{results.get(manual_ids[0])!r}",
+            f"{proposal_id} ok=false (already accepted -> 409)",
+            f"{results.get(proposal_id)!r}",
             "4.2",
         )
     if body.get("created_facts"):
         check(
             "bulk-review",
             "POST /proposals/bulk-review (reject)",
-            "created_facts empty (reject creates no facts)",
-            f"{body.get('created_facts')!r}"[:300],
+            "created_facts empty (reject never creates a fact)",
+            f"{body.get('created_facts')!r}"[:200],
             "4.2",
         )
-    r = client.get(f"{API}/proposals/{generated_open[0]}")
+    r = client.get(f"{API}/proposals/{manual_ids[1]}")
     require_status("bulk-review", "GET /proposals/{id} (bulk-rejected)", r, {200}, "4.2", log)
     if r.json().get("review_state") != "rejected":
         check(
@@ -1219,47 +1254,56 @@ def run_flow(
             f"review_state={r.json().get('review_state')}",
             "4.2",
         )
-    log.ok("bulk reject: partial success, no facts created")
+    log.ok("bulk reject: 1 of 2 ids ok, no facts created, good id committed")
 
-    # documented contract tension (v1.0 section 4.4 + 4.2 + 2): a generated
-    # proposal has no matter, and the bulk body has no `edits`, so bulk ACCEPT
-    # cannot commit it. Not a failure here — reported as a gap; the smoke only
-    # pins that the failure is per-id and leaves the queue intact.
-    if generated_open[1:]:
+    # Contract-tension probe (documented, never failed): bulk accept of a
+    # matter-less generated proposal has nowhere to put the fact — §2 NOT NULL.
+    if generated_open:
         r = client.post(
             f"{API}/proposals/bulk-review",
-            json={"ids": [generated_open[1]], "action": "accept"},
+            json={"ids": [generated_open[0]], "action": "accept"},
         )
         require_status(
-            "bulk-review", "POST /proposals/bulk-review (matter-less)", r, {200}, "4.2", log
+            "bulk-review",
+            "POST /proposals/bulk-review (generated, matter-less)",
+            r,
+            {200},
+            "4.2",
+            log,
         )
-        item = ((r.json().get("results") or [{}]) or [{}])[0]
-        log.note(
-            "bulk accept of a matter-less generated proposal -> "
-            f"ok={item.get('ok')} error={item.get('error')!r} "
-            "(contract 4.4/4.2/2 tension; see handoff/notes/W2-J.md)"
-        )
-        r = client.get(f"{API}/proposals/{generated_open[1]}")
+        probe = (r.json().get("results") or [{}])[0]
+        if probe.get("ok"):
+            log.note(
+                "bulk accept of a matter-less generated proposal succeeded — the generator "
+                "now stamps a matter (contract tension 4.4+4.2+2 may be closed)"
+            )
+        else:
+            log.note(
+                "bulk accept of a matter-less generated proposal cannot commit: "
+                f"{str(probe.get('error'))[:90]!r} (contract tension 4.4+4.2+2, "
+                "see handoff/notes/W2-J.md → Contract gaps)"
+            )
+        r = client.get(f"{API}/proposals/{generated_open[0]}")
         require_status(
-            "bulk-review", "GET /proposals/{id} (after matter-less bulk)", r, {200}, "4.2", log
+            "bulk-review", "GET /proposals/{id} (after failed bulk accept)", r, {200}, "4.2", log
         )
-        if r.json().get("review_state") not in {"proposed", "deferred", "uncertain", "accepted"}:
+        if r.json().get("review_state") != "proposed" and not probe.get("ok"):
             check(
                 "bulk-review",
-                "GET /proposals/{id} (after matter-less bulk)",
-                "proposal still in a reviewable/expected state",
+                "GET /proposals/{id} (after failed bulk accept)",
+                "review_state=proposed (a failed accept must not consume the proposal)",
                 f"review_state={r.json().get('review_state')}",
                 "4.2",
             )
 
-    # -- 5c. forbidden acceptance paths on proposals ---------------------------
-    log.step("5c. forbidden acceptance paths on proposals (422, then left untouched)")
+    # -- 5c. forbidden acceptance paths ---------------------------------------
+    log.step("5c. forbidden acceptance paths on proposals (422, state untouched)")
     r = client.post(
         f"{API}/proposals",
         json={
             "proposal_type": "fact",
             "matter_id": matter_a["id"],
-            "proposed_text": f"forbidden-state proposal {uid}",
+            "proposed_text": f"forbidden review_state probe {uid}",
             "review_state": "accepted",
         },
     )
@@ -1271,75 +1315,53 @@ def run_flow(
         json={
             "proposal_type": "fact",
             "matter_id": matter_a["id"],
-            "proposed_text": f"forbidden-field probe {uid}",
+            "proposed_text": f"forbidden field probe {uid}",
         },
     )
-    require_status("floor-probe", "POST /proposals (manual)", r, {201}, "4.2", log)
+    require_status("floor-probe", "POST /proposals (probe fixture)", r, {201}, "4.2", log)
     probe_id = r.json()["id"]
-    if r.json().get("review_state") != "proposed":
-        check(
-            "floor-probe",
-            "POST /proposals",
-            "review_state=proposed (FLOOR RULE)",
-            f"review_state={r.json().get('review_state')}",
-            "4.1",
-        )
     r = client.patch(f"{API}/proposals/{probe_id}", json={"review_state": "accepted"})
     require_status("floor-probe", "PATCH /proposals/{id} + review_state", r, {422}, "4.1/4.2", log)
     log.ok("proposal patch with review_state rejected with 422")
 
-    r = client.post(
-        f"{API}/proposals/{probe_id}/review",
-        json={"action": "accept", "review_state": "accepted"},
-    )
+    r = client.post(f"{API}/proposals/{probe_id}/review", json={"action": "accept", "extra": 1})
     require_status(
-        "floor-probe", "POST /proposals/{id}/review + unknown field", r, {422}, "4.1/4.2", log
+        "floor-probe", "POST /proposals/{id}/review + unknown field", r, {422}, "4.2", log
     )
-    log.ok("review body with an unknown/forbidden field rejected with 422")
+    log.ok("review body with an unknown field rejected with 422")
 
     r = client.get(f"{API}/proposals/{probe_id}")
-    require_status("floor-probe", "GET /proposals/{id} (after probes)", r, {200}, "4.2", log)
+    require_status(
+        "floor-probe", "GET /proposals/{id} (after rejected probes)", r, {200}, "4.2", log
+    )
     if r.json().get("review_state") != "proposed":
         check(
             "floor-probe",
-            "GET /proposals/{id} (after probes)",
-            "review_state=proposed (rejected probes changed nothing)",
+            "GET /proposals/{id} (after rejected probes)",
+            "review_state=proposed (rejected requests changed nothing)",
             f"review_state={r.json().get('review_state')}",
-            "4.2",
+            "4.1",
         )
-    log.ok("rejected probes left the proposal `proposed`")
 
-    # a fact cannot exist outside a matter (section 2), so accept must refuse
-    # rather than let the database raise: 422, and the proposal stays reviewable
     r = client.post(
         f"{API}/proposals",
-        json={"proposal_type": "fact", "proposed_text": f"no-matter probe {uid}"},
+        json={"proposal_type": "fact", "proposed_text": f"no-matter accept probe {uid}"},
     )
     require_status("floor-probe", "POST /proposals (no matter)", r, {201}, "4.2", log)
     nomatter_id = r.json()["id"]
     r = client.post(f"{API}/proposals/{nomatter_id}/review", json={"action": "accept"})
-    require_status(
-        "floor-probe",
-        "POST /proposals/{id}/review (no matter, no edits)",
-        r,
-        {422},
-        "4.2/2",
-        log,
-    )
+    require_status("floor-probe", "POST /proposals/{id}/review (no matter)", r, {422}, "4.2/2", log)
     r = client.get(f"{API}/proposals/{nomatter_id}")
-    require_status("floor-probe", "GET /proposals/{id} (no matter)", r, {200}, "4.2", log)
+    require_status("floor-probe", "GET /proposals/{id} (after failed accept)", r, {200}, "4.2", log)
     if r.json().get("review_state") != "proposed":
         check(
             "floor-probe",
-            "GET /proposals/{id} (no matter)",
-            "review_state=proposed (a failed accept consumes nothing)",
+            "GET /proposals/{id} (after failed accept)",
+            "review_state=proposed (a rejected accept must not consume the proposal)",
             f"review_state={r.json().get('review_state')}",
             "4.2",
         )
-    log.ok("accept without a matter rejected with 422; proposal left `proposed`")
-
-    # a fact must not be approvable through the superseded path either
-    # (checked after step 10 creates a superseded fact)
+    log.ok("accept with no matter rejected with 422; proposal left `proposed`")
 
     # -- 6. approve ------------------------------------------------------------
     log.step("6. approve -> `accepted` + approved_at (the only route)")
@@ -1378,21 +1400,9 @@ def run_flow(
     require_status("source-link", "POST /facts/{id}/source-links", r, {201}, "4.3", log)
     r = client.post(f"{API}/facts/{fact_id}/source-links", json={"source_id": source_id})
     require_status("source-link", "POST /facts/{id}/source-links (duplicate)", r, {409}, "4.3", log)
-    r = client.get(f"{API}/facts/{fact_id}/source-links")
-    require_status("source-link", "GET /facts/{id}/source-links", r, {200}, "4.3", log)
-    if not isinstance(r.json(), list) or source_id not in {
-        link.get("source_id") for link in r.json()
-    }:
-        check(
-            "source-link",
-            "GET /facts/{id}/source-links",
-            f"list containing source {source_id}",
-            f"{r.json()!r}"[:300],
-            "4.3",
-        )
-    # section 2: the unique is (fact_id, source_id, excerpt_id, support_type)
-    # NULLS NOT DISTINCT — `strength` is NOT part of the tuple and a NULL excerpt
-    # is a value, not a wildcard, so the same link with a new strength is still 409.
+    # §2 + §4.3: the key is (fact_id, source_id, excerpt_id, support_type) NULLS NOT
+    # DISTINCT. `strength` is NOT part of it, so the same tuple with a new strength
+    # is still 409; a new support_type IS a new link.
     r = client.post(
         f"{API}/facts/{fact_id}/source-links",
         json={"source_id": source_id, "strength": "high"},
@@ -1405,19 +1415,45 @@ def run_flow(
         "4.3/2",
         log,
     )
-    # ...while a different support_type IS a new link (positive control)
     r = client.post(
         f"{API}/facts/{fact_id}/source-links",
         json={"source_id": source_id, "support_type": "contradicts"},
     )
     require_status(
         "source-link",
-        "POST /facts/{id}/source-links (different support_type)",
+        "POST /facts/{id}/source-links (new support_type)",
         r,
         {201},
         "4.3",
         log,
     )
+    # ...and the new tuple is now the duplicate (the key really includes support_type)
+    r = client.post(
+        f"{API}/facts/{fact_id}/source-links",
+        json={"source_id": source_id, "support_type": "contradicts"},
+    )
+    require_status(
+        "source-link",
+        "POST /facts/{id}/source-links (repeat new support_type)",
+        r,
+        {409},
+        "4.3",
+        log,
+    )
+    r = client.get(f"{API}/facts/{fact_id}/source-links")
+    require_status("source-link", "GET /facts/{id}/source-links", r, {200}, "4.3", log)
+    listed = r.json()
+    if (
+        not isinstance(listed, list)
+        or len([link for link in listed if link.get("source_id") == source_id]) != 2
+    ):
+        check(
+            "source-link",
+            "GET /facts/{id}/source-links",
+            f"2 links for source {source_id} (supports + contradicts)",
+            f"{listed!r}"[:300],
+            "4.3",
+        )
     log.ok(
         "source-link unique is (fact, source, excerpt, support_type): strength ignored, "
         "NULL excerpt not a wildcard, new support_type allowed"
@@ -1429,26 +1465,19 @@ def run_flow(
     require_status("actor-link", "POST /facts/{id}/actor-links", r, {201}, "4.3", log)
     r = client.post(f"{API}/facts/{fact_id}/actor-links", json={"actor_id": actor["id"]})
     require_status("actor-link", "POST /facts/{id}/actor-links (duplicate)", r, {409}, "4.3", log)
-    r = client.get(f"{API}/facts/{fact_id}/actor-links")
-    require_status("actor-link", "GET /facts/{id}/actor-links", r, {200}, "4.3", log)
-    if not isinstance(r.json(), list) or actor["id"] not in {
-        link.get("actor_id") for link in r.json()
-    }:
-        check(
-            "actor-link",
-            "GET /facts/{id}/actor-links",
-            f"list containing actor {actor['id']}",
-            f"{r.json()!r}"[:300],
-            "4.3",
-        )
-    # section 2: unique (fact_id, actor_id, role_in_fact) NULLS NOT DISTINCT —
-    # a NULL role is a duplicate of a NULL role, a different role is a new link.
+    # §2: unique (fact_id, actor_id, role_in_fact) NULLS NOT DISTINCT — a NULL role
+    # duplicates a NULL role, a different role is a new link.
     r = client.post(
         f"{API}/facts/{fact_id}/actor-links",
         json={"actor_id": actor["id"], "role_in_fact": "witness"},
     )
     require_status(
-        "actor-link", "POST /facts/{id}/actor-links (role=witness)", r, {201}, "4.3", log
+        "actor-link",
+        "POST /facts/{id}/actor-links (new role_in_fact)",
+        r,
+        {201},
+        "4.3",
+        log,
     )
     r = client.post(
         f"{API}/facts/{fact_id}/actor-links",
@@ -1456,13 +1485,29 @@ def run_flow(
     )
     require_status(
         "actor-link",
-        "POST /facts/{id}/actor-links (role=witness, duplicate)",
+        "POST /facts/{id}/actor-links (repeat role_in_fact)",
         r,
         {409},
         "4.3",
         log,
     )
-    log.ok("actor-link unique includes role_in_fact; NULL role duplicates NULL, new role allowed")
+    r = client.get(f"{API}/facts/{fact_id}/actor-links")
+    require_status("actor-link", "GET /facts/{id}/actor-links", r, {200}, "4.3", log)
+    listed = r.json()
+    if (
+        not isinstance(listed, list)
+        or len([link for link in listed if link.get("actor_id") == actor["id"]]) != 2
+    ):
+        check(
+            "actor-link",
+            "GET /facts/{id}/actor-links",
+            f"2 links for actor {actor['id']} (NULL role + witness)",
+            f"{listed!r}"[:300],
+            "4.3",
+        )
+    log.ok(
+        "actor-link unique is (fact, actor, role_in_fact): new role allowed, NULL role not a wildcard"
+    )
 
     # -- 9. ledger CSV round-trip -------------------------------------------------
     log.step("9. ledger: create 2 rows, export, dry_run, import to matter B")

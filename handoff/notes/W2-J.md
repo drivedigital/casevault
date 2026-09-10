@@ -3,11 +3,19 @@
 Contract: `docs/contracts/wave2_intake_core.md` v1.0 (frozen)
 Branch: `arena/01a089cd-casevault` · PR #3
 **Status:** integrator findings 1–5 addressed; **full merged-tip proof done** on
-the current integration tip `908e96f` (W2-G merged at `4d13527`, head `93656db`).
-Inline generation is green in the gate; the **queued generation path has one open
-deviation against W2-G** (worker cannot import `app`; the job swallows the error
-and RQ still reports success) — reported below, minimal change identified, no
-feature code touched in this PR.
+the integration tip `908e96f` (W2-G merged at `4d13527`, head `93656db`) **plus a
+hardened layer** (cap, bulk partial success, forbidden acceptance paths, link
+uniqueness) rehearsed against the real G code. Inline generation is green; the
+**queued generation path has one open deviation against W2-G** (worker cannot
+import `app`; the job swallows the error and RQ still reports success) — reported
+below, minimal change identified, no feature code touched in this PR.
+
+> ⚠️ **Do not merge PR #3 before the rebase.** The branch head still sits on the
+> pre-W2-G base (`afef55be`), so GitHub's diff shows deletions of already-merged
+> W2-E/F/H work. It also still carries the other agent's WS-A note, which is not
+> part of this workstream. Rebase onto the post-G merge tip is deliberately
+> deferred to the integrator's merge signal; the J write set itself is stable
+> (verified by replaying it on top of the merged tree).
 
 ## What changed
 
@@ -111,6 +119,47 @@ $ bash scripts/verify_all.sh --no-web          # on the rehearsal tree
 ==> ruff                     All checks passed!
 GATE GREEN — python, migrations, lint and web all pass.
 ```
+
+### A1. Hardened verifier rehearsed against the real W2-G code
+
+Added after the merge gate passed, then rehearsed on the same tree
+(`/tmp/w2j_pre`, G head `c174051`, fresh disposable DB):
+
+| new coverage | result against real G |
+|---|---|
+| **2b. `max_proposals` cap** (`generate max_proposals=2` on a 3-paragraph source) | `created=2 skipped=1` and exactly 2 rows stored — contracts §4.4; in queued mode this is the assertion that proves the cap actually reaches the **worker** (RQ kwargs path, G review finding 3) |
+| **5b. bulk partial success** (matter-carrying fixtures) | 1 of 2 ids ok with the failing id reported (no rollback), exactly 1 `proposed` fact created, read-back `proposed`; reject: 1 of 2 ok, `created_facts` empty, rejected state committed |
+| **5b note. matter-less generator output** | `ok=false` "Facts require a matter…" — **not failed**, this is contract tension 4.4+4.2+2 below |
+| **5c. forbidden acceptance paths** | `review_state` on POST/PATCH 422, unknown review-body field 422, accept with no matter 422 and the proposal left `proposed` |
+| **7. source-link uniqueness** | same tuple + different `strength` → 409 (strength not in the key), new `support_type` → 201, repeat → 409, list shows 2 links; §4.3/§2 |
+| **8. actor-link uniqueness** | NULL role duplicates NULL → 409, `role_in_fact=witness` → 201, repeat → 409, list shows 2 links |
+
+```
+$ TEST_DATABASE_URL=<disposable> INTAKE_REQUIRE=1 python scripts/intake_smoke.py --require-intake
+STEP: 2b. POST /proposals/generate with max_proposals=2 (cap honored in this shape)
+  PASS: inline cap run: created=2 skipped=1
+STEP: 5b. bulk review is partial-success and never approves
+  PASS: bulk accept: 1 of 2 ids ok, fact <id> created `proposed` (failing id: 'Proposal already reviewed (accepted)…')
+  PASS: bulk reject: 1 of 2 ids ok, no facts created, good id committed
+  NOTE: bulk accept of a matter-less generated proposal cannot commit: 'Facts require a matter…'
+STEP: 5c. forbidden acceptance paths on proposals (422, state untouched)   → all PASS
+STEP: 7/8. link uniqueness …                                              → both PASS
+SMOKE GREEN — all intake steps passed; deviations: none
+  PASS: cleaned up 24 synthetic row(s) created by this run
+
+$ pytest tests/integration/test_intake_e2e_guards.py -q          → 20 passed
+$ INTAKE_REQUIRE=1 pytest tests/integration/test_intake_e2e.py   → 1 passed
+$ bash scripts/verify_all.sh --no-web                            → 93 passed, ruff clean, GATE GREEN
+leftovers afterwards: matters=0 sources=0 proposals=0 facts=0 source_links=0 actor_links=0
+```
+
+**Lesson recorded for the next agent:** the first rehearsal of step 7 reported a
+false deviation (`new support_type → 409`) because the patch had left *two* copies
+of the probe in the file, so the second copy replayed a now-duplicate tuple. The
+verifier's own bugs surface exactly like product deviations do — when a new probe
+fails, isolate it below the flow (four raw requests against a fresh schema) before
+reporting it, and dedupe after every patch. Product-side, the isolated probe
+confirmed G is contract-correct here.
 
 ### B. Fail-closed matrix (exact commands, exit codes)
 
