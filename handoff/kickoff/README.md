@@ -20,8 +20,8 @@ as-shipped contract. This folder now assigns **Wave 2**.
 | `WS-D` (archived brief) | independent evidence E2E | `01a089cf` / PR #10 | Verification delivered at `de18118`; **rerun against recovery merge `5da141c`**. Old PR #6 closed. |
 | `WS-B` → WS-C recovery | evidence UI recovery | `01a089ce` / PR #11 | ✅ **merged** (`5da141c`, full gate 34 tests); old storage PR #8 closed, refactor deferred. UI follow-ups assigned separately. |
 | `WS-A` (archived brief) | sources core | `01a089cd`, note `afef55b` | Retired scope; sources core already integrated. No second migration `0003`. |
-| `W2-G.md` | intake API (proposals, facts, links, generation) | `01a089cc` / PR #9 | **Changes requested** at `c82e5e6`: four review blockers in WORKLOG; agent fixing. Candidate gate 66 tests passed but merge aborted. |
-| `W2-J.md` | intake E2E verification + CI | `01a089cd` / PR #3 | Active at `4b21d62`; final proof waits for corrected G merge. J-only diff required. |
+| `W2-G.md` | intake API (proposals, facts, links, generation) | `01a089cc` / PR #9 | ✅ **merged** (`4d13527`, head `93656db`); all four findings and RQ follow-up resolved, full gate 72 tests. |
+| `W2-J.md` | intake E2E verification + CI | `01a089cd` / PR #3 | **Unblocked for merged-tip proof** at `4d13527`; address preflight findings, rebase J-only diff, run full verification. |
 
 Wave 1's briefs (`WS-A..WS-D.md`) are archived under `handoff/notes/archive/wave1/`;
 three of them were picked up after the fact — see the stop/rework rows above.
@@ -32,7 +32,7 @@ three of them were picked up after the fact — see the stop/rework rows above.
 |---|---|---|---|---|
 | `W2-E.md` | **spine** | migration `0004` + models + router stubs | now | **1st (critical path)** |
 | `W2-F.md` | ledger API | CRUD, filters, CSV import/export, bulk | after E | 2nd |
-| `W2-G.md` | intake API (proposals, facts, links, generation) | `01a089cc` / PR #9 | **Changes requested** at `c82e5e6`: four review blockers in WORKLOG; agent fixing. Candidate gate 66 tests passed but merge aborted. |
+| `W2-G.md` | intake API (proposals, facts, links, generation) | `01a089cc` / PR #9 | ✅ **merged** (`4d13527`, head `93656db`); all four findings and RQ follow-up resolved, full gate 72 tests. |
 | `W2-H.md` | ledger UI | `/ledger` table, filters, CSV dialogs, bulk | now (contract-only) | 2nd |
 | `W2-I.md` | inbox UI | `/ai-review` queue + accepted-facts tab | now (contract-only) | 2nd |
 | `W2-J.md` | verification | e2e smoke script + integration test + CI job | after E, F, G | 3rd |

@@ -599,3 +599,25 @@ W2-G remains blocked on review fixes; W2-J advanced to `4b21d62` and is active.
 - Evidence recovery is still integrated at `5da141c`; WS-D and UI owner have
   their follow-up instructions. No new commits from those branches observed
   in this fetch. No verification sign-off or new feature wave authorized.
+
+## 2026-09-10 — W2-G approved and integrated
+
+Reviewed `93656db` (PR #9): uses RQ's supported explicit args/kwargs form.
+Replacement regression test drives real Queue.enqueue/parse_args, stubbing
+only the connection-touching boundary, and covers supplied/omitted caps.
+This closes the remaining RQ follow-up; the original four review findings
+are addressed by this commit plus `c174051`.
+
+Merged as `4d13527` with no conflicts, including the previously recovered
+Evidence UI. Full gate passed independently on candidate AND committed
+merge: 72 tests, migration upgrade/downgrade/re-upgrade through 0004, ruff,
+web lint/typecheck/build. Existing nonfatal image-performance warning and
+two upstream Python deprecations remain. No real Redis execution was proved
+by the new parser regression; end-to-end verifier remains responsible for
+that distinction. W2-J is now unblocked for final merged-tip proof, subject
+to its own outstanding preflight corrections on PR #3.
+
+Remaining G limitations are in its handoff: fact review-state notes are
+accepted but not persisted pending audit storage; generation queued results
+report created/skipped as zero (not completed counts). These are not claims
+of complete audit support or completed asynchronous execution.

@@ -94,3 +94,12 @@ Current defects and limitations, newest first. Triage per Roadmap §9
 - No explicit original-file download control for all file types.
 - List/link/unlink error presentation and OCR refresh after reprocess need UI
   follow-up. Assigned to recovery owner via PR #11; not backend scope.
+
+### Intake API after W2-G integration (2026-09-10)
+- Four integrator review blockers and the subsequent RQ argument-syntax bug
+  are resolved in merge `4d13527`; full gate passes 72 tests.
+- Fact review-state `notes` currently validate but are not persisted (no audit
+  column/table in this wave). Do not rely on this field as a durable review
+  record; audit storage remains deferred.
+- Queued proposal-generation `created/skipped=0` are placeholders, not final
+  job results. Real Redis worker E2E proof remains pending verification.
