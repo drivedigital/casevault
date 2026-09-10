@@ -8,20 +8,23 @@ as-shipped contract. This folder now assigns **Wave 2**.
 `docs/contracts/wave2_intake_core.md` **v1.0 (frozen)** (the interfaces) ·
 `handoff/PARALLEL_PLAN.md` §4a (the plan).
 
-## Live status (updated 2026-09-10, 05:45 UTC)
+## Live status (updated 2026-09-10, 05:5x UTC)
 
-| Brief | Workstream | Session | Status |
+| Brief | Workstream | Session / PR | Status |
 |---|---|---|---|
-| `W2-EV.md` | evidence follow-ups | `arena/01a089cb-casevault` | ✅ **merged** (`d235998`, gate green, 21 tests) |
-| `W2-E.md` | **spine: migration `0004` + models + stubs** | — | ⛔ **unstarted — critical path; F/G/J are blocked** |
-| `W2-F.md` | ledger API | — | ⏸ waiting on E |
-| `W2-G.md` | intake API | — | ⏸ waiting on E |
-| `W2-H.md` | ledger UI | — | ▶ ready to start (contract-only) |
-| `W2-I.md` | inbox UI | — | ▶ ready to start (contract-only) |
-| `W2-J.md` | verification | — | ⏸ waiting on E, F, G |
+| `W2-E.md` | spine: migration `0004` + models + stubs | `01a089c9` / PR #4 | ✅ **merged** (`f0aa9e2`, gate green, 29 tests) |
+| `W2-F.md` | ledger API + CSV | `01a089cb` / PR #7 | ✅ **merged** (`4ce4555`, gate green, 34 tests) |
+| `W2-H.md` | `/ledger` UI | `01a089cc` / PR #2 | ✅ **merged** (`e62daae`) |
+| `W2-I.md` | `/ai-review` UI | `01a089cd` / PR #3 | ✅ **merged** (`0ba7a0c`, cherry-picked; shared-file union resolution) |
+| `W2-EV.md` | evidence follow-ups | `01a089cb` / PR #1 | ✅ **merged** (`c7842bb`) |
+| `WS-D` (archived brief) | independent e2e verification | `01a08429` / PR #6 | ⏸ **parked by integrator** — its smoke asserts `/sources/{id}/reprocess` returns **404**, but W2-EV has since shipped that endpoint (202). Rebase onto the tip, assert the shipped 202 `{queued, job_id, reason}` shape, keep the filter-parity deviations, re-run → then merge. Its `GITHUB_TOKEN` gitleaks fix is wanted and lands with it. |
+| `WS-B` (archived brief) | "Sprint 3 storage service + pipeline" | `01a089ce` / PR #8 (+#5) | ⛔ **do not merge as-is** — duplicates what already shipped: a second storage implementation (`app/integrations/storage`) beside `app/services/storage.py`, and `workers/pipeline/source_jobs.py` with `ingest_source`/`ocr_source` that W2-EV already added to `workers/pipeline/jobs.py`. Either close it, or rework into the *refactor* the backlog asks for (make the shipped `LocalStorage` the local implementation of the ABC seam, rewire imports, reuse the existing jobs, keep the contract tests). |
+| `WS-A` (archived brief) | "sources core — migration 0003 + sources API" | — | 🛑 **stop** — Sprint 3 already shipped migration `0003` and the sources API (merged 2026-09-10). A second `0003` would collide with the existing revision and break the migration chain. Reassign that session. |
+| `W2-G.md` | intake API (proposals, facts, links, generation) | — | ▶ **unblocked** (E merged) — proceed; it is the last blocker for W2-J |
+| `W2-J.md` | intake e2e verification + CI job | `01a089cd` commit `4d2c16d` | ⏸ parked by integrator (depends on W2-G). Rebase onto the tip, open a **J-only** PR once G is merged |
 
-Wave 1's briefs (`WS-A..WS-D.md`) are archived under `handoff/notes/archive/wave1/` —
-they were never used (Sprint 3 shipped single-handedly) and must not be spawned.
+Wave 1's briefs (`WS-A..WS-D.md`) are archived under `handoff/notes/archive/wave1/`;
+three of them were picked up after the fact — see the stop/rework rows above.
 
 ## Wave 2 roster (reference)
 

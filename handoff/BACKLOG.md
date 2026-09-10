@@ -90,15 +90,21 @@ rollback depth, polymorphic comment FKs, confidence/strength enum split).
 
 ## Wave 2 — intake core (Sprints 4 + 5, in progress from 2026-09-10)
 
-- [ ] W2-E spine: migration `0004` + models + router stubs (**critical path, unstarted**)
-- [ ] W2-F ledger API (CRUD, filters, CSV import/export, bulk ops)
+- [x] W2-E spine: migration `0004` + models + router stubs — merged `f0aa9e2`
+- [x] W2-F ledger API (CRUD, filters, CSV import/export, bulk ops) — merged `4ce4555`
 - [ ] W2-G intake API (proposal review, trusted facts, links, generation job)
-- [ ] W2-H `/ledger` UI (+ nav entry)
-- [ ] W2-I `/ai-review` inbox + accepted-facts tab
-- [ ] W2-J end-to-end verification + CI intake job
+- [x] W2-H `/ledger` UI (+ nav entry) — merged `e62daae`
+- [x] W2-I `/ai-review` inbox + accepted-facts tab — merged `0ba7a0c` (UI wired to W2-G endpoints once they land)
+- [ ] W2-J end-to-end verification + CI intake job — commit parked on `01a089cd`; rebase after W2-G
 - [x] W2-EV evidence follow-ups (excerpts API, per-source reprocess) — merged 2026-09-10
-- [ ] W2 integration by the integrator: merge order E → F → G → J, gate after
-      each merge, contract/backlog/handoff consolidation
+- [x] W2 integration so far: E → F → H → I merged, gate re-run after each
+- [ ] W2-G intake API — the wave's last functional workstream
+- [ ] WS-D verification rebase (stale reprocess assertion) → merge, taking its
+      gitleaks `GITHUB_TOKEN` CI fix with it
+- [ ] WS-B disposition: close, or rework into the storage-interface refactor
+      (no second storage implementation, no duplicate job names)
+- [ ] `GET /sources` filter parity (source_status, ocr_status, included,
+      excluded) — the deviation WS-D's smoke still documents
 - [ ] After W2: scheduler for `verification_task` proposals, ledger→claims
       linking, pagination for `GET /sources`
 

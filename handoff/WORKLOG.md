@@ -5,6 +5,51 @@ Fields: Date / Branch / What changed / Why / Files affected / What needs local t
 
 ---
 
+## 2026-09-10 — Integrator: Wave 2 spine integrated (E, F, H, I) + two parked PRs
+
+**Branch:** `arena/01a0899f-casevault`
+
+### Merged this turn (gate re-run after each)
+| PR | Workstream | Merge | Tests after |
+|---|---|---|---|
+| #4 | W2-E — migration 0004 + models + router stubs | `f0aa9e2` | 29 |
+| #7 | W2-F — ledger API, CSV import/export, bulk | `4ce4555` | 34 |
+| #2 | W2-H — `/ledger` UI + nav entry | `e62daae` | 34 |
+| #3 | W2-I — `/ai-review` inbox + facts tab | `0ba7a0c` | 34 |
+
+- **Conflicts resolved:** `routers/ledger.py` add/add (took W2-F's implementation
+  over W2-E's stub); `lib/api.ts` + `lib/types.ts` append-only collisions between
+  W2-H and W2-I — rebuilt from each commit's own contents (W2-I's object methods
+  + W2-H's top-level section in api.ts; H section + I section in types.ts) after
+  a mechanical line-union produced dangling members; the duplicated
+  `StrengthLabel` / `STRENGTH_LABELS` declarations were collapsed to one shared
+  pair. `tsc`, lint and `next build` clean (`/ledger` and `/ai-review` route).
+- W2-I was cherry-picked alone: its branch also carried the W2-J verification
+  commit, which cannot land before W2-G (one workstream per PR, AGENT_POLICY §1).
+
+### Parked, with reasons
+- **WS-D (PR #6) — stale assertion, not a bug.** Its smoke asserts
+  `POST /sources/{id}/reprocess` returns 404 ("shipped path = worker"); W2-EV
+  has since shipped that endpoint per contract §6 (202 `{queued, job_id,
+  reason}`), so the check now fails 35/36 on the merged tree. Reproduced the
+  36/36 pass on the WS-D branch itself to confirm the cause. Rebase + assert the
+  shipped shape, then merge — its `GITHUB_TOKEN` fix for the gitleaks step is
+  genuinely wanted (that env block was documented in 631b85a but never landed).
+- **WS-B (PR #8/#5) — duplicate work.** Builds a second storage implementation
+  (`app/integrations/storage/…`) beside the shipped `app/services/storage.py`,
+  plus `source_jobs.py` re-declaring `ingest_source`/`ocr_source` that W2-EV put
+  in `workers/pipeline/jobs.py`. Rework into the storage-interface refactor on
+  the backlog, or close; do not merge as-is.
+- **WS-A — stopped.** It targets migration `0003` + the sources API, both
+  shipped and merged today; a second `0003` would break the revision chain.
+
+### Still open
+- **W2-G (intake API)** is the last functional workstream and now unblocked —
+  it also gates the parked W2-J verification commit.
+- `GET /sources` filter parity remains a documented deviation.
+
+---
+
 ## 2026-09-10 — Integrator: W2-EV merged (evidence follow-ups)
 
 **Branch:** `arena/01a0899f-casevault` (fast-forward merge of `d235998`)
