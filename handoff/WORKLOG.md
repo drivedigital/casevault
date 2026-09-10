@@ -772,3 +772,14 @@ rebase. YAML parsed; assertions confirm python/web/intake jobs unchanged,
 read-only job scope, scanner intact; git diff --check passes. Product gate
 not rerun for this workflow-only repair. PR-event verification must run on
 WS-D's rebased head before claiming the secrets check is green.
+
+## 2026-09-10 — local crash logs reviewed
+
+Fetched dev-logs `79ca457`; both error reports share Objective-C fork-child
+abort during libpq Kerberos/GSS credential discovery on ARM macOS/Python 3.14.
+Recorded platform-specific issue and scoped local diagnostic in KNOWN_ISSUES.
+No raw machine identifiers/logs copied into integration. Commands/tested SHA
+still needed. Worker-owner follow-up: spawn-safe Darwin worker selection,
+version-compatible dependency plan, normal Linux worker behavior preserved,
+no blanket fork-safety or transport-security disable. User local reproduction
+required; this Linux sandbox cannot validate native macOS fix.

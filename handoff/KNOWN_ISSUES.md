@@ -126,3 +126,29 @@ WS-D's unexplained secrets CI failure and the incomplete evidence UI follow-up.
 PR commits, requiring `pull_requests=read`; Node warnings are unrelated. A
 secrets-job-only read permission and automatic-token fix is now committed.
 WS-D must rebase and rerun PR-event CI to verify; scanner result still pending.
+
+### Local macOS native worker crash — reported 2026-09-10
+
+Evidence: dev-logs commit `79ca457`, py_error.txt and ocr-error.txt. Both reports
+show ARM macOS + Homebrew Python 3.14.7, SIGABRT, termination namespace OBJC,
+"crashed on child side of fork pre-exec". Native stack: psycopg -> libpq
+PQconnectdb -> pg_GSS_have_cred_cache -> Kerberos/Heimdal -> CoreFoundation ->
+Objective-C fork-child initialization abort. The common failure is DB connection
+GSS credential probing in a forked child, not an OCR extraction traceback.
+Exact launching commands and tested SHA were not included, so attribution to
+the normal RQ worker is strongly consistent with its default fork model but
+not yet confirmed by command-level reproduction. Linux gate does not prove
+macOS compatibility; Python 3.14 is not the CI-tested Python 3.12 environment.
+
+Local diagnostic only, for a disposable local password-authenticated Postgres
+that does NOT require Kerberos/GSS encryption: run the same worker command with
+PGGSSENCMODE=disable scoped to that invocation. This disables GSS encryption
+negotiation, not TLS; do not use on deployments requiring GSS and do not change
+sslmode. Confirm whether connection URLs override gssencmode. Do not globally
+disable Objective-C fork safety (OBJC_DISABLE_INITIALIZE_FORK_SAFETY).
+
+Durable fix candidate assigned to worker owner: Darwin-safe process model
+(e.g. RQ SpawnWorker on a supported RQ version), Linux default unchanged,
+startup import fix preserved, dependency-version compatibility explicit.
+Fresh-process tests plus actual Mac local-tester proof required before closure.
+No native macOS reproduction or confirmed workaround success in this sandbox.
