@@ -159,6 +159,32 @@ fails, isolate it below the flow (four raw requests against a fresh schema) befo
 reporting it, and dedupe after every patch. Product-side, the isolated probe
 confirmed G is contract-correct here.
 
+### A2. Queued mode with the hardened probes (cap through the RQ kwargs path)
+
+Same real Redis + real worker setup as §G, running the repo tree (merged tip):
+
+```
+$ REDIS_URL=<real redis> TEST_DATABASE_URL=<disposable> INTAKE_REQUIRE=1 \
+    python scripts/intake_smoke.py --require-intake
+  NOTE: generation ENQUEUED (queued=true job_id=d767eb3f-…): created/skipped are placeholders…
+  PASS: queued job produced 3 proposals in 2.1s
+  PASS: re-run job finished with no new proposals (idempotent, 1.5s, 2 jobs)
+STEP: 2b. POST /proposals/generate with max_proposals=2 (cap honored in this shape)
+  PASS: queued cap job: created=2 skipped=1 in 2.0s
+  PASS: cleaned up 24 synthetic row(s) created by this run
+SMOKE GREEN — all intake steps passed; deviations: none
+generation mode: queued (jobs=[d767eb3f…, 355da3c5…]; waits=[2.1, 1.5, 2.0])
+
+# RQ registry (third job is the cap probe):
+d767eb3f FINISHED {'status': 'complete', 'created': 3, 'skipped': 0}  args/kwargs: (source, ws) {'max_proposals': 10}
+355da3c5 FINISHED {'status': 'complete', 'created': 0, 'skipped': 3}  args/kwargs: (source, ws) {'max_proposals': 10}
+bdecc477 FINISHED {'status': 'complete', 'created': 2, 'skipped': 1}  args/kwargs: (source, ws) {'max_proposals': 2}
+```
+
+The third job's `kwargs={'max_proposals': 2}` and `created=2 skipped=1` are the
+end-to-end proof that the cap travels with the RQ job (the G review's third
+finding) — a regression to the default would show 3 created here.
+
 ### B. Fail-closed matrix (exact commands, exit codes)
 
 | case | command | result |
