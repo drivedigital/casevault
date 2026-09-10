@@ -3,7 +3,7 @@
 Contract: `docs/contracts/evidence_ui_closure.md` v1.0 (§EU-L)
 Branch: `arena/01a08ce1-casevault` (this session's assigned branch)
 Base SHA: `ab0ee23e8859e0a8a031e065c2537f10db005957` (integration tip, per session setup)
-Final SHA: see "Proof" below (filled at commit; also in the PR)
+Final SHA: `6dc932c93595ffd7ab3fd628cb445c35bad897a1` (single commit on top of base)
 
 ## What changed
 
