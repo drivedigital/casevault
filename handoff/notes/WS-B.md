@@ -3,7 +3,18 @@
 Contract: `docs/contracts/sprint3_evidence.md` — header says **v1.0, superseded
 2026-09-10** (as-shipped delta); implemented the frozen **§4–§5 interfaces as
 written**. Session branch `arena/01a089ce-casevault`, based on the integration
-tip `adcb1b8` (= `FETCH_HEAD` of `arena/01a0899f-casevault`).
+tip `adcb1b8` (= `FETCH_HEAD` of `arena/01a0899f-casevault`), then rebased onto
+the current tip `c7842bb` (W2-EV merge) before the PR — rebake clean, gate
+re-run green (69 tests).
+
+**Branch history note for the integrator:** this session branch previously
+carried `d22993c` ("WS-C: evidence repository UI", open as PR #5). Per the
+mandatory step-0 in `handoff/kickoff/README.md` (reset the session branch to
+the integration tip, force-push with lease), the branch was reset before the
+WS-B commits landed, so PR #5's head is now this WS-B work. The WS-C commit is
+preserved at **`d22993ca48a116f8b4674fed6c4db3d173a77171`** — cherry-pick it to
+restore/review the evidence UI. One workstream = one branch = one PR (§2) could
+not hold here; flagging instead of hiding it.
 
 ## What changed
 
