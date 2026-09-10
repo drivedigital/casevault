@@ -133,6 +133,12 @@ def _validate_refs(
             raise HTTPException(status_code=404, detail="Excerpt not found.")
         if source_id is not None and excerpt.source_id != source_id:
             raise HTTPException(status_code=422, detail="Excerpt belongs to a different source.")
+        # ownership always resolves through the excerpt's own source — the
+        # excerpt-only case (no source_id) must not accept a foreign
+        # workspace's row (integrator review 9a55aee, finding 1)
+        owner = db.get(Source, excerpt.source_id)
+        if owner is None or owner.workspace_id != workspace_id:
+            raise HTTPException(status_code=404, detail="Excerpt not found.")
 
 
 def list_proposals(
@@ -330,6 +336,18 @@ def bulk_review(
     return results, created
 
 
+def _inline_database_url(db: Session) -> str:
+    """Connection URL for the inline job run.
+
+    ``str(URL)`` masks the password as ``***``, which hands the job an invalid
+    DSN on password-authenticated deployments (integrator review 9a55aee,
+    finding 2) — render with ``hide_password=False``. The result stays
+    internal to the job call: it is never logged and never serialized into a
+    response.
+    """
+    return db.get_bind().url.render_as_string(hide_password=False)
+
+
 def generate(
     db: Session, workspace_id: uuid.UUID, payload: ProposalGenerateRequest
 ) -> ProposalGenerateResult:
@@ -339,7 +357,11 @@ def generate(
     if source is None or source.workspace_id != workspace_id:
         raise HTTPException(status_code=404, detail="Source not found.")
     jobs = _intake_jobs()
-    enqueue = jobs.enqueue_proposal_generation(str(source.id), str(workspace_id))
+    # the cap must reach the worker too — a queued run that silently falls
+    # back to the default 50 breaks the client's contract (finding 3)
+    enqueue = jobs.enqueue_proposal_generation(
+        str(source.id), str(workspace_id), payload.max_proposals
+    )
     if enqueue.get("queued"):
         return ProposalGenerateResult(
             created=0, skipped=0, queued=True, job_id=enqueue.get("job_id")
@@ -348,7 +370,7 @@ def generate(
         str(source.id),
         str(workspace_id),
         max_proposals=payload.max_proposals,
-        database_url=str(db.get_bind().url),
+        database_url=_inline_database_url(db),
     )
     return ProposalGenerateResult(
         created=result.get("created", 0),

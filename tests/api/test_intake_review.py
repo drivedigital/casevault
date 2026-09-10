@@ -380,6 +380,167 @@ def test_generate_unknown_source_404(client):
     assert resp.status_code == 404
 
 
+def test_cross_workspace_excerpt_cannot_be_attached(client, db, matter):
+    """Integrator review 9a55aee finding 1: the excerpt-only create path must
+    validate the excerpt's owning source/workspace, not just the row."""
+    from sqlalchemy import select
+
+    from app.models.identity import User
+    from app.models.source import SourceExcerpt
+    from app.models.workspace import Workspace
+    from app.services import identity_service
+
+    user = db.scalar(select(User).where(User.email == identity_service.LOCAL_OWNER_EMAIL))
+    assert user is not None
+    ws2 = Workspace(name="Foreign Workspace", created_by_user_id=user.id)
+    db.add(ws2)
+    db.commit()
+
+    # a real source + excerpt, but owned by workspace 2
+    resp = client.post(
+        f"/api/v1/sources?workspace_id={ws2.id}",
+        files={"file": ("foreign.txt", b"Foreign workspace content, long enough to ingest here.", "text/plain")},
+    )
+    assert resp.status_code == 201
+    src2 = resp.json()
+    ex2 = SourceExcerpt(source_id=src2["id"], excerpt_type="quote",
+                        excerpt_text="Foreign", page_start=1)
+    db.add(ex2)
+    db.commit()
+
+    # excerpt-only manual proposal (no source_id) → 404, nothing exposed
+    resp = client.post(
+        "/api/v1/proposals",
+        json={"proposal_type": "fact", "proposed_text": "text", "excerpt_id": str(ex2.id)},
+    )
+    assert resp.status_code == 404
+    # ...and naming the foreign source → still 404 (source itself is foreign)
+    resp = client.post(
+        "/api/v1/proposals",
+        json={"proposal_type": "fact", "proposed_text": "text", "source_id": src2["id"],
+              "excerpt_id": str(ex2.id)},
+    )
+    assert resp.status_code == 404
+
+    # same-workspace excerpt still attaches (positive path, excerpt-only)
+    own = _upload_text(client, b"Own workspace source body for the excerpt test case.")
+    db.add(SourceExcerpt(source_id=own["id"], excerpt_type="quote",
+                        excerpt_text="Own", page_start=1))
+    db.commit()
+    own_ex = db.query(SourceExcerpt).filter(SourceExcerpt.source_id == own["id"]).one()
+    ok = client.post(
+        "/api/v1/proposals",
+        json={"proposal_type": "fact", "proposed_text": "text", "excerpt_id": str(own_ex.id)},
+    )
+    assert ok.status_code == 201
+    assert ok.json()["excerpt"]["id"] == str(own_ex.id)
+
+
+def test_explicit_null_on_not_null_patch_fields_rejected(client, matter):
+    """Integrator review 9a55aee finding 4: `{"statement_text": null}` used to
+    pass validation and crash in `.strip()`; non-nullable fields are 422 while
+    nullable fields may still be cleared and omission still means no-change."""
+    f = _fact(client, matter["id"], short_label="lab", confidence_level="low")
+    for body in (
+        {"statement_text": None},
+        {"fact_type": None},
+        {"is_material": None},
+        {"statement_text": None, "short_label": "sneaks along"},
+    ):
+        resp = client.patch(f"/api/v1/facts/{f['id']}", json=body)
+        assert resp.status_code == 422, body
+        # the failed PATCH changes nothing
+        after = client.get(f"/api/v1/facts/{f['id']}").json()
+        assert after["statement_text"] == "The notice was hand-delivered."
+        assert after["review_state"] == "proposed"
+    # nullable fields: explicit null clears them; unrelated fields untouched
+    cleared = client.patch(f"/api/v1/facts/{f['id']}",
+                           json={"short_label": None, "confidence_level": None})
+    assert cleared.status_code == 200
+    assert cleared.json()["short_label"] is None and cleared.json()["confidence_level"] is None
+
+    # proposal PATCH audited the same way (proposed_structured_json is NOT NULL)
+    p = _proposal(client, matter_id=matter["id"], proposed_structured_json={"dates": ["x"]})
+    resp = client.patch(f"/api/v1/proposals/{p['id']}", json={"proposed_structured_json": None})
+    assert resp.status_code == 422
+    assert client.get(f"/api/v1/proposals/{p['id']}").json()["proposed_structured_json"] == {"dates": ["x"]}
+    # nullable proposal fields still clear with null
+    ok = client.patch(f"/api/v1/proposals/{p['id']}", json={"proposed_text": None, "title": None})
+    assert ok.status_code == 200
+    assert ok.json()["proposed_text"] is None and ok.json()["title"] is None
+
+
+def test_inline_database_url_preserves_password_without_exposing_it():
+    """Integrator review 9a55aee finding 2: str(URL) masks `***` and the inline
+    job then dials an invalid DSN. The helper must render real credentials."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from app.services import proposal_service
+
+    eng = create_engine("postgresql://cv_user:s3cr3t-pass@127.0.0.1:59999/cv_none")  # lazy
+    session = Session(bind=eng)
+    try:
+        rendered = proposal_service._inline_database_url(session)
+        assert rendered == "postgresql://cv_user:s3cr3t-pass@127.0.0.1:59999/cv_none"
+        assert "***" not in rendered
+        assert "***" in str(eng.url)  # the old behavior the fix replaces
+    finally:
+        session.close()
+
+
+def test_generate_forwards_cap_to_queued_and_inline_paths(client, monkeypatch, matter):
+    """Integrator review 9a55aee finding 3 + wiring for finding 2: the same
+    max_proposals and an unmasked connection URL must reach both the enqueue
+    helper and the inline job (queued/inline parity without redis)."""
+    import workers.pipeline.intake_jobs as ij
+
+
+    captured: dict = {}
+
+    def fake_enqueue(source_id, workspace_id, max_proposals=None):
+        captured["enqueue"] = (source_id, workspace_id, max_proposals)
+        return captured.get("enqueue_result",
+                            {"queued": False, "job_id": None, "reason": "test: no redis"})
+
+    def fake_job(source_id, workspace_id, max_proposals=50, database_url=None):
+        captured["inline"] = {"max_proposals": max_proposals, "database_url": database_url}
+        return {"job": "generate_fact_proposals", "status": "complete",
+                "created": 1, "skipped": 0, "reason": None}
+
+    monkeypatch.setattr(ij, "enqueue_proposal_generation", fake_enqueue)
+    monkeypatch.setattr(ij, "generate_fact_proposals", fake_job)
+
+    src = _upload_text(client, b"Source body for the forwarding test, comfortably long enough.")
+    resp = client.post("/api/v1/proposals/generate",
+                       json={"source_id": src["id"], "max_proposals": 7})
+    assert resp.status_code == 200
+    assert resp.json() == {"created": 1, "skipped": 0, "queued": False,
+                           "job_id": None, "reason": None}
+    assert captured["enqueue"][2] == 7
+    assert captured["inline"]["max_proposals"] == 7
+    url = captured["inline"]["database_url"]
+    assert url and "***" not in url
+    # the job receives the exact DSN the API itself is bound to
+    import os as _os
+
+    from sqlalchemy.engine import make_url
+
+    env_url = _os.environ.get("TEST_DATABASE_URL") or _os.environ.get("DATABASE_URL")
+    if env_url:
+        assert make_url(url) == make_url(env_url)
+
+    # queued path: cap forwarded, inline not run, response reports the queue
+    captured["enqueue_result"] = {"queued": True, "job_id": "rq-job-1", "reason": None}
+    captured.pop("inline")
+    resp = client.post("/api/v1/proposals/generate",
+                       json={"source_id": src["id"], "max_proposals": 2})
+    assert resp.json() == {"created": 0, "skipped": 0, "queued": True,
+                           "job_id": "rq-job-1", "reason": None}
+    assert captured["enqueue"][2] == 2
+    assert "inline" not in captured
+
+
 # --- §4.3 facts: approve, review-state, supersede ------------------------------------
 
 

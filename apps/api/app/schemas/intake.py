@@ -13,7 +13,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.enums import FactType, ProposalType, ReviewState, StrengthLabel, SupportType
 
@@ -78,7 +78,12 @@ class ProposalCreate(BaseModel):
 
 class ProposalUpdate(BaseModel):
     """PATCH /proposals/{id} — editable fields only, and only while the
-    proposal is `proposed` (enforced by the service with 409)."""
+    proposal is `proposed` (enforced by the service with 409).
+
+    Explicit null on a NOT NULL column (§2 `proposals.proposed_structured_json`)
+    is a 422, not a silent 500 at commit; nullable fields may be cleared with
+    null, and omission means no-change (integrator review 9a55aee, finding 4).
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -86,6 +91,17 @@ class ProposalUpdate(BaseModel):
     proposed_text: str | None = None
     proposed_structured_json: dict | None = None
     confidence_score: float | None = Field(default=None, ge=0, le=1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_explicit_null_on_not_null_columns(cls, data):
+        if isinstance(data, dict):
+            for field in ("proposed_structured_json",):
+                if field in data and data[field] is None:
+                    raise ValueError(
+                        f"`{field}` is not nullable; omit it instead of sending null."
+                    )
+        return data
 
 
 class ProposalOut(BaseModel):
@@ -214,7 +230,13 @@ class FactCreate(BaseModel):
 
 
 class FactUpdate(BaseModel):
-    """PATCH /facts/{id} — never touches review_state (§4.3)."""
+    """PATCH /facts/{id} — never touches review_state (§4.3).
+
+    NOT NULL columns (§2 `fact_assertions`: statement_text, fact_type,
+    is_material) reject an explicit null with 422 — otherwise `.strip()`/the
+    commit would crash (integrator review 9a55aee, finding 4). Nullable
+    columns (`short_label`, `confidence_level`) accept null to clear.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -223,6 +245,17 @@ class FactUpdate(BaseModel):
     fact_type: FactType | None = None
     confidence_level: StrengthLabel | None = None
     is_material: bool | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_explicit_null_on_not_null_columns(cls, data):
+        if isinstance(data, dict):
+            for field in ("statement_text", "fact_type", "is_material"):
+                if field in data and data[field] is None:
+                    raise ValueError(
+                        f"`{field}` is not nullable; omit it instead of sending null."
+                    )
+        return data
 
 
 class FactReviewStateChange(BaseModel):

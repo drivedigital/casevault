@@ -218,6 +218,36 @@ upstream choices)
 8. **Minor caps as schema validation** — `max_proposals` `le=50` (422 above),
    list `limit le=200` (§3 preamble), bulk `ids` 1..200.
 
+## Integrator review round (findings at WORKLOG `9a55aee`, PR #9 06:19)
+
+All four verified defects fixed in this commit; each pinned by a regression
+test that **fails against the pre-fix code** (revert-probed, output below).
+
+| # | Finding | Fix | Regression test |
+|---|---------|-----|-----------------|
+| 1 | excerpt-only proposal create skipped the excerpt's owning-source/workspace check | `proposal_service._validate_refs` now always loads `Source` for `excerpt.source_id` and 404s on missing/foreign owner (both excerpt-only and source+excerpt forms) | `test_cross_workspace_excerpt_cannot_be_attached` (real second Workspace + source uploaded into it through the EV endpoint; foreign excerpt-only → 404, foreign source+excerpt → 404, same-ws excerpt-only → 201) |
+| 2 | `str(db.get_bind().url)` masks the password as `***` → invalid DSN for inline generation on authenticated deployments | new `proposal_service._inline_database_url()` renders `hide_password=False`; used only for the internal job call, never logged, never serialized into a response | `test_inline_database_url_preserves_password_without_exposing_it` (synthetic password-bearing URL: helper keeps creds, `str()` still masks) + `test_generate_forwards_cap_to_queued_and_inline_paths` (inline `database_url` is `make_url`-equal to the API's own DSN, contains no `***`) |
+| 3 | queued generation dropped `max_proposals` (worker always used 50) | `enqueue_proposal_generation(source, ws, max_proposals=None)` forwards the cap as RQ `kwargs={"max_proposals": n}` on the `extract` queue; omitted cap → job default; service passes `payload.max_proposals` | `test_enqueue_forwards_cap_via_rq_kwargs` (fake redis/rq, captured enqueue call incl. no-kwargs form) + `test_queued_job_consumes_the_forwarded_cap` (job called with exactly the wire shape caps identically) + the API wiring test asserts queued/inline parity |
+| 4 | explicit `null` on NOT NULL PATCH fields was schema-valid then crashed (500 at `.strip()`/commit) | `FactUpdate` rejects `statement_text/fact_type/is_material` = null and `ProposalUpdate` rejects `proposed_structured_json` = null via `model_validator(mode="before")` → 422; nullable clears (`short_label`, `confidence_level`, `title`, `proposed_text`, `confidence_score`) and omission-means-no-change preserved | `test_explicit_null_on_not_null_patch_fields_rejected` (all rejection forms + no side effects after 422 + clear-on-nullable for both PATCH bodies) |
+
+Revert-probes (each fix temporarily rolled back, matching test re-run):
+`test_inline_database_url_... FAILED`, `test_cross_workspace_excerpt_... FAILED`,
+`test_generate_forwards_cap_... FAILED` — one failure each; restored → 38/38
+pass. Note the wiring test still passed under the reverted URL fix (the
+sandbox socket DSN has no password) — exactly the blind spot the synthetic
+password-bearing test now covers.
+
+Live spot-check on the rebuilt tree (uvicorn :8103, real inline run):
+null PATCH on `statement_text`/`fact_type`/`proposed_structured_json` → **422**
+with the row untouched; `short_label:null` clears (200);
+`POST /proposals/generate {max_proposals:1}` → `{"created":1,"queued":false}`
+through the real `_inline_database_url` path.
+
+Floor suite grew to **38** (tests/api/test_intake_review.py 29 +
+tests/workers/test_intake_jobs.py 9); repo-wide gate re-run at this commit:
+migrations up/down/up clean, **72 passed**, ruff clean, web
+lint/typecheck/build clean — GATE GREEN.
+
 ## Risks / follow-ups
 
 - ~~W2-F route collision~~ closed: F's routes are all under `/ledger-entries`

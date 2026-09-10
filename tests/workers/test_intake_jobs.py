@@ -191,3 +191,50 @@ def test_enqueue_reports_gracefully_without_redis(db, workspace, monkeypatch):
     assert result["queued"] is False
     assert result["job_id"] is None
     assert isinstance(result["reason"], str) and result["reason"]
+
+
+def test_enqueue_forwards_cap_via_rq_kwargs(monkeypatch):
+    """Integrator review 9a55aee finding 3: a queued run must honor the same
+    max_proposals as the inline one — the cap travels as RQ job kwargs."""
+    import sys
+    import types
+
+    calls: list = []
+
+    class FakeQueue:
+        def __init__(self, name, connection=None):
+            self.name = name
+
+        def enqueue(self, f, *args, kwargs=None):
+            calls.append((self.name, f, args, kwargs))
+            return types.SimpleNamespace(id="job-42")
+
+    fake_conn = types.SimpleNamespace(ping=lambda: True)
+    monkeypatch.setitem(
+        sys.modules, "redis", types.SimpleNamespace(Redis=types.SimpleNamespace(
+            from_url=lambda *a, **k: fake_conn))
+    )
+    monkeypatch.setitem(sys.modules, "rq", types.SimpleNamespace(Queue=FakeQueue))
+
+    result = enqueue_proposal_generation("src-id", "ws-id", max_proposals=1)
+    assert result == {"queued": True, "job_id": "job-42", "reason": None}
+    name, fn, args, kwargs = calls[0]
+    assert name == "extract"  # frozen queue name (workers/queues.py)
+    assert fn == "workers.pipeline.intake_jobs.generate_fact_proposals"
+    assert args == ("src-id", "ws-id")
+    assert kwargs == {"max_proposals": 1}
+
+    # cap omitted → job default applies; the RQ payload stays clean
+    calls.clear()
+    enqueue_proposal_generation("src-id", "ws-id")
+    assert calls[0][3] is None
+
+
+def test_queued_job_consumes_the_forwarded_cap(db, workspace):
+    """Parity: the job invoked with exactly what the enqueue puts on the wire —
+    two positional ids plus a `max_proposals` kwarg — caps identically."""
+    source = seed_source(db, workspace, *(_para(i) for i in range(5)))
+    result = generate_fact_proposals(
+        str(source.id), str(workspace.id), max_proposals=2, database_url=TEST_DB_URL
+    )
+    assert result["created"] == 2 and result["skipped"] == 3

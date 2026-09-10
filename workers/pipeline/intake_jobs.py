@@ -140,12 +140,16 @@ def generate_fact_proposals(
             session.close()
 
 
-def enqueue_proposal_generation(source_id: str, workspace_id: str) -> dict:
+def enqueue_proposal_generation(
+    source_id: str, workspace_id: str, max_proposals: int | None = None
+) -> dict:
     """Best-effort RQ enqueue of generate_fact_proposals on `extract`.
 
     Returns {"queued": bool, "job_id": str|None, "reason": str|None} — the
     caller falls back to the inline path when this reports queued=False.
-    No redis (not installed, unreachable, or unset) must never raise.
+    `max_proposals` travels as RQ job kwargs so a queued run honors the same
+    cap as the inline one (omitted → the job's default applies). No redis (not
+    installed, unreachable, or unset) must never raise.
     """
     try:
         import redis  # deferred: optional dependency
@@ -157,10 +161,12 @@ def enqueue_proposal_generation(source_id: str, workspace_id: str) -> dict:
         redis_url = os.environ.get("REDIS_URL") or _settings_redis_url()
         conn = redis.Redis.from_url(redis_url, socket_connect_timeout=2)
         conn.ping()
+        kwargs = {} if max_proposals is None else {"max_proposals": int(max_proposals)}
         job = Queue("extract", connection=conn).enqueue(
             "workers.pipeline.intake_jobs.generate_fact_proposals",
             str(source_id),
             str(workspace_id),
+            kwargs=kwargs or None,
         )
         return {"queued": True, "job_id": getattr(job, "id", None), "reason": None}
     except Exception as exc:  # noqa: BLE001 - graceful without redis by contract
