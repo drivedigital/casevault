@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     storage_mode: str = "local"
     local_storage_root: str = "./data"
     max_upload_bytes: int = 100 * 1024 * 1024  # 100 MB evidence-file guard
+    max_upload_mb: int = 200  # MAX_UPLOAD_MB — upload limit for the storage service (contract §4.4)
 
     # security (local dev defaults; rotate for anything shared)
     app_secret_key: str = "change-me-local-only"
