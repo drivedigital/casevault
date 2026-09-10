@@ -63,3 +63,49 @@ jobs:
         with:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
+        env:
+          # Required. Without a token the action's owner-type lookup runs
+          # unauthenticated and rate-limited runner IPs intermittently fail
+          # it, which flips the action into license enforcement and fails
+          # the job spuriously (run 34319692071). NOTE (WS-D 2026-09-10):
+          # commit 631b85a documented this fix but the env block never
+          # landed — restored here and verified present this time.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  evidence:
+    # WS-D (Sprint 3 contract §7-D): end-to-end evidence pipeline against a
+    # real Postgres — upload → dedupe → worker stub → matter links → file
+    # byte-equality. The smoke provisions and migrates its own scratch DB
+    # (casevault_smoke); alembic also runs against the service DB below.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: casevault_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/casevault_ci
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/casevault_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: Verify migrations apply to a fresh database
+        working-directory: apps/api
+        run: alembic upgrade head
+      - name: Evidence pipeline smoke (independent WS-D verification)
+        run: python scripts/pipeline_smoke.py
+      - name: Evidence integration test (pytest wrapper)
+        run: pytest tests/integration/test_evidence_e2e.py -q
