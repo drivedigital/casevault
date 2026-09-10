@@ -11,8 +11,9 @@ Contract: docs/contracts/sprint3_evidence.md v1.0 **with the integrator's 2026-0
 - Required setup ran: `bash scripts/setup_local.sh`; `.venv/bin/pip install pgserver`.
 
 ## Contract gaps
+- **BLOCKER — §6 / §7 (WS-C), not an approved deviation:** `/evidence` and `/evidence/{id}` have no Next page entrypoints in the merged checkout despite the as-shipped table marking both routes shipped. A production Next server built from `c7842bb` returns **404** for both (control `GET /` = 200). Failing assertion: `§6 GET /evidence: expected 200; observed 404`; same for `/evidence/00000000-0000-4000-8000-000000000001`. New mandatory static route-entrypoint guard makes the smoke/CI fail after both API scenarios finish. Integrator must route restoration of the missing pages to the evidence UI owner; WS-D will not change product files. The earlier full gate passed because `next build` silently omitted the routes.
 - The pasted WS-D brief still calls original v1.0 frozen, but the integration-tip contract explicitly supersedes it with an as-shipped delta. Tests will use that override and report original-v1 differences, not disguise them as original-v1 conformance.
-- §3.2 / §5: per-source `POST /api/v1/sources/{id}/reprocess` is not implemented on this tip. The override explicitly defers it; the existing paths are direct `workers.run_process --source-id` and RQ's `ingest` queue. Endpoint behavior with/without Redis cannot be claimed until WS-EV lands it.
+- Initial base `adcb1b8` lacked §3.2 / §5 per-source reprocess; the initial run reported its 404 explicitly. During verification the integrator merged WS-EV (`c7842bb`); this branch was rebased onto that tip without conflicts. The final verifier now **requires** `POST /api/v1/sources/{id}/reprocess` and its stage jobs in both Redis modes (Wave 2 contract §6), with no absent-route fallback. New-tip proof is pending.
 - §5: PDF/image OCR is an explicit stub even with OCR binaries installed; only text extraction is implemented. Verification must assert the recorded skip reason, not silently skip the test or claim actual PDF/image OCR.
 
 ## Risks / follow-ups
