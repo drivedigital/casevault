@@ -11,6 +11,8 @@ data/*
 !data/README.md
 uploads/
 evidence/
+!apps/web/app/evidence/
+!apps/web/app/evidence/**
 exports/
 logs/
 tmp/

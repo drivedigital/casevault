@@ -25,9 +25,14 @@ export class ApiError extends Error {
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  // WS-C recovery (d22993c): never set the JSON Content-Type on FormData —
+  // the browser must set the multipart boundary itself.
+  const isFormData = init?.body instanceof FormData;
   const resp = await fetch(`${BASE}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    headers: isFormData
+      ? { ...(init?.headers || {}) }
+      : { "Content-Type": "application/json", ...init?.headers },
     cache: "no-store",
   });
   if (!resp.ok) {
@@ -103,6 +108,8 @@ export const api = {
     evidence_review_status?: string;
     q?: string;
   }) => {
+    // Shipped API (as-shipped delta): plain SourceOut[]; only these four
+    // filters are supported server-side (filter parity is a BACKLOG item).
     const qs = new URLSearchParams(
       Object.entries(params ?? {}).filter(([, v]) => v) as [string, string][],
     ).toString();
@@ -117,19 +124,8 @@ export const api = {
     if (options?.title) form.append("title", options.title);
     if (options?.source_status) form.append("source_status", options.source_status);
     if (options?.matter_id) form.append("matter_id", options.matter_id);
-    // Note: no JSON content-type — the browser sets the multipart boundary.
-    return fetch(`${BASE}/sources`, { method: "POST", body: form }).then(async (resp) => {
-      if (!resp.ok) {
-        let detail = resp.statusText;
-        try {
-          detail = (await resp.json()).detail ?? detail;
-        } catch {
-          /* non-JSON error body */
-        }
-        throw new ApiError(resp.status, String(detail));
-      }
-      return resp.json() as Promise<Source>;
-    });
+    // apiFetch skips the JSON Content-Type for FormData (multipart boundary).
+    return apiFetch<Source>("/sources", { method: "POST", body: form });
   },
   getSource: (id: string) => apiFetch<Source>(`/sources/${id}`),
   updateSource: (
@@ -277,6 +273,19 @@ export const api = {
     }),
   deleteFactActorLink: (linkId: string) =>
     apiFetch<void>(`/fact-actor-links/${linkId}`, { method: "DELETE" }),
+
+  // -------------------------------------------------------------------------
+  // Wave 1 · WS-C evidence UI — recovered from d22993c, realigned to the
+  // shipped API. APPEND-ONLY section (handoff/AGENT_POLICY.md §2.4).
+  //
+  // POST /sources/{id}/reprocess shipped with W2-EV: 202 ReprocessOut
+  // {queued, job_id, reason}, degrading to queued=false without redis.
+  // -------------------------------------------------------------------------
+  reprocessSource: (id: string, stages?: Array<"ingest" | "ocr">) =>
+    apiFetch<{ queued: boolean; job_id: string | null; reason: string | null }>(
+      `/sources/${id}/reprocess`,
+      { method: "POST", body: JSON.stringify({ stages: stages ?? ["ocr"] }) },
+    ),
 };
 
 // --- WS-I section (append-only): imports, param types, query helper --------

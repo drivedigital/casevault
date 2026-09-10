@@ -570,3 +570,47 @@ export const SUPPORT_TYPES: SupportType[] = [
   "background",
 ];
 
+// ---------------------------------------------------------------------------
+// Wave 1 · WS-C evidence UI — recovered from commit d22993c and realigned to
+// the SHIPPED sources API (Sprint 3 as-shipped delta). APPEND-ONLY section
+// (handoff/AGENT_POLICY.md §2.4): the WS-H ledger and WS-I review sections
+// above are untouched.
+//
+// Aligned, not contract-literal: the shipped GET /sources returns a plain
+// SourceOut[] (no {items,total,limit,offset} envelope) and SourcePageOut has
+// no layout_json/has_text, so SourceListPage/SourceDetail/SourceMetadata from
+// the original commit are intentionally NOT re-declared here — the list is a
+// plain array and the detail view composes source + pages + matter links.
+// ---------------------------------------------------------------------------
+
+export type ProcessingStatus =
+  | "queued"
+  | "processing"
+  | "complete"
+  | "failed"
+  | "partial";
+
+export type OcrStatus =
+  | "not_started"
+  | "queued"
+  | "running"
+  | "complete"
+  | "failed"
+  | "skipped";
+
+export const PROCESSING_STATUSES: ProcessingStatus[] = [
+  "queued",
+  "processing",
+  "complete",
+  "failed",
+  "partial",
+];
+
+export const OCR_STATUSES: OcrStatus[] = [
+  "not_started",
+  "queued",
+  "running",
+  "complete",
+  "failed",
+  "skipped",
+];
