@@ -5,6 +5,7 @@ export const NAV_ITEMS = [
   { href: "/matters", label: "Matters" },
   { href: "/actors", label: "Actors" },
   { href: "/evidence", label: "Evidence" },
+  { href: "/ledger", label: "Ledger" },
   { href: "/chronology", label: "Chronology" },
   { href: "/claims", label: "Claims" },
   { href: "/relief", label: "Relief" },
