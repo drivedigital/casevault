@@ -218,3 +218,98 @@ export const EVIDENCE_REVIEW_STATUSES: EvidenceReviewStatus[] = [
   "background_only",
   "impeachment_only",
 ];
+
+// --- Source ledger (Wave 2 / WS-H) ---
+
+export type StrengthLabel = "low" | "medium" | "high";
+
+export const STRENGTH_LABELS: StrengthLabel[] = ["low", "medium", "high"];
+
+export interface LedgerLinkedSource {
+  id: string;
+  title: string;
+}
+
+export interface LedgerEntry {
+  id: string;
+  workspace_id: string;
+  matter_id: string | null;
+  external_ledger_id: string | null;
+  date_start: string | null;
+  date_end: string | null;
+  date_text_raw: string | null;
+  fact_short_name: string;
+  fact_statement: string;
+  claim_use_text: string | null;
+  relief_use_text: string | null;
+  source_path_text: string | null;
+  source_locator_text: string | null;
+  source_status: SourceStatus | null;
+  authentication_or_witness: string | null;
+  confidence_level: StrengthLabel | null;
+  verification_task_text: string | null;
+  restrictions_or_notes: string | null;
+  linked_source_id: string | null;
+  tags: string[];
+  linked_source: LedgerLinkedSource | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LedgerEntryPage {
+  items: LedgerEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface LedgerImportError {
+  row: number;
+  error: string;
+}
+
+export interface LedgerImportResult {
+  valid: number;
+  created: number;
+  skipped: number;
+  errors: LedgerImportError[];
+}
+
+export interface LedgerListParams {
+  matter_id?: string;
+  workspace_id?: string;
+  q?: string;
+  source_status?: SourceStatus;
+  confidence_level?: StrengthLabel;
+  tag?: string;
+  has_verification_task?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export interface LedgerEntryInput {
+  matter_id?: string | null;
+  external_ledger_id?: string | null;
+  date_start?: string | null;
+  date_end?: string | null;
+  date_text_raw?: string | null;
+  fact_short_name?: string;
+  fact_statement?: string;
+  claim_use_text?: string | null;
+  relief_use_text?: string | null;
+  source_path_text?: string | null;
+  source_locator_text?: string | null;
+  source_status?: SourceStatus | null;
+  authentication_or_witness?: string | null;
+  confidence_level?: StrengthLabel | null;
+  verification_task_text?: string | null;
+  restrictions_or_notes?: string | null;
+  linked_source_id?: string | null;
+  tags?: string[];
+}
+
+export interface LedgerBulkResult {
+  updated: number;
+  skipped: number;
+  errors: Array<{ id?: string; error: string }>;
+}

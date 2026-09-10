@@ -163,3 +163,97 @@ export const api = {
   deleteSourceMatterLink: (linkId: string) =>
     apiFetch<void>(`/source-matter-links/${linkId}`, { method: "DELETE" }),
 };
+
+// --- Source ledger (Wave 2 / WS-H) ---
+
+import type {
+  LedgerBulkResult,
+  LedgerEntry,
+  LedgerEntryInput,
+  LedgerEntryPage,
+  LedgerImportResult,
+  LedgerListParams,
+} from "./types";
+
+function ledgerQuery(params?: LedgerListParams) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params ?? {})) {
+    if (value !== undefined && value !== "") query.set(key, String(value));
+  }
+  const encoded = query.toString();
+  return encoded ? `?${encoded}` : "";
+}
+
+export function listLedgerEntries(params?: LedgerListParams) {
+  return apiFetch<LedgerEntryPage>(`/ledger-entries${ledgerQuery(params)}`);
+}
+
+export function createLedgerEntry(payload: LedgerEntryInput) {
+  return apiFetch<LedgerEntry>("/ledger-entries", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateLedgerEntry(id: string, payload: LedgerEntryInput) {
+  return apiFetch<LedgerEntry>(`/ledger-entries/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteLedgerEntry(id: string) {
+  return apiFetch<void>(`/ledger-entries/${id}`, { method: "DELETE" });
+}
+
+export function linkLedgerSource(id: string, sourceId: string) {
+  return apiFetch<LedgerEntry>(`/ledger-entries/${id}/link-source`, {
+    method: "POST",
+    body: JSON.stringify({ source_id: sourceId }),
+  });
+}
+
+export function bulkLedger(
+  ids: string[],
+  patch: Pick<LedgerEntryInput, "tags" | "source_status" | "confidence_level" | "matter_id">,
+) {
+  return apiFetch<LedgerBulkResult>("/ledger-entries/bulk", {
+    method: "POST",
+    body: JSON.stringify({ ids, patch }),
+  });
+}
+
+export async function importLedger(
+  fileOrRows: File | { rows: Record<string, unknown>[] },
+  dryRun = false,
+): Promise<LedgerImportResult> {
+  const query = `?dry_run=${dryRun}`;
+  if (!(fileOrRows instanceof File)) {
+    return apiFetch<LedgerImportResult>(`/ledger-entries/import${query}`, {
+      method: "POST",
+      body: JSON.stringify(fileOrRows),
+    });
+  }
+
+  const form = new FormData();
+  form.append("file", fileOrRows);
+  const response = await fetch(`${BASE}/ledger-entries/import${query}`, {
+    method: "POST",
+    body: form,
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    let detail = response.statusText;
+    try {
+      detail = (await response.json()).detail ?? detail;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new ApiError(response.status, String(detail));
+  }
+  return response.json() as Promise<LedgerImportResult>;
+}
+
+export function ledgerExportUrl(params?: LedgerListParams) {
+  return `${BASE}/ledger-entries/export.csv${ledgerQuery(params)}`;
+}
