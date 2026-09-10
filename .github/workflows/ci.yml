@@ -63,6 +63,11 @@ jobs:
         with:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
+        # gitleaks-action needs a token to fetch the baseline config/annotations.
+        # The automatic Actions token is sufficient here; no personal token or
+        # new repository secret is introduced by this change.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   intake:
     # W2-J: Wave 2 intake end-to-end verification (contract
