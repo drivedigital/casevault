@@ -109,9 +109,10 @@ def downgrade() -> None:
     op.drop_table('matters')
     op.drop_table('workspaces')
     op.drop_table('users')
-    # Case-insensitive email uniqueness without CITEXT (DECISIONS 2026-09-08).
-    # Extensions pgcrypto/citext intentionally NOT created: client-side UUIDs
-    # make pgcrypto unnecessary and CITEXT needs contrib modules; pgvector
-    # lands with the embedding decision (move to pgvector/pgvector image).
-    op.execute("CREATE UNIQUE INDEX uq_users__email ON users (lower(email))")
+    # native PG enum types survive DROP TABLE; drop them explicitly so
+    # downgrade -> re-upgrade works on the same database
+    sa.Enum(name='matter_type_enum').drop(op.get_bind(), checkfirst=True)
+    sa.Enum(name='matter_status_enum').drop(op.get_bind(), checkfirst=True)
+    sa.Enum(name='sharing_policy_enum').drop(op.get_bind(), checkfirst=True)
+    sa.Enum(name='workspace_role_enum').drop(op.get_bind(), checkfirst=True)
     # ### end Alembic commands ###

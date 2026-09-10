@@ -17,11 +17,15 @@ from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 
 class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "users"
+    __table_args__ = (
+        # Case-insensitive uniqueness via a functional unique index
+        # (lower(email)) — NOT a CITEXT column. Rationale (DECISIONS
+        # 2026-09-08): CITEXT requires contrib modules that some Postgres
+        # distributions lack; lower() works everywhere. Declared here so
+        # model metadata matches the DB and autogenerate stays quiet.
+        sa.Index("uq_users__email", sa.func.lower(sa.text("email")), unique=True),
+    )
 
-    # Case-insensitive uniqueness is enforced by a functional unique index
-    # (lower(email)) created in migration 0001 — NOT via a CITEXT column.
-    # Rationale (DECISIONS 2026-09-08): CITEXT requires contrib modules that
-    # some Postgres distributions lack; lower() works everywhere.
     email: Mapped[str] = mapped_column(sa.String(320), nullable=False)
     display_name: Mapped[str] = mapped_column(sa.String(255), nullable=False)
 

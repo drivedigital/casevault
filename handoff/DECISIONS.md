@@ -83,6 +83,38 @@ survives across turns. Newest first.
   license-enforcement failures. No leak was present (verified by a local
   port of the gitleaks 8.24.3 rule engine over every commit diff).
 
+## Decisions added with Phase 2 / Sprint 3 (evidence ingestion, 2026-09-10)
+
+- **VECTOR(1536) columns deferred out of Migration 0003** (acts on the open
+  embedding decision): source_pages/source_excerpts ship without vector
+  columns; adding pgvector later is an additive migration and keeps Phase 2
+  free of an extension dependency (sandbox Postgres lacks contrib).
+- **Duplicate-upload policy**: same sha256 within a workspace does NOT
+  reject the upload. The duplicate is stored as its own record (evidence
+  provenance: as-received copy) with `evidence_review_status=duplicate`
+  and a `duplicate_of {id,title}` pointer in source_metadata. Cross-
+  workspace duplicates are allowed by design.
+- **Text evidence ingests inline at upload** (no worker round-trip):
+  text/markdown/email/note sources get their extracted-text page written
+  synchronously; only binary types (pdf/image/spreadsheet/other) enqueue
+  onto the `ingest` queue — best-effort, so an upload never fails when
+  redis is down (source simply stays `queued` until `make worker` /
+  `make process-jobs`).
+- **OCR/VLM are explicit stubs in Sprint 3**: `process_source` marks
+  pdf/image sources `ocr_status=skipped` with the reason recorded in
+  source_metadata; `describe_image` is a registered VLM stub. Real
+  Tesseract/OCRmyPDF integration is its own backlog item.
+- **Storage layout**: `data/uploads/<workspace_id>/<yyyy>/<mm>/<uuid>__
+  <sanitized-filename>`; DB stores only the relative posix path; all reads
+  re-resolve inside LOCAL_STORAGE_ROOT with containment checks.
+- **Upload size guard**: `MAX_UPLOAD_BYTES` (default 100 MB, env-
+  overridable) enforced before reading into memory → 413.
+- **uq_users__email is now declared on the User model** (functional
+  lower(email) unique index). It was migration-only before, which is why
+  0002's autogenerate dropped it as "extra" — 0003 heals affected DBs with
+  `CREATE UNIQUE INDEX IF NOT EXISTS`, and all downgrades now drop their
+  enum types so downgrade→re-upgrade works on one database.
+
 ## Open decisions (deliberately deferred from the 2026-09-08 blueprint review)
 
 - **Auth mode for local-first.** Schema ships users/memberships in Migration

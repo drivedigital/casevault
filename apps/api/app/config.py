@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     # file storage (local-first)
     storage_mode: str = "local"
     local_storage_root: str = "./data"
+    max_upload_bytes: int = 100 * 1024 * 1024  # 100 MB evidence-file guard
 
     # security (local dev defaults; rotate for anything shared)
     app_secret_key: str = "change-me-local-only"

@@ -21,6 +21,11 @@ export default function MatterDetail() {
   });
   const allMatters = useQuery({ queryKey: ["matters"], queryFn: () => api.listMatters() });
   const allActors = useQuery({ queryKey: ["actors"], queryFn: () => api.listActors() });
+  const sourceLinks = useQuery({
+    queryKey: ["matter-sources", id],
+    queryFn: () => api.listMatterSourceLinks(id),
+  });
+  const allSources = useQuery({ queryKey: ["sources"], queryFn: () => api.listSources() });
 
   const [linkTarget, setLinkTarget] = useState("");
   const [linkType, setLinkType] = useState<string>(MATTER_LINK_TYPES[0]);
@@ -32,9 +37,13 @@ export default function MatterDetail() {
   const [roleNotes, setRoleNotes] = useState("");
   const [roleError, setRoleError] = useState<string | null>(null);
 
+  const [sourceTarget, setSourceTarget] = useState("");
+  const [sourceError, setSourceError] = useState<string | null>(null);
+
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["matter-links", id] });
     qc.invalidateQueries({ queryKey: ["matter-actors", id] });
+    qc.invalidateQueries({ queryKey: ["matter-sources", id] });
   };
 
   const addLink = useMutation({
@@ -59,6 +68,20 @@ export default function MatterDetail() {
     onError: (e) => setRoleError(e instanceof ApiError ? e.message : "Failed to assign role."),
   });
   const removeRole = useMutation({ mutationFn: api.deleteRole, onSuccess: invalidate });
+  const attachSource = useMutation({
+    mutationFn: () => api.linkSourceToMatter(id, sourceTarget),
+    onSuccess: () => {
+      setSourceTarget("");
+      setSourceError(null);
+      invalidate();
+    },
+    onError: (e) =>
+      setSourceError(e instanceof ApiError ? e.message : "Failed to link source."),
+  });
+  const removeSourceLink = useMutation({
+    mutationFn: api.deleteSourceMatterLink,
+    onSuccess: invalidate,
+  });
 
   if (matter.isLoading) return <p className="text-sm text-slate-500">Loading matter…</p>;
   if (matter.isError) return <p className="text-sm text-red-600">Matter not found.</p>;
@@ -235,6 +258,59 @@ export default function MatterDetail() {
               </button>
             </div>
             {roleError ? <p className="text-xs text-red-600">{roleError}</p> : null}
+          </form>
+        </section>
+
+        {/* ---- evidence sources ---- */}
+        <section className="rounded-lg border border-slate-200 bg-white">
+          <div className="border-b border-slate-200 px-4 py-3 text-sm font-medium text-slate-900">
+            Evidence sources ({sourceLinks.data?.length ?? 0})
+          </div>
+          <div className="divide-y divide-slate-100">
+            {(sourceLinks.data ?? []).map((link) => (
+              <div key={link.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
+                <div>
+                  <Link href={`/evidence/${link.source_id}`} className="font-medium text-blue-700 hover:underline">
+                    {link.source_title}
+                  </Link>
+                  {link.link_reason ? (
+                    <div className="mt-0.5 text-xs text-slate-400">{link.link_reason}</div>
+                  ) : null}
+                </div>
+                <button
+                  onClick={() => removeSourceLink.mutate(link.id)}
+                  className="text-xs text-slate-400 hover:text-red-600"
+                >
+                  unlink
+                </button>
+              </div>
+            ))}
+            {(sourceLinks.data ?? []).length === 0 && (
+              <p className="px-4 py-4 text-sm text-slate-500">
+                No evidence linked. Upload sources under{" "}
+                <Link href="/evidence" className="text-blue-700 underline">Evidence</Link>, then link them here.
+              </p>
+            )}
+          </div>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (sourceTarget) attachSource.mutate();
+            }}
+            className="space-y-2 border-t border-slate-200 px-4 py-3"
+          >
+            <div className="flex gap-2">
+              <select className={inputClass} value={sourceTarget} onChange={(e) => setSourceTarget(e.target.value)}>
+                <option value="">Link evidence source…</option>
+                {(allSources.data ?? []).map((src) => (
+                  <option key={src.id} value={src.id}>{src.title} ({src.source_type})</option>
+                ))}
+              </select>
+              <button type="submit" className={buttonClass} disabled={!sourceTarget || attachSource.isPending}>
+                Link
+              </button>
+            </div>
+            {sourceError ? <p className="text-xs text-red-600">{sourceError}</p> : null}
           </form>
         </section>
       </div>

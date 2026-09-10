@@ -26,9 +26,12 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] actor registry (Migration 0002 + API + UI: search, aliases, dossier, roles)
 - [ ] workspace switcher UI (multi-workspace; deferred — single workspace today)
 - [ ] collaborator invitations / auth surface (deferred — local identity mode)
-- [ ] source upload + local storage service (Migration 003)
-- [ ] OCR worker (Tesseract/OCRmyPDF path)
-- [ ] VLM description worker
+- [x] source upload + local storage service (Migration 003, Sprint 3)
+- [~] OCR worker — pipeline + job states done; Tesseract/OCRmyPDF engine integration remains
+- [x] VLM description worker (stub registered; provider wiring later)
+- [x] sha256 duplicate detection (flagged `duplicate` + duplicate_of pointer)
+- [x] evidence repository + source viewer pages (/evidence, /evidence/[id])
+- [x] source ↔ matter linking (both directions in UI)
 - [ ] source ledger UI (Migration 004 `ledger_entries`)
 - [ ] proposal review inbox (Migration 004 `proposals`, `fact_assertions`)
 - [ ] chronology table + event model (Migration 005)

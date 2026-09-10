@@ -3,6 +3,26 @@
 Current defects and limitations, newest first. Triage per Roadmap §9
 (Critical / High / Medium / Low).
 
+## 2026-09-10 — Phase 2 / Sprint 3 (evidence ingestion)
+
+- **[High] OCR is a stub.** PDF/image sources are marked
+  `ocr_status=skipped` with the reason in source_metadata — no text is
+  extracted for them until the Tesseract/OCRmyPDF integration lands
+  (backlog item). Text-type evidence ingests fully.
+- **[Medium] Uploads load fully into memory** (single `await file.read()`
+  with a 100 MB guard). Fine for the local-first phase; stream to disk in
+  chunks before any multi-user deployment.
+- **[Medium] No auth on upload/file endpoints** — consistent with local
+  identity mode (single implicit owner, localhost-bound ports). The file
+  endpoint only serves paths recorded in the DB (no arbitrary path
+  requests), but any local process can upload/download.
+- **[Low] `page_count` for text sources is always 1** (no form-feed
+  splitting); PDF page counts arrive with the real OCR integration.
+- **[Low] `source_excerpts` table exists (Migration 0003) but has no API
+  yet** — excerpt CRUD arrives with the ledger/proposal sprints.
+- **[Low] Real PDFs untested** — only fake `%PDF` bytes in sandbox tests;
+  the local tester should exercise a genuine PDF (see TESTING.md).
+
 ## 2026-09-08 — Phase 0 scaffold
 
 - **[Medium → RESOLVED 2026-09-09] Docker untested in build sandbox.**
