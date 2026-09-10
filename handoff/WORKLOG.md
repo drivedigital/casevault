@@ -783,3 +783,15 @@ still needed. Worker-owner follow-up: spawn-safe Darwin worker selection,
 version-compatible dependency plan, normal Linux worker behavior preserved,
 no blanket fork-safety or transport-security disable. User local reproduction
 required; this Linux sandbox cannot validate native macOS fix.
+
+### macOS crash trigger clarified by local tester
+
+Clicking **Reprocess OCR** displays `Reprocess request accepted: queued as job
+77779216-6a80-444b-b7cc-c105a3dba1cb`, followed by the native crash reported in
+dev-logs 79ca457. This ties the failure to the queued OCR workflow: API enqueue
+succeeds, then worker-side native DB/GSS initialization aborts. HTTP 202/queued
+is not OCR success. Worker launcher command and current SHA still unreported;
+macOS-safe worker fix must test this exact UI -> queue -> worker flow, not only
+proposal generation. Do not weaken original-file preservation or mark OCR
+complete on enqueue. Local tester should avoid repeated enqueue until worker
+strategy/diagnostic is in place; failed/queued statuses need explicit inspection.
