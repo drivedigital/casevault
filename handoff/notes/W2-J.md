@@ -2,9 +2,12 @@
 
 Contract: `docs/contracts/wave2_intake_core.md` v1.0 (frozen)
 Branch: `arena/01a089cd-casevault` · PR #3
-**Status:** integrator review findings 1–5 addressed and rehearsed against the
-corrected W2-G head (`c174051`); the **final merged-tip proof still waits for the
-integrator's merge of the corrected W2-G**.
+**Status:** integrator findings 1–5 addressed; **full merged-tip proof done** on
+the current integration tip `908e96f` (W2-G merged at `4d13527`, head `93656db`).
+Inline generation is green in the gate; the **queued generation path has one open
+deviation against W2-G** (worker cannot import `app`; the job swallows the error
+and RQ still reports success) — reported below, minimal change identified, no
+feature code touched in this PR.
 
 ## What changed
 
@@ -13,6 +16,12 @@ Write set only: `scripts/intake_smoke.py`, `tests/integration/test_intake_e2e.py
 review asked for; additive file in the J surface, no other workstream owns it),
 `.github/workflows/ci.yml` (append one `intake` job), `handoff/notes/W2-J.md`.
 No feature code, no hub files, no migrations.
+
+Beyond the five findings, the same files now verify **both generation shapes**
+(inline counters and the real-queued path) and expose `--generation-wait` /
+`INTAKE_GENERATION_WAIT` for the queued wait; the guard suite grew to 20 tests.
+W2-G's queued-path defect found by that work is reported below with a one-line
+minimum change — deliberately **not** fixed here.
 
 ### Integrator findings → what changed → proof
 
@@ -33,12 +42,38 @@ throwaway database by design — a hard refusal there would red the wave gate. T
 
 ## Proof
 
-Environment: no Docker; repo `.venv` + `pgserver`, embedded Postgres 16.
-Rehearsal tree = this branch's files applied to **corrected W2-G**
-(`c174051`, the head that fixes the four integrator-review defects) in a scratch
-worktree (`/tmp/w2j_pre`); nothing from it is committed.
+Environment: no Docker; repo `.venv` + `pgserver`, embedded Postgres 16. For the
+queued path, a real Redis 6.2.14 server (binary from the `redislite` wheel,
+extracted outside the repo — **not** a dependency) on `127.0.0.1:16379` and a real
+RQ worker 2.12. Port 6399 is deliberately avoided: other workstreams' tests use it
+as their "explicitly unreachable" endpoint.
 
-### A. Rehearsal against corrected W2-G
+### A0. Final merged-tip run (`908e96f`, W2-G merged at `4d13527`)
+
+```
+$ bash scripts/verify_all.sh            # full, incl. web
+==> Database              fresh casevault_test created
+==> Migrations            upgrade 0001..0004 -> downgrade base -> upgrade head
+==> pytest (real Postgres) 93 passed, 3 warnings in 5.95s
+==> ruff                  All checks passed!
+==> web: lint / typecheck / build   (next lint + tsc + next build, 19 routes)
+GATE GREEN — python, migrations, lint and web all pass.
+
+$ pytest tests/integration/test_intake_e2e_guards.py -q
+20 passed in 1.22s
+
+$ INTAKE_REQUIRE=1 pytest tests/integration/test_intake_e2e.py -v
+1 passed, 2 warnings in 1.52s
+
+$ INTAKE_REQUIRE=1 python scripts/intake_smoke.py --require-intake
+  PASS: generated 3 proposals (inline counters)
+  PASS: re-run created nothing (idempotent)
+  PASS: cleaned up 23 synthetic row(s) created by this run
+SMOKE GREEN — all intake steps passed; deviations: none
+generation mode: inline (jobs=none; waits=n/a)
+```
+
+### A. Rehearsal against corrected W2-G (pre-merge history)
 
 ```
 $ env -u PYTHONPATH pytest tests/integration/test_intake_e2e_guards.py -q
@@ -129,6 +164,89 @@ The existing `python`, `web` and **WS-D's `secrets` (gitleaks) job are untouched
 (verified by parsing the workflow: `jobs: ['python', 'web', 'secrets', 'intake']`,
 secrets job still ends with `gitleaks/gitleaks-action@v2`).
 
+### G. Queued generation (real Redis + real RQ worker) — and the deviation it found
+
+W2-G's integration note says queued `created/skipped=0` are placeholders and that
+"no real Redis execution was proved; the end-to-end verifier remains responsible
+for that distinction". The smoke now verifies **both** shapes: inline counters, or
+(Redis reachable) the proposals actually committed by a real worker, waited for up
+to `INTAKE_GENERATION_WAIT` seconds (default 90) and never trusted from the
+placeholders.
+
+Green queued run (`make worker` equivalent, `apps/api` importable in the worker):
+
+```
+$ REDIS_URL=redis://127.0.0.1:16379/0 TEST_DATABASE_URL=<disposable> \
+    INTAKE_REQUIRE=1 python scripts/intake_smoke.py --require-intake
+  NOTE: generation ENQUEUED (queued=true job_id=73f4cb0a-…): created/skipped are
+        placeholders, not job results (W2-G KNOWN_ISSUES) — verifying the committed
+        proposals, not the counters
+  PASS: queued job produced 3 proposals in 2.1s (statuses=[<JobStatus.FINISHED>])
+  PASS: re-run job finished with no new proposals (idempotent, 1.5s, 2 jobs)
+  PASS: cleaned up 23 synthetic row(s) created by this run
+SMOKE GREEN …  generation mode: queued (jobs=[73f4cb0a…, 4ff2319a…]; waits=[2.1, 1.5])
+
+$ # real RQ job results, read back from the worker's registry
+73f4cb0a FINISHED {'job': 'generate_fact_proposals', 'status': 'complete', 'created': 3, 'skipped': 0, 'reason': None}
+4ff2319a FINISHED {'job': 'generate_fact_proposals', 'status': 'complete', 'created': 0, 'skipped': 3, 'reason': None}
+```
+
+So the queue plumbing, the `max_proposals` kwargs (finding 3 of the G review), the
+sweep itself and queued idempotency are genuinely exercised — the second job really
+did skip all three paragraphs.
+
+**Deviation — report to the integrator, do not fix in this PR (W2-G file).**
+
+`python -m workers.run_worker` (i.e. `make worker`) in a plain process cannot import
+`app`; `generate_fact_proposals` swallows that and returns `status="failed"` inside
+a job RQ marks **FINISHED / "Job OK"**, so queued generation silently creates
+nothing. The API still answers `queued=true, created=0, skipped=0`, which is
+indistinguishable from a legitimately empty sweep.
+
+```
+$ DATABASE_URL=<.env.local value> REDIS_URL=redis://127.0.0.1:16379/0 \
+    .venv/bin/python -m workers.run_worker          # no PYTHONPATH
+06:57:31 extract: …generate_fact_proposals('<source>', '<workspace>', max_proposals=10)
+generate_fact_proposals failed for source <source>
+  File "/…/workers/pipeline/intake_jobs.py", line 57, in generate_fact_proposals
+    from app.models.enums import ProposalType, ReviewState
+ModuleNotFoundError: No module named 'app'
+06:57:31 Successfully completed … job in 0:00:00.099s
+06:57:31 extract: Job OK (994e0e9e-…)
+
+$ # the verifier turns that into an actionable deviation:
+DEVIATION [generate] POST /proposals/generate (queued): expected 3 proposals visible
+for the source …; job result(s): 994e0e9e: status=failed reason=ModuleNotFoundError:
+No module named 'app'; a job that returned status=failed still shows as FINISHED in
+RQ (the job swallows its exceptions) — check the worker log … (contract 4.4)
+  PASS: cleaned up 5 synthetic row(s) created by this run
+```
+
+- Root cause: `enqueue_proposal_generation()` calls `_ensure_app_importable()`,
+  `generate_fact_proposals()` never does before its `from app.…` imports
+  (`workers/pipeline/intake_jobs.py:57`). W2-G's own tests cannot see this because
+  `pytest.ini` sets `pythonpath = apps/api workers`.
+- **Minimum change (one line):** call `_ensure_app_importable()` at the top of
+  `generate_fact_proposals()` (before the app imports) — or equivalently in
+  `workers/run_worker.py` before `Worker(...).work()`. With `apps/api` on the
+  worker's path the same run is green and the results above are produced; nothing
+  else in the job needed to change.
+- Related, worth a ruling but not a verifier failure: the **queued** job does not
+  receive the API session's DB URL (only the inline path passes
+  `database_url=`), so the worker must have `DATABASE_URL` — fine for
+  `make env-create` + `.env.local`, but it makes the API's `queued=true` answer a
+  promise the client cannot check. Minimum change if you want it closed: let the
+  job raise on failure (RQ then marks it failed) or expose the job result.
+- Verified both ways: the verifier stays green on the queued path once the worker
+  bootstraps the path, and fails loudly (with the reason) when it does not.
+
+**Verifier fix made here (my bug, found by the same run):** `main()` gated fixture
+cleanup on a successful flow return, so a mid-flow deviation leaked the rows
+created so far. Cleanup is now driven by the incrementally-filled `fixtures` dict
+(`cleanup_after_run`), and the deviation run above proves it: `cleaned up 5
+synthetic row(s)`, target counts back to `0/0/0/0`. Regression tests: 20 guards
+(5 new for the queued path, 2 for cleanup-after-deviation incl. the wiring).
+
 ## Contract gaps
 
 Carried (both are contract silence, not defects; recorded for a ruling):
@@ -153,14 +271,15 @@ Carried (both are contract silence, not defects; recorded for a ruling):
 
 ## Risks / follow-ups
 
-- **Final merged-tip proof still pending** the corrected W2-G merge. On the
-  current integration tip (no G) the verifier correctly *parks*: smoke exits 2 and
-  `--require-intake` fails, because `/proposals`/`/facts` are E's empty stubs. That
-  is the designed pre-merge state, not a defect.
-- After the merge, the final pass is: rebase → `bash scripts/verify_all.sh` (full,
-  incl. web) → `pytest tests/integration/test_intake_e2e_guards.py -v` →
-  `INTAKE_REQUIRE=1 pytest tests/integration/test_intake_e2e.py -v` →
-  `python scripts/intake_smoke.py --require-intake` on the merged sha.
+- **Merged-tip proof is complete** on `908e96f` (see A0): gate 92 passed + web,
+  guards 19, e2e required 1, smoke green in inline mode; the queued path is green
+  with the worker path bootstrap and fails loudly without it (see G).
+- **Open deviation (W2-G, not this PR):** queued generation is a silent no-op in a
+  plain worker process — `_ensure_app_importable()` is missing before
+  `generate_fact_proposals`'s `app` imports, the job swallows the error and RQ
+  reports "Job OK". One-line fix available; until it lands, CI (no Redis) and
+  operator runs without `apps/api` on the worker's path never create proposals.
+  Re-run the queued proof after that fix and record the new job ids here.
 - Strict assertions that could false-fail on a valid-but-different reading:
   `generate` returning exactly `created=3/skipped=1` for the 4-paragraph fixture,
   CSV header order exact, link-list GETs as bare arrays. A failure there means
@@ -175,11 +294,17 @@ Carried (both are contract silence, not defects; recorded for a ruling):
 ## What the next agent must know
 
 - Entry points and their flags/env:
-  - `python scripts/intake_smoke.py [--database-url URL] [--require-intake] [--keep-uploads] [--keep-fixtures]`
+  - `python scripts/intake_smoke.py [--database-url URL] [--require-intake] [--generation-wait SECONDS] [--keep-uploads] [--keep-fixtures]`
   - `pytest tests/integration/test_intake_e2e_guards.py -v` (no DB needed)
-  - `pytest tests/integration/test_intake_e2e.py -v` (needs a migrated disposable DB)
+  - `pytest tests/integration/test_intake_e2e.py -v` (needs a migrated disposable DB;
+    inline path pinned by default, `INTAKE_E2E_QUEUED=1` exercises the real queue)
   - `INTAKE_REQUIRE=1` = fail instead of park; `INTAKE_ALLOW_APP_DB=1` = acknowledge
-    a target identical to `DATABASE_URL` (CI service container).
+    a target identical to `DATABASE_URL` (CI service container);
+    `INTAKE_GENERATION_WAIT` = queued wait in seconds (0 refuses queued mode).
+  - Queued proof recipe: `REDIS_URL=<redis> DATABASE_URL=<db> python -m workers.run_worker`
+    (with `apps/api` importable — see deviation G) plus
+    `REDIS_URL=<redis> TEST_DATABASE_URL=<same db> python scripts/intake_smoke.py --require-intake`.
+    Don't use port 6399: the other workstreams' tests treat it as unreachable.
 - Sandbox recipe: `bash scripts/setup_local.sh`; `.venv/bin/pip install pgserver`;
   `.venv/bin/python scripts/agent_pg.py start`; `eval "$(.venv/bin/python scripts/agent_pg.py env)"`.
   Use the venv python for `agent_pg.py` (system python lacks `pgserver`).

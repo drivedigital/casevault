@@ -23,6 +23,11 @@ intake surface was verified, never that it was missing:
 The migrated schema is verified as-is: this test never calls
 `Base.metadata.create_all()`, because creating missing tables would hide a
 defective migration.
+
+Generation shape: with `INTAKE_E2E_QUEUED=1` the flow exercises the real queued
+path (needs Redis + an RQ worker on 'extract'); otherwise REDIS_URL is pinned
+unreachable so the deterministic inline path runs. Both shapes assert the same
+contract floor from committed state.
 """
 
 from __future__ import annotations
@@ -63,11 +68,43 @@ import pytest
 # is then a failure, not a skip.
 REQUIRED = intake_smoke.require_intake()
 
+# Proposal generation is asynchronous when Redis answers (W2-G KNOWN_ISSUES:
+# `created/skipped=0` are placeholders). CI must be deterministic and has no
+# worker, so the inline path is pinned unless the queued path is explicitly
+# requested; the queued path is proved by `scripts/intake_smoke.py` against a
+# real Redis + a real RQ worker (handoff/notes/W2-J.md, "queued generation").
+_QUEUED = (os.environ.get("INTAKE_E2E_QUEUED") or "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+_UNREACHABLE_REDIS = "redis://127.0.0.1:1/0"
+
 
 @pytest.fixture(scope="module", autouse=True)
 def _scratch_storage_cleanup():
     yield
     shutil.rmtree(_SCRATCH_STORAGE, ignore_errors=True)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _pin_generation_mode():
+    """Make the generation shape deterministic for this module.
+
+    Without this, a developer machine with Redis on the default port would take
+    the queued branch and wait for an RQ worker that the test does not start.
+    """
+    before = os.environ.get("REDIS_URL")
+    if not _QUEUED:
+        os.environ["REDIS_URL"] = _UNREACHABLE_REDIS
+    try:
+        yield
+    finally:
+        if before is None:
+            os.environ.pop("REDIS_URL", None)
+        else:
+            os.environ["REDIS_URL"] = before
 
 
 @pytest.fixture(scope="module")
@@ -156,6 +193,21 @@ def test_intake_e2e_full_flow(e2e_target):
             )
         else:
             assert fixtures["fact_id"] and fixtures["superseding_fact_id"]
+            generation = fixtures.get("generation") or {}
+            mode = generation.get("mode")
+            print(f"\n[e2e] generation shape exercised: {mode}")
+            if _QUEUED:
+                assert mode == "queued", (
+                    "INTAKE_E2E_QUEUED=1 asked for the real queue, but the API "
+                    f"answered inline ({generation!r})"
+                )
+                assert any(w.get("total", 0) >= 3 for w in generation.get("waits", [])), (
+                    f"queued run recorded no committed proposals: {generation!r}"
+                )
+            else:
+                assert mode == "inline", (
+                    f"expected the pinned inline path (unreachable REDIS_URL), got {mode}"
+                )
     finally:
         # Always remove the synthetic rows this run created, even after a
         # deviation or a partial flow.

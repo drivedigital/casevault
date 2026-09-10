@@ -21,6 +21,7 @@ non-zero exit — i.e. the previous "green skip" cannot come back.
 
 from __future__ import annotations
 
+import inspect
 import os
 import subprocess
 import sys
@@ -275,3 +276,110 @@ def test_cleanup_spec_covers_every_table_the_flow_creates():
         "matters",
         "actors",
     } <= covered
+
+
+# --- 6. queued generation is proved by committed state, not placeholders ----
+
+
+class _QueueClient:
+    """Serves GET /proposals totals from a scripted sequence (last repeats)."""
+
+    def __init__(self, totals):
+        self.totals = list(totals)
+        self.calls = 0
+
+    def get(self, path, params=None):
+        assert path.endswith("/proposals"), path
+        total = self.totals[min(self.calls, len(self.totals) - 1)]
+        self.calls += 1
+        return _FakeResponse(
+            {
+                "items": [{"id": f"p-{n}"} for n in range(total)],
+                "total": total,
+                "limit": 50,
+                "offset": 0,
+            }
+        )
+
+
+def test_generation_wait_seconds_defaults_and_parsing(monkeypatch):
+    monkeypatch.delenv("INTAKE_GENERATION_WAIT", raising=False)
+    assert intake_smoke.generation_wait_seconds(None) == intake_smoke.DEFAULT_GENERATION_WAIT
+    assert intake_smoke.generation_wait_seconds(5) == 5.0
+    monkeypatch.setenv("INTAKE_GENERATION_WAIT", "12.5")
+    assert intake_smoke.generation_wait_seconds(None) == 12.5
+    monkeypatch.setenv("INTAKE_GENERATION_WAIT", "0")
+    assert intake_smoke.generation_wait_seconds(None) == 0.0
+    monkeypatch.setenv("INTAKE_GENERATION_WAIT", "soon")
+    with pytest.raises(intake_smoke.ConfigurationError):
+        intake_smoke.generation_wait_seconds(None)
+    # An explicit flag always wins over the environment.
+    monkeypatch.setenv("INTAKE_GENERATION_WAIT", "12.5")
+    assert intake_smoke.generation_wait_seconds(3) == 3.0
+
+
+def test_queued_wait_succeeds_on_committed_state(monkeypatch):
+    """`created/skipped=0` placeholders are ignored; the proposals are the proof."""
+    monkeypatch.setattr(intake_smoke, "POLL_INTERVAL", 0.01)
+    monkeypatch.setattr(intake_smoke, "GENERATION_STABLE_SECONDS", 0.0)
+    client = _QueueClient([0, 0, 3, 3])
+    result = intake_smoke.wait_for_generation(
+        client, intake_smoke.FlowLog(), "s-1", 3, ["job-1"], 5.0, "generate"
+    )
+    assert result["total"] == 3
+    assert client.calls >= 3
+
+
+def test_queued_wait_fails_instead_of_hanging_when_nothing_is_committed(monkeypatch):
+    """A queued run with no worker must FAIL (never a silent pass on placeholders)."""
+    monkeypatch.setattr(intake_smoke, "POLL_INTERVAL", 0.05)
+    client = _QueueClient([0])
+    with pytest.raises(intake_smoke.SmokeFailure) as excinfo:
+        intake_smoke.wait_for_generation(
+            client, intake_smoke.FlowLog(), "s-1", 3, ["job-1"], 0.4, "generate"
+        )
+    assert "worker" in excinfo.value.observed.lower()
+    assert "extract" in excinfo.value.observed
+
+
+def test_queued_job_failure_is_reported_immediately(monkeypatch):
+    monkeypatch.setattr(intake_smoke, "POLL_INTERVAL", 0.05)
+    monkeypatch.setattr(intake_smoke, "_queued_job_status", lambda job_id: "failed")
+    client = _QueueClient([0])
+    with pytest.raises(intake_smoke.SmokeFailure) as excinfo:
+        intake_smoke.wait_for_generation(
+            client, intake_smoke.FlowLog(), "s-1", 3, ["job-1"], 30.0, "generate"
+        )
+    assert "failed" in excinfo.value.observed
+
+
+def test_cleanup_after_run_runs_even_after_a_deviation(monkeypatch):
+    """A mid-flow deviation must still remove the rows created so far."""
+    calls = {}
+    monkeypatch.setattr(
+        intake_smoke,
+        "cleanup_fixtures",
+        lambda db_url, ids, log: calls.update(db_url=db_url, ids=ids),
+    )
+    fixtures = {"uid": "abcd1234", "matter_a": "m-ours", "matter_b": "m-ours-b"}
+    client = _FakeClient("abcd1234", "s-ours", "m-ours")
+    log = intake_smoke.FlowLog()
+    intake_smoke.cleanup_after_run(client, "postgresql://postgres@/db", fixtures, False, log)
+    assert calls["db_url"] == "postgresql://postgres@/db"
+    assert "m-ours" in calls["ids"]["matter_ids"]
+
+    # --keep-fixtures must keep, and a missing client must not raise.
+    calls.clear()
+    intake_smoke.cleanup_after_run(client, "db", fixtures, True, log)
+    assert not calls
+    intake_smoke.cleanup_after_run(None, "db", fixtures, False, log)
+    assert not calls
+
+
+def test_main_wires_the_tracked_fixtures_into_cleanup():
+    """Regression for the leak found on 2026-09-10: main() cleaned up only after
+    a successful return, so a mid-flow deviation left rows behind. Cleanup must be
+    driven by the incrementally-filled `fixtures` dict."""
+    source = inspect.getsource(intake_smoke.main)
+    assert "run_flow(client, log, fixtures" in source
+    assert "cleanup_after_run(client, db_url, fixtures" in source

@@ -6,7 +6,11 @@ independent verifier (falsify, don't agree):
 
   0. bootstrap workspace + two matters + one actor (Phase 1 APIs)
   1. upload a synthetic text source (inline-ingested page, no worker needed)
-  2. POST /proposals/generate, then re-run for idempotency (contract section 4.4)
+  2. POST /proposals/generate, then re-run for idempotency (contract section 4.4).
+     Both shapes are verified: inline (`queued=false`, real created/skipped) and
+     queued (`queued=true` with Redis reachable — created/skipped are placeholders
+     per W2-G KNOWN_ISSUES, so the proof is the proposals committed by a real RQ
+     worker, waited for up to INTAKE_GENERATION_WAIT seconds)
   3. list proposals (envelope) and pick a candidate
   4. review/accept -> the new fact MUST be `proposed` (review-state floor, 4.1);
      re-reviewing the proposal MUST be 409 (4.2)
@@ -33,7 +37,17 @@ independent verifier (falsify, don't agree):
   11. cleanup: delete the ledger rows (204), remove the scratch upload dir
 
 Usage:
-    python scripts/intake_smoke.py [--database-url URL] [--keep-uploads]
+    python scripts/intake_smoke.py [--database-url URL] [--require-intake]
+                                   [--generation-wait SECONDS] [--keep-uploads]
+
+Environment:
+    TEST_DATABASE_URL        disposable target (required; DATABASE_URL is never
+                             used as a fallback)
+    INTAKE_REQUIRE=1         a missing intake surface FAILS instead of parking
+    INTAKE_ALLOW_APP_DB=1    acknowledge that the target equals DATABASE_URL
+    INTAKE_GENERATION_WAIT   seconds to wait for queued generation (default 90)
+    REDIS_URL                queue endpoint; when reachable the run exercises the
+                             real RQ path and needs a worker on 'extract'
 
 The script runs `alembic upgrade head` first so the *migrated* schema (WS-E's
 migration 0004) is what gets verified, not a create_all approximation.
@@ -65,6 +79,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -76,7 +91,15 @@ APP_DB_ENV = "DATABASE_URL"
 TEST_DB_ENV = "TEST_DATABASE_URL"
 ALLOW_APP_DB_ENV = "INTAKE_ALLOW_APP_DB"
 REQUIRE_ENV = "INTAKE_REQUIRE"
+GENERATION_WAIT_ENV = "INTAKE_GENERATION_WAIT"
+DEFAULT_GENERATION_WAIT = 90.0
 REPO_MARKERS = ("pytest.ini", "scripts/intake_smoke.py")
+
+# Terminal RQ job states (rq.job.Job.get_status); anything else keeps waiting.
+TERMINAL_JOB_STATES = {"finished", "failed", "stopped", "canceled"}
+POLL_INTERVAL = 0.5
+# A just-finished job needs a beat before the count is trusted as settled.
+GENERATION_STABLE_SECONDS = 1.0
 
 
 def find_repo_root(start: Path) -> Path:
@@ -321,6 +344,158 @@ def require_envelope(step: str, endpoint: str, payload, contract: str) -> dict:
     return payload
 
 
+def generation_wait_seconds(cli_value: float | None = None) -> float:
+    """How long to wait for a queued generation job before failing.
+
+    `INTAKE_GENERATION_WAIT` (or `--generation-wait`) exists because the queued
+    path is asynchronous: with Redis reachable, POST /proposals/generate answers
+    `queued=true` with placeholder `created=0/skipped=0` and the real work lands
+    later. 0 disables the wait (placeholder counters are then reported as an
+    explicit deviation).
+    """
+    if cli_value is not None:
+        return max(0.0, float(cli_value))
+    raw = (os.environ.get(GENERATION_WAIT_ENV) or "").strip()
+    if not raw:
+        return DEFAULT_GENERATION_WAIT
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        raise ConfigurationError(
+            f"{GENERATION_WAIT_ENV}={raw!r} is not a number of seconds"
+        ) from None
+
+
+def _queued_job_status(job_id: str | None) -> str | None:
+    """Best-effort RQ job status; None when rq/redis cannot answer.
+
+    rq is a real project dependency of the worker image (workers/requirements.txt)
+    but is optional in the API image, so this must import lazily and never raise.
+    """
+    if not job_id:
+        return None
+    try:
+        import redis  # deferred: optional dependency
+        from rq.job import Job
+        from workers.pipeline.jobs import _ensure_app_importable
+
+        _ensure_app_importable()
+        conn = redis.Redis.from_url(
+            os.environ.get("REDIS_URL") or "redis://localhost:6379/0",
+            socket_connect_timeout=2,
+        )
+        job = Job.fetch(job_id, connection=conn)
+        return job.get_status(refresh=True)
+    except Exception:  # noqa: BLE001 - status is diagnostic, not the proof
+        return None
+
+
+def _queued_job_result(job_id: str | None) -> dict | None:
+    """Best-effort RQ job result payload; None when rq/redis cannot answer.
+
+    `generate_fact_proposals` never raises (it returns status="failed"), so a
+    real RQ worker reports such jobs as FINISHED. Surfacing the payload turns
+    "no proposals appeared" into an actionable deviation.
+    """
+    if not job_id:
+        return None
+    try:
+        import redis  # deferred: optional dependency
+        from rq.job import Job
+        from workers.pipeline.jobs import _ensure_app_importable
+
+        _ensure_app_importable()
+        conn = redis.Redis.from_url(
+            os.environ.get("REDIS_URL") or "redis://localhost:6379/0",
+            socket_connect_timeout=2,
+        )
+        result = Job.fetch(job_id, connection=conn).result
+        return result if isinstance(result, dict) else None
+    except Exception:  # noqa: BLE001 - diagnostics only
+        return None
+
+
+def _job_failure_summary(job_ids: list[str | None]) -> str:
+    parts = []
+    for job_id in job_ids:
+        result = _queued_job_result(job_id)
+        if isinstance(result, dict) and result.get("status") not in (None, "complete"):
+            reason = redact(str(result.get("reason") or ""))[:200]
+            parts.append(f"{str(job_id)[:8]}: status={result.get('status')} reason={reason}")
+    return "; ".join(parts)
+
+
+def wait_for_generation(
+    client,
+    log: FlowLog,
+    source_id: str,
+    expected: int,
+    job_ids: list[str | None],
+    timeout: float,
+    step: str,
+) -> dict:
+    """Wait for queued generation jobs to reach their terminal state.
+
+    The proof is the committed state (proposals readable for the source), not
+    the placeholder counters in the enqueue response — W2-G KNOWN_ISSUES states
+    `created/skipped=0` are not final job results. Job status, when rq can be
+    imported, is used only to stop as soon as the job is terminal; it is never
+    the assertion.
+    """
+    started = time.monotonic()
+    history: list[str] = []
+    last_total: int | None = None
+    stable_since: float | None = None
+    statuses: list[str] = []
+    while True:
+        elapsed = time.monotonic() - started
+        statuses = [s for s in (_queued_job_status(j) for j in job_ids) if s]
+        r = client.get(f"{API}/proposals", params={"source_id": source_id})
+        require_status(step, "GET /proposals (queued wait)", r, {200}, "4.2", log)
+        total = require_envelope(step, "GET /proposals (queued wait)", r.json(), "3")["total"]
+        history.append(f"t+{elapsed:.1f}s total={total} jobs={statuses or 'unreadable'}")
+        if total >= expected:
+            # Give a just-finished job a beat to settle, then require stability so
+            # a second enqueue cannot race the assertions below.
+            if last_total == total:
+                if stable_since is None:
+                    stable_since = elapsed
+                if elapsed - stable_since >= GENERATION_STABLE_SECONDS:
+                    return {
+                        "waited_s": round(elapsed, 1),
+                        "statuses": statuses,
+                        "total": total,
+                    }
+            else:
+                stable_since = None
+        last_total = total
+        jobs_done = bool(statuses) and all(s in TERMINAL_JOB_STATES for s in statuses)
+        if jobs_done and "failed" in statuses:
+            check(
+                step,
+                f"RQ job {'/'.join(job_ids[:1])} on the 'extract' queue",
+                "terminal status 'finished'",
+                f"statuses={statuses}; RQ reports the job failed (see the worker log)",
+                "4.4",
+            )
+        if elapsed >= timeout or (jobs_done and total < expected):
+            failures = _job_failure_summary(job_ids)
+            check(
+                step,
+                "POST /proposals/generate (queued)",
+                f"{expected} proposals visible for the source "
+                f"(within {timeout:g}s, or immediately when the job is terminal)",
+                f"last: {history[-1]} (jobs terminal={jobs_done}; "
+                f"statuses={statuses or 'unreadable'}); "
+                + (f"job result(s): {failures}; " if failures else "")
+                + "a job that returned status=failed still shows as FINISHED in RQ "
+                "(the job swallows its exceptions) — check the worker log; is a worker "
+                "running on the 'extract' queue with apps/api importable?",
+                "4.4",
+            )
+        time.sleep(POLL_INTERVAL)
+
+
 def run_migrations(db_url: str, log: FlowLog) -> None:
     """Apply migrations so the smoke run verifies the migrated schema."""
     log.step("migrations: alembic upgrade head")
@@ -519,11 +694,44 @@ def cleanup_fixtures(db_url: str, ids: dict, log: FlowLog) -> None:
 # ---------------------------------------------------------------------------
 
 
-def run_flow(client, log: FlowLog | None = None, fixtures: dict | None = None) -> dict:
+def cleanup_after_run(
+    client, db_url: str, fixtures: dict, keep_fixtures: bool, log: FlowLog
+) -> None:
+    """Remove what this run created — including after a mid-flow deviation.
+
+    `fixtures` is filled in incrementally by run_flow specifically so a failure
+    part-way still has an id-scoped cleanup path. Gating this on a successful
+    return value (the earlier shape) leaked synthetic rows on every deviation.
+    """
+    if keep_fixtures:
+        log.note("fixtures kept (--keep-fixtures)")
+        return
+    if client is None or not fixtures:
+        return
+    try:
+        cleanup_fixtures(db_url, collect_fixtures(client, fixtures), log)
+    except Exception as exc:  # noqa: BLE001 - cleanup never masks the result
+        log.note(f"fixture cleanup skipped: {redact(exc)}")
+
+
+def run_flow(
+    client,
+    log: FlowLog | None = None,
+    fixtures: dict | None = None,
+    generation_wait: float | None = None,
+) -> dict:
     """Run the whole intake flow. `fixtures` is filled in as rows are created so
-    a caller can clean up even when the flow fails part-way."""
+    a caller can clean up even when the flow fails part-way.
+
+    Proposal generation has two contract-legal shapes (W2-G KNOWN_ISSUES):
+    inline (`queued=false`, real `created/skipped`) and queued (`queued=true`,
+    `created/skipped` are placeholders and the proposals land asynchronously).
+    Both are verified; the queued shape is proved from committed state, never
+    from the placeholder counters.
+    """
     log = log or FlowLog()
     fixtures = fixtures if fixtures is not None else {}
+    wait_s = generation_wait_seconds(generation_wait)
     uid = uuid.uuid4().hex[:8]
     fixtures["uid"] = uid
     log.step(f"0. bootstrap workspace + matters + actor (uid={uid})")
@@ -606,27 +814,75 @@ def run_flow(client, log: FlowLog | None = None, fixtures: dict | None = None) -
             f"{gen!r}"[:300],
             "4.2",
         )
-    if gen["created"] != 3 or gen["skipped"] != 0:
-        check(
-            "generate",
-            "POST /proposals/generate",
-            "created=3 skipped=0 (3 paragraphs >= 40 chars)",
-            f"created={gen['created']} skipped={gen['skipped']}",
-            "4.4",
+    # Two contract-legal shapes (W2-G KNOWN_ISSUES): inline real counters, or
+    # queued placeholders (created=skipped=0) whose work lands asynchronously.
+    queued = gen.get("queued") is True
+    job_ids: list[str | None] = [gen.get("job_id")] if queued else []
+    generation: dict = {"mode": "queued" if queued else "inline", "waits": []}
+    if queued:
+        if wait_s <= 0:
+            check(
+                "generate",
+                "POST /proposals/generate",
+                "inline counters (queued=true needs a wait window)",
+                f"queued=true job_id={gen.get('job_id')} and "
+                f"{GENERATION_WAIT_ENV}=0 disables waiting",
+                "4.4",
+            )
+        log.note(
+            f"generation ENQUEUED (queued=true job_id={gen.get('job_id')}): created/skipped "
+            "are placeholders, not job results (W2-G KNOWN_ISSUES) — verifying the "
+            "committed proposals, not the counters"
         )
-    log.ok(f"generated {gen['created']} proposals")
+        wait = wait_for_generation(client, log, source_id, 3, job_ids, wait_s, "generate")
+        generation["waits"].append(wait)
+        log.ok(
+            f"queued job produced 3 proposals in {wait['waited_s']}s "
+            f"(statuses={wait['statuses'] or 'unreadable'})"
+        )
+    else:
+        if gen["created"] != 3 or gen["skipped"] != 0:
+            check(
+                "generate",
+                "POST /proposals/generate",
+                "created=3 skipped=0 (3 paragraphs >= 40 chars)",
+                f"created={gen['created']} skipped={gen['skipped']}",
+                "4.4",
+            )
+        log.ok(f"generated {gen['created']} proposals (inline counters)")
     r = client.post(f"{API}/proposals/generate", json={"source_id": source_id, "max_proposals": 10})
     require_status("generate", "POST /proposals/generate (re-run)", r, {200, 201}, "4.4", log)
     gen2 = r.json()
-    if gen2.get("created") != 0 or gen2.get("skipped") != 3:
-        check(
-            "generate",
-            "POST /proposals/generate (re-run)",
-            "created=0 skipped=3 (provenance_key idempotency)",
-            f"created={gen2.get('created')} skipped={gen2.get('skipped')}",
-            "4.4",
+    if gen2.get("queued") is True:
+        # Idempotency of the queued shape is proved by committed state: the
+        # second job must finish without adding a fourth proposal.
+        job_ids.append(gen2.get("job_id"))
+        wait = wait_for_generation(client, log, source_id, 3, job_ids, wait_s, "generate (re-run)")
+        generation["waits"].append(wait)
+        if wait["total"] != 3:
+            check(
+                "generate",
+                "POST /proposals/generate (re-run, queued)",
+                "still 3 proposals for the source (provenance_key idempotency)",
+                f"total={wait['total']} after the re-run job finished",
+                "4.4",
+            )
+        log.ok(
+            f"re-run job finished with no new proposals (idempotent, "
+            f"{wait['waited_s']}s, statuses={wait['statuses'] or 'unreadable'})"
         )
-    log.ok("re-run created nothing (idempotent)")
+    else:
+        if gen2.get("created") != 0 or gen2.get("skipped") != 3:
+            check(
+                "generate",
+                "POST /proposals/generate (re-run)",
+                "created=0 skipped=3 (provenance_key idempotency)",
+                f"created={gen2.get('created')} skipped={gen2.get('skipped')}",
+                "4.4",
+            )
+        log.ok("re-run created nothing (idempotent)")
+    generation["job_ids"] = job_ids
+    fixtures["generation"] = generation
 
     # -- 3. list proposals ----------------------------------------------------
     log.step("3. list proposals, pick candidate")
@@ -1574,6 +1830,14 @@ def main(argv: list[str] | None = None) -> int:
         f"(also enabled by {REQUIRE_ENV}=1; CI uses it)",
     )
     parser.add_argument(
+        "--generation-wait",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help="how long a queued generation job may take before the run fails "
+        f"(default {DEFAULT_GENERATION_WAIT:g}, env {GENERATION_WAIT_ENV}); 0 refuses queued mode",
+    )
+    parser.add_argument(
         "--keep-uploads",
         action="store_true",
         help="keep the scratch upload dir under data/ for inspection",
@@ -1609,8 +1873,19 @@ def main(argv: list[str] | None = None) -> int:
     if target_warning:
         print(f"WARNING: {target_warning}")
     print(f"uploads: {scratch} (removed afterwards{' (kept)' if args.keep_uploads else ''})")
+    try:
+        wait_s = generation_wait_seconds(args.generation_wait)
+    except ConfigurationError as exc:
+        print(f"CONFIGURATION FAILURE: {exc}")
+        shutil.rmtree(scratch, ignore_errors=True)
+        return EXIT_FAIL
+    print(
+        f"generation: {'inline+queued' if wait_s > 0 else 'inline only'} "
+        f"(queued wait {wait_s:g}s; redis {redact_url(os.environ.get('REDIS_URL') or 'default')})"
+    )
 
     result: dict | None = None
+    fixtures: dict = {}
     client = None
     exit_code = EXIT_OK
     try:
@@ -1623,7 +1898,7 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 client = make_client(db_url, required=required)
                 probe_intake_routers(client, log, required=required)
-                result = run_flow(client, log)
+                result = run_flow(client, log, fixtures, generation_wait=wait_s)
             except ConfigurationError as exc:
                 print(f"CONFIGURATION FAILURE: {redact(exc)}")
                 exit_code = EXIT_FAIL
@@ -1637,14 +1912,8 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 exit_code = EXIT_FAIL
     finally:
-        # Always remove what this run created, including on a deviation.
-        if client is not None and result is not None and not args.keep_fixtures:
-            try:
-                cleanup_fixtures(db_url, collect_fixtures(client, result), log)
-            except Exception as exc:  # noqa: BLE001 - cleanup never masks the result
-                log.note(f"fixture cleanup skipped: {redact(exc)}")
-        elif result is not None and args.keep_fixtures:
-            log.note("fixtures kept (--keep-fixtures)")
+        # Always remove what this run created — deviations included.
+        cleanup_after_run(client, db_url, fixtures, args.keep_fixtures, log)
         if not args.keep_uploads:
             shutil.rmtree(scratch, ignore_errors=True)
         else:
@@ -1654,7 +1923,13 @@ def main(argv: list[str] | None = None) -> int:
         return exit_code
 
     assert result is not None
+    generation = result.get("generation") or {}
     print("SMOKE GREEN — all intake steps passed; deviations: none")
+    print(
+        f"generation mode: {generation.get('mode', 'inline')} "
+        f"(jobs={generation.get('job_ids') or 'none'}; "
+        f"waits={[w.get('waited_s') for w in generation.get('waits', [])] or 'n/a'})"
+    )
     print(
         f"fixtures: matter_a={result['matter_a']} fact={result['fact_id']} "
         f"v2={result['superseding_fact_id']}"
