@@ -686,3 +686,13 @@ scoped cleanup; integrator independently ran subprocess/DB coverage but has
 not repeated that live Redis proof. J instructed to rerun normal-worker queued
 verification on this merge without any PYTHONPATH workaround. Original import
 blocker fixed; final queued-flow sign-off remains pending independent J proof.
+
+## 2026-09-10 — all-branch reconciliation audit
+
+See BRANCH_RECONCILIATION.md for every fetched origin branch and disposition.
+Not fully reconciled: WS-D PR 14 open with failing secrets check; J has five
+post-merge commits at 55e6d10 including real smoke-script changes; UI follow-up
+patch remains incomplete/unmerged. Closed superseded PR 10 (preserved branch)
+and requested J follow-up PR plus current-tip proof. Main/dev-logs unrelated
+histories and archive branches are intentionally not merged. No feature code
+changed; no branch deleted/switched.
