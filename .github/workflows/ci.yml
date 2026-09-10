@@ -110,3 +110,57 @@ jobs:
         run: pytest tests/integration/test_intake_e2e.py -v
       - name: Intake headless smoke script
         run: python scripts/intake_smoke.py --require-intake
+
+  evidence:
+    # WS-D: independent HTTP + worker + storage proof; existing jobs stay intact.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: casevault_evidence_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d casevault_evidence_ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/casevault_evidence_ci
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/casevault_evidence_ci
+      # Even an absent binary/storage prerequisite must fail this required job.
+      EVIDENCE_REQUIRE_DEPS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: Install the private Redis server binary
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y redis-server
+      - name: Apply migrations to PostgreSQL 16
+        run: python -m alembic -c apps/api/alembic.ini upgrade head
+      - name: Verify evidence end-to-end (no skipped scenarios)
+        run: |
+          set -o pipefail
+          mkdir -p data/diagnostics
+          python -m pytest -q -rA -s tests/integration/test_evidence_e2e.py \
+            --junitxml=data/diagnostics/evidence-junit.xml \
+            2>&1 | tee data/diagnostics/evidence.log
+      - name: Publish verification output only (never uploaded files)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-verification
+          path: |
+            data/diagnostics/evidence.log
+            data/diagnostics/evidence-junit.xml
+          if-no-files-found: warn
+          retention-days: 7
