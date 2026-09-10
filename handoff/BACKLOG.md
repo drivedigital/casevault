@@ -67,11 +67,36 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 Tracked in `handoff/DECISIONS.md` (auth mode, embedding table design,
 rollback depth, polymorphic comment FKs, confidence/strength enum split).
 
+## Sprint 3 follow-ups (from the Wave 1 integration review, 2026-09-10)
+
+- [x] Sprint 3 evidence ingestion integrated (`2e440d6`) — sources API, local
+      storage, dedupe, `/evidence` + source viewer, pipeline stubs (17 tests)
+- [ ] Independent end-to-end verification of the merged evidence flow
+      (`scripts/pipeline_smoke.py` + CI job) — the shipped tests are the
+      author's own; this is the WS-D role
+- [ ] Pagination on `GET /sources` (currently returns a plain array; large
+      matters will need limit/offset + total)
+- [ ] `source_excerpts` API (table exists since 0003; Sprint 4/5 need the
+      create/list endpoints) and `PUT /sources/{id}/metadata`
+- [ ] Per-source `POST /sources/{id}/reprocess` (today: `make process-jobs`
+      or the RQ `ingest` queue drains everything queued)
+- [ ] Streaming uploads: read to `data/temp/` in chunks instead of buffering
+      up to 100 MB in memory
+- [ ] Storage refactor to the interface first promised in the contract
+      (`integrations/storage` + ABC) when the S3-compatible adapter lands
+- [ ] Filter parity on `GET /sources`: source_status, ocr_status,
+      included/excluded (list currently filters q + matter + type + review
+      status)
+
 ## Coordination (added 2026-09-10)
 
-- [~] parallel-build plan + Sprint 3 interface freeze (`handoff/PARALLEL_PLAN.md`,
-      `docs/contracts/sprint3_evidence.md`) — awaiting owner confirmation of
-      agent topology and first wave
+- [x] parallel-build plan + Sprint 3 interface freeze (`handoff/PARALLEL_PLAN.md`,
+      `docs/contracts/sprint3_evidence.md`) — contract later aligned to the
+      shipped code (see the delta table in that doc)
 - [x] agent sandbox Postgres harness (`scripts/agent_pg.py`, no Docker needed)
-- [ ] Wave 1 (Sprint 3) fan-out: WS-A sources core · WS-B storage/pipeline ·
-      WS-C evidence UI · WS-D verification
+- [x] wave gate (`scripts/verify_all.sh`) — migrations up/down/up + pytest +
+      ruff + web on a fresh database
+- [~] Wave 1: Sprint 3 delivered by the other session, integrated here; the
+      A/B/C fan-out for it is superseded
+- [ ] Wave 2 fan-out (Sprint 4 ledger `0004`, Sprint 5 proposals/facts
+      `0005`) — freeze both contracts before spawning sessions

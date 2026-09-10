@@ -3,6 +3,45 @@
 Short, durable records of architectural/product decisions so context
 survives across turns. Newest first.
 
+## 2026-09-10 (Wave 1 integration)
+
+- **Storage adapter shape as shipped (supersedes contract §4).**
+  `app/services/storage.py` provides `LocalStorage` with
+  `save/read/open_path/delete`, keys under
+  `uploads/{workspace_id}/{YYYY}/{MM}/{uuid}__{sanitized-filename}`, sha256 on
+  save, and containment-checked resolution. Chosen over the contract's
+  `app/integrations/storage/` + `StorageService` ABC because it shipped first
+  and is tested; the ABC/S3 seam is a refactor to do when the S3-compatible
+  adapter lands (BACKLOG), not a rewrite now. `sources.storage_path` always
+  stores the relative key.
+- **Duplicate evidence is kept, not rejected.** Same sha256 inside a workspace
+  → the record is still created (provenance is evidence), flagged
+  `evidence_review_status=duplicate` with a `duplicate_of` pointer in
+  `source_metadata.metadata_json`, surfaced as `SourceOut.duplicate_of` and in
+  the UI. Deleting evidence automatically is never acceptable in this product.
+- **Upload guard is 100 MB, in-memory.** `max_upload_bytes` (env
+  `MAX_UPLOAD_BYTES`) caps a single upload; the file is read into memory
+  before the size check. Fine for local-first single-user use; streaming to a
+  temp file is a BACKLOG improvement, not a blocker.
+- **`users.email` index bug and its repair.** Migration 0002's original
+  upgrade silently dropped `uq_users__email` (autogenerate artifact; the index
+  was absent from model metadata), so real databases enforced no uniqueness on
+  `lower(email)`. Fixed in three places: the index is declared on the `User`
+  model, 0002's upgrade no longer drops it, and 0003 heals existing databases
+  with `CREATE UNIQUE INDEX IF NOT EXISTS`. The integrator additionally
+  removed 0003's `DROP INDEX` from the downgrade path — the index is part of
+  the 0001 baseline, so dropping it on the way down would reintroduce the bug
+  for anyone stopping at revision 0002.
+  *Operator note:* the heal fails loudly if a database already contains
+  case-insensitive duplicate emails; local identity mode has one user, so this
+  is only a risk for hand-seeded data.
+- **Contract discipline (process).** A frozen contract only coordinates
+  sessions that start after it exists. Sprint 3 was built by a session already
+  in flight, so the integrator aligned the contract to the shipped code
+  (see the delta table in `docs/contracts/sprint3_evidence.md`) rather than
+  forcing a rewrite of tested code. Wave 2 contracts get frozen **before**
+  sessions are spawned, and deviation still requires the §8 change path.
+
 ## 2026-09-08
 
 - **Stack.** Next.js 14 + TypeScript + Tailwind (web); FastAPI + SQLAlchemy

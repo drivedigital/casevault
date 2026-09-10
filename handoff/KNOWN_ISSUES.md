@@ -50,6 +50,20 @@ Current defects and limitations, newest first. Triage per Roadmap §9
   Upgrade paths and revision ids unchanged — no local DB rebuild needed.
 - **[Low] Global nav links to `/evidence`, which has no page.** Clicking
   "Evidence" from any screen 404s until Sprint 3 (WS-C) lands the route.
+- **[Medium] PDF/image OCR is a stub.** Uploads succeed and the source/preview
+  page records `ocr_status=skipped` with a reason, but no text extraction
+  happens until the Tesseract/OCRmyPDF engine integration lands
+  (BACKLOG). Text/markdown/email/note ingest is real.
+- **[Low] Uploads are buffered in memory** up to the 100 MB guard
+  (`max_upload_bytes`). Acceptable for local single-user evidence files;
+  streaming is a BACKLOG improvement.
+- **[Low] `GET /sources` has no pagination** and fewer filters than the
+  contract planned (q, matter, type, review status only). Fine for the
+  current corpus size.
+- **[Low] `uq_users__email` heal can fail on pre-seeded duplicates.** Migration
+  0003 runs `CREATE UNIQUE INDEX IF NOT EXISTS uq_users__email`; if a database
+  somehow holds two users whose emails differ only by case, the migration
+  fails loudly instead of dropping data. Local identity mode has one user.
 - **[Low] `make test` cannot run in Docker-less agent sandboxes.** Workaround
   for agents: `scripts/agent_pg.py` (embedded Postgres, git-ignored
   `data/pgdata/`). The local tester path (`make infra-up`) is unchanged.

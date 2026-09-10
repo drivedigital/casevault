@@ -5,6 +5,49 @@ Fields: Date / Branch / What changed / Why / Files affected / What needs local t
 
 ---
 
+## 2026-09-10 — Integrator: Sprint 3 merged into the integration branch
+
+**Branch:** `arena/01a0899f-casevault` (merge commit `2e440d6`)
+
+### What changed
+- Reviewed the other session's commit `e2dc8544` against the frozen contract
+  and this repo's safety posture: workspace-scoped file downloads,
+  containment-checked storage resolution, 100 MB guard, scratch
+  `LOCAL_STORAGE_ROOT` in tests (never writes to the real `data/` tree),
+  sha256 dedupe that keeps provenance instead of deleting evidence.
+- Independently reproduced the claims: fresh database →
+  `upgrade head → downgrade base → upgrade head` clean and the healed
+  `uq_users__email` index present; `pytest` 17 passed on their commit.
+- Merged with three conflict resolutions (all in migrations + one doc):
+  0002's downgrade no longer recreates `uq_users__email` (0002's upgrade no
+  longer drops it, so the create collides); 0003's downgrade no longer drops
+  the index (it is part of the 0001 baseline and 0003 only heals it);
+  `TESTING.md` keeps both new sections.
+- Aligned `docs/contracts/sprint3_evidence.md` to the shipped implementation
+  with an as-shipped delta table (§ top), updated `PARALLEL_PLAN.md` wave
+  status, added Wave 1 DECISIONS entries (adapter shape, duplicate policy,
+  upload guard, the email-index repair, contract discipline), and logged
+  Sprint 3 follow-ups in BACKLOG/KNOWN_ISSUES.
+
+### Verified on the merged tree
+- `scripts/verify_all.sh` → **GATE GREEN**: migrations up/down/up on a fresh
+  DB, `pytest` 17 passed, `ruff` clean, web lint/typecheck/build (15 routes).
+
+### What the local tester should do
+- `git fetch origin arena/01a0899f-casevault && git checkout arena/01a0899f-casevault`
+  (or merge it into the branch under test) and re-run `make migrate` — the
+  0003 heal repairs `uq_users__email` on databases migrated by the buggy 0002.
+- Then walk the Phase 2 checklist in `handoff/TESTING.md` (upload text/PDF,
+  duplicate warning, include/exclude conflict, matter linking, filters).
+
+### Blockers / risks
+- The other session's branch still carries its own version of 0002/0003; it
+  should reset onto this branch before further work (PARALLEL_PLAN §5 step 0).
+- Python is now at 17 tests; `python-multipart` is a new API dependency
+  (installed by `scripts/setup_local.sh` via requirements-dev.txt).
+
+---
+
 ## 2026-09-10 — Phase 2 / Sprint 3: evidence ingestion (upload, storage, dedupe, viewer, pipeline stubs)
 
 **Branch:** `arena/01a08429-casevault`

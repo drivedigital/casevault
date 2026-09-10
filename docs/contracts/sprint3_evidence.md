@@ -1,6 +1,6 @@
 # Contract — Sprint 3: Evidence repository, upload, OCR
 
-**Version:** 1.0 · **Status:** **FROZEN** 2026-09-10 (introduced in commit
+**Version:** 1.0 (superseded — see the as-shipped delta above) · **Status:** superseded 2026-09-10 (introduced in commit
 `39ce8fb`; Wave 1 agents must implement it as written — see §8 for change
 control) · **Scope owner:** integrator (`arena/01a0899f-casevault`) ·
 **Implemented by:** WS-A (sources core), WS-B (storage + pipeline), WS-C (web UI), WS-D (verification)
@@ -8,6 +8,39 @@ control) · **Scope owner:** integrator (`arena/01a0899f-casevault`) ·
 This document is the *only* coordination mechanism between parallel agents for
 Sprint 3. Code that follows this contract will integrate; code that needs the
 contract changed must request it (see §8) instead of diverging.
+
+> ## ⚠️ SUPERSEDED 2026-09-10 — as-shipped delta
+>
+> Sprint 3 was implemented by the other session from
+> `arena/01a08429-casevault` commit `e2dc8544` **before this contract reached
+> it**, and is now merged into `arena/01a0899f-casevault` (`2e440d6`, gate
+> green). The integrator reviewed that commit, kept the semantics, and aligned
+> this document instead of forcing a rewrite. **The code is the contract for
+> what exists.** Where this doc and the code disagree, the table below wins.
+>
+> Use this version when writing tests, UI follow-ups, or the Sprint 4 contract.
+> Unimplemented §3 endpoints are **backlog follow-ups**, not conformance bugs.
+>
+> | Area | Contract v1.0 said | As shipped | Effect |
+> |---|---|---|---|
+> | Storage module | `app/integrations/storage/` — `StorageService` ABC, `get_storage()`, `StoredObject` | `app/services/storage.py` — `LocalStorage`, `StoredFile`, `save/read/open_path/delete` | Import path differs; the S3 adapter refactor will land here |
+> | Storage key | `uploads/{workspace_id}/{source_id}/original{ext}` | `uploads/{workspace_id}/{YYYY}/{MM}/{uuid}__{sanitized-filename}` | Time-partitioned; `source_id` is not in the key |
+> | Size guard | `MAX_UPLOAD_MB` env, 200 MB default | `max_upload_bytes` setting, 100 MB | Env name is `MAX_UPLOAD_BYTES` |
+> | Duplicate file | 201 + `SourceOut.duplicate_of` | same pointer, plus `evidence_review_status=duplicate` and provenance kept | ✅ matches |
+> | include + exclude together | 422 | **409** (DB check constraint) | UI must expect 409 |
+> | List envelope | `{items,total,limit,offset}` | plain JSON array, no pagination | Add pagination before large matters (BACKLOG) |
+> | List filters | q, matter, type, source_status, review_status, ocr_status, included, excluded | q, matter_id, source_type, evidence_review_status | Fewer filters than planned |
+> | Pages | list + single page | list only (`GET /sources/{id}/pages`) | Viewer loads the page list |
+> | Excerpts | `POST/GET /sources/{id}/excerpts` | **not implemented** | Needed by Sprint 4/5 |
+> | Metadata | `PUT /sources/{id}/metadata` | not implemented (pipeline writes it) | Follow-up |
+> | Reprocess | `POST /sources/{id}/reprocess` | `make process-jobs` + RQ `ingest` queue | No per-source reprocess endpoint yet |
+> | Matter links | `POST /sources/{id}/matter-links` | `POST/GET /matters/{id}/sources`, `GET /matters/{id}/source-links`, `GET /sources/{id}/matters`, `DELETE /source-matter-links/{id}` | Equivalent coverage, different shape |
+> | OCR / VLM | optional engines wired | explicit stubs: `ocr_status=skipped` + reason in metadata | Engine integration remains (BACKLOG) |
+> | Web routes | `/evidence`, `/evidence/[id]` | same, plus an Evidence card on the matter page | ✅ matches |
+>
+> Also shipped and not in v1.0: the migration `0003` heal for the
+> `uq_users__email` index (see DECISIONS 2026-09-10) and `make process-jobs`
+> for redis-free pipeline runs.
 
 Spec sources: `Legal_Matter_Intelligence_Database_Schema_Draft.md` §5.5–5.7,
 §6.4 · `Technical_Spec.md` §8, §9.1, §10.1 · `UX_Spec.md` Screens 4–5 ·
