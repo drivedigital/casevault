@@ -7,6 +7,7 @@
 - **Runtime:** Python 3.14.7 (Homebrew), macOS 26.6.2 (ARM-64)
 - **Deps:** `rq 2.12.0`, `redis 7.4.1`, `psycopg2-binary 2.9.12`
 - **Infra:** Postgres 16, Redis 7 (Docker)
+- **Verified Crash Incidents:** `1DA18D64-C7A8-649C-6F35-69A313E9D30C`, `6403F8C6-06E8-4D42-A081-0F7D383D774D`
 
 ## Results Summary
 
