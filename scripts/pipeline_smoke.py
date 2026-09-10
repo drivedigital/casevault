@@ -199,7 +199,11 @@ def start_api(port: int, surl: str, storage_dir: Path, log_path: Path) -> subpro
         )
 
 
-def wait_for_api(port: int, timeout: float = 30.0) -> bool:
+def wait_for_api(port: int, timeout: float | None = None) -> bool:
+    # CI runners can cold-start uvicorn slowly (observed >30s on a degraded
+    # runner, 2026-09-10 run 34442134277); default 90s, env-overridable.
+    if timeout is None:
+        timeout = float(os.environ.get("CASEVAULT_SMOKE_API_TIMEOUT", "90"))
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
