@@ -1,0 +1,850 @@
+diff --git a/.gitignore b/.gitignore
+index ea64e60..0441561 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -11,6 +11,8 @@ data/*
+ !data/README.md
+ uploads/
+ evidence/
++!apps/web/app/evidence/
++!apps/web/app/evidence/**
+ exports/
+ logs/
+ tmp/
+diff --git a/apps/web/app/evidence/[id]/page.tsx b/apps/web/app/evidence/[id]/page.tsx
+new file mode 100644
+index 0000000..fecc3a9
+--- /dev/null
++++ b/apps/web/app/evidence/[id]/page.tsx
+@@ -0,0 +1,233 @@
++"use client";
++
++import Link from "next/link";
++import { useState } from "react";
++import { useParams, useRouter } from "next/navigation";
++import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
++import { api } from "@/lib/api";
++import { SourceReviewBadge, SourceStatusBadge } from "@/components/source-badge";
++import { Field, inputClass, buttonClass, secondaryButtonClass } from "@/components/field";
++
++export default function EvidenceDetailPage() {
++  const params = useParams();
++  const router = useRouter();
++  const qc = useQueryClient();
++  const id = typeof params.id === "string" ? params.id : Array.isArray(params.id) ? params.id[0] : "";
++  const [tab, setTab] = useState<"metadata" | "ocr" | "matters" | "status">("metadata");
++  const [linkMatterId, setLinkMatterId] = useState("");
++  const [editTitle, setEditTitle] = useState("");
++  const [editStatus, setEditStatus] = useState("");
++
++  const source = useQuery({ queryKey: ["source", id], queryFn: () => api.getSource(id), enabled: !!id });
++  const pages = useQuery({ queryKey: ["pages", id], queryFn: () => api.listSourcePages(id), enabled: !!id });
++  const matters = useQuery({ queryKey: ["source-matters", id], queryFn: () => api.listSourceMatters(id), enabled: !!id });
++  const allMatters = useQuery({ queryKey: ["matters"], queryFn: () => api.listMatters() });
++
++  const update = useMutation({
++    mutationFn: (payload: Partial<Parameters<typeof api.updateSource>[1]>) => api.updateSource(id, payload),
++    onSuccess: () => qc.invalidateQueries({ queryKey: ["source", id] }),
++  });
++
++  const link = useMutation({
++    mutationFn: (matterId: string) => api.linkSourceToMatter(matterId, id),
++    onSuccess: () => qc.invalidateQueries({ queryKey: ["source-matters", id] }),
++  });
++
++  const unlink = useMutation({
++    mutationFn: (linkId: string) => api.unlinkSourceFromMatter(linkId),
++    onSuccess: () => qc.invalidateQueries({ queryKey: ["source-matters", id] }),
++  });
++
++  const s = source.data;
++  const pageList = pages.data ?? [];
++  const matterLinks = matters.data ?? [];
++
++  if (!id) return <div className="p-6 text-red-600">Invalid source id.</div>;
++  if (source.isLoading) return <div className="p-6 text-sm text-slate-500">Loading source…</div>;
++  if (source.isError || !s) return <div className="p-6 text-red-600">Failed to load source.</div>;
++
++  const isPdf = s.source_type === "pdf" || (s.mime_type?.includes("pdf") ?? false);
++  const isImage = s.source_type === "image" || (s.mime_type?.startsWith("image/") ?? false);
++  const isText = s.source_type === "text" || s.source_type === "markdown" || s.source_type === "email" || (s.mime_type?.startsWith("text/") ?? false);
++  const hasPages = pageList.length > 0;
++  const firstPageText = pageList[0]?.ocr_text ?? "";
++
++  return (
++    <div className="mx-auto max-w-6xl">
++      <button onClick={() => router.push("/evidence")} className="mb-4 text-sm text-blue-700 hover:underline">← Back to evidence</button>
++
++      <div className="mb-4 flex items-center justify-between">
++        <div>
++          <h1 className="text-xl font-semibold text-slate-900">{s.title || s.original_filename || "Untitled source"}</h1>
++          <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
++            <span>{s.source_type}</span>
++            <span>·</span>
++            <span>{s.mime_type}</span>
++            <span>·</span>
++            <span>{(s.file_size_bytes ?? 0).toLocaleString()} bytes</span>
++          </div>
++        </div>
++        <div className="flex gap-2">
++          <button onClick={() => { setEditTitle(s.title ?? ""); setEditStatus(s.source_status); setTab("status"); }} className={`${secondaryButtonClass} text-xs`}>
++            Edit
++          </button>
++        </div>
++      </div>
++
++      {s.duplicate_of && (
++        <div className="mb-4 rounded bg-amber-100 px-3 py-2 text-sm text-amber-800">
++          Duplicate of <Link href="/evidence" className="font-medium underline">{s.duplicate_of.title}</Link>
++        </div>
++      )}
++
++      <div className="mb-2 flex items-center gap-2">
++        <a href={api.sourceFileUrl(id)} download={s.original_filename ?? "source"} className={`${buttonClass} text-xs`}>Download original</a>
++        {s.processing_status !== "processing" && (
++          <button onClick={() => api.reprocessSource(id, ["ocr"]).then(() => qc.invalidateQueries({ queryKey: ["pages", id] })).catch((e: any) => alert("Reprocess failed: " + (e?.message || "see server")))} className={`${secondaryButtonClass} text-xs`}>Reprocess OCR</button>
++        )}
++      </div>
++
++      {/* Viewer */}
++      <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4">
++        <h2 className="mb-2 text-sm font-semibold text-slate-800">Viewer</h2>
++        {isPdf ? (
++          <iframe src={api.sourceFileUrl(id)} title="Source PDF" className="h-[560px] w-full rounded border" />
++        ) : isImage ? (
++          <img src={api.sourceFileUrl(id)} alt={s.original_filename ?? ""} className="max-h-[560px] rounded border object-contain" />
++        ) : isText || hasPages ? (
++          <div className="max-h-[560px] overflow-auto rounded border bg-slate-50 p-3">
++            {firstPageText ? (
++              <pre className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">{firstPageText}</pre>
++            ) : (
++              <p className="text-sm text-slate-400">No OCR text available for page 1.</p>
++            )}
++          </div>
++        ) : (
++          <div className="rounded border bg-slate-50 p-4 text-sm text-slate-400">No viewer available for this file type.</div>
++        )}
++      </div>
++
++      {/* Inspector tabs */}
++      <div className="rounded-lg border border-slate-200 bg-white">
++        <div className="flex border-b border-slate-200">
++          {[
++            { key: "metadata", label: "Metadata" },
++            { key: "ocr", label: "OCR" },
++            { key: "matters", label: "Matters" },
++            { key: "status", label: "Status" },
++          ].map((t) => (
++            <button
++              key={t.key}
++              onClick={() => setTab(t.key as typeof tab)}
++              className={`px-4 py-2.5 text-sm font-medium ${tab === t.key ? "border-b-2 border-blue-600 text-blue-700" : "text-slate-500 hover:text-slate-800"}`}
++            >
++              {t.label}
++            </button>
++          ))}
++        </div>
++
++        <div className="p-4">
++          {tab === "metadata" && (
++            <div className="grid gap-2 text-sm md:grid-cols-2">
++              <Field label="Title"><div className="rounded border border-slate-300 bg-white px-3 py-2">{s.title || "—"}</div></Field>
++              <Field label="Filename"><div className="rounded border border-slate-300 bg-white px-3 py-2">{s.original_filename || "—"}</div></Field>
++              <Field label="Mime type"><div className="rounded border border-slate-300 bg-white px-3 py-2">{s.mime_type || "—"}</div></Field>
++              <Field label="Storage path"><div className="rounded border border-slate-300 bg-white px-3 py-2 break-all text-xs">{s.storage_path}</div></Field>
++              <Field label="SHA-256"><div className="rounded border border-slate-300 bg-white px-3 py-2 break-all text-xs">{s.sha256 || "—"}</div></Field>
++              <Field label="Page count"><div className="rounded border border-slate-300 bg-white px-3 py-2">{s.page_count ?? "—"}</div></Field>
++              <Field label="Source status"><div className="rounded border border-slate-300 bg-white px-3 py-2"><SourceStatusBadge status={s.source_status} /></div></Field>
++              <Field label="Review status"><div className="rounded border border-slate-300 bg-white px-3 py-2"><SourceReviewBadge status={s.evidence_review_status} /></div></Field>
++              <Field label="Included"><div className="rounded border border-slate-300 bg-white px-3 py-2">{s.included_flag ? "Yes" : "No"}</div></Field>
++              <Field label="Excluded"><div className="rounded border border-slate-300 bg-white px-3 py-2">{s.excluded_flag ? "Yes" : "No"}</div></Field>
++              <Field label="Created"><div className="rounded border border-slate-300 bg-white px-3 py-2">{new Date(s.created_at).toLocaleString()}</div></Field>
++              <Field label="Updated"><div className="rounded border border-slate-300 bg-white px-3 py-2">{new Date(s.updated_at).toLocaleString()}</div></Field>
++            </div>
++          )}
++
++          {tab === "ocr" && (
++            <div>
++              <h3 className="mb-2 text-sm font-medium text-slate-800">Pages with OCR text</h3>
++              {pageList.length === 0 ? (
++                <p className="text-sm text-slate-400">No pages extracted.</p>
++              ) : (
++                <div className="space-y-2">
++                  {pageList.map((p) => (
++                    <div key={p.id} className="rounded border border-slate-100 bg-slate-50 p-2">
++                      <div className="mb-1 text-xs text-slate-500">Page {p.page_number} {p.page_label ? `(${p.page_label})` : ""}</div>
++                      <pre className="whitespace-pre-wrap text-xs leading-relaxed text-slate-800">{p.ocr_text ?? "(no text)"}</pre>
++                    </div>
++                  ))}
++                </div>
++              )}
++            </div>
++          )}
++
++          {tab === "matters" && (
++            <div>
++              <h3 className="mb-2 text-sm font-medium text-slate-800">Linked matters</h3>
++              {matterLinks.length === 0 ? (
++                <p className="text-sm text-slate-400">Not linked to any matter.</p>
++              ) : (
++                <div className="space-y-2">
++                  {matterLinks.map((m) => (
++                    <div key={m.id} className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 px-3 py-2 text-sm">
++                      <Link href={`/matters/${m.matter_id}`} className="font-medium text-blue-700 hover:underline">{m.matter_name}</Link>
++                      <button onClick={() => unlink.mutate(m.id)} disabled={unlink.isPending} className={`${secondaryButtonClass} text-xs px-2 py-0.5`}>Unlink</button>
++                    </div>
++                  ))}
++                </div>
++              )}
++              <div className="mt-3 flex items-end gap-2">
++                <div className="flex-1">
++                  <Field label="Link to matter">
++                    <select className={inputClass} value={linkMatterId} onChange={(e) => setLinkMatterId(e.target.value)}>
++                      <option value="">Choose matter</option>
++                      {(allMatters.data ?? []).map((m) => (
++                        <option key={m.id} value={m.id}>{m.name}</option>
++                      ))}
++                    </select>
++                  </Field>
++                </div>
++                <button onClick={() => { if (linkMatterId) link.mutate(linkMatterId); }} disabled={!linkMatterId || link.isPending} className={`${buttonClass} text-xs`}>
++                  Link
++                </button>
++              </div>
++            </div>
++          )}
++
++          {tab === "status" && (
++            <div>
++              <h3 className="mb-2 text-sm font-medium text-slate-800">Update fields</h3>
++              <div className="grid gap-3 md:grid-cols-2">
++                <Field label="Title">
++                  <input className={inputClass} value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
++                </Field>
++                <Field label="Source status">
++                  <select className={inputClass} value={editStatus} onChange={(e) => setEditStatus(e.target.value)}>
++                    {["primary", "derived", "testimony", "working_note", "public_record"].map((v) => (
++                      <option key={v} value={v}>{v}</option>
++                    ))}
++                  </select>
++                </Field>
++              </div>
++              <div className="mt-3 flex gap-2">
++                <button onClick={() => update.mutate({ title: editTitle, source_status: editStatus as any })} className={`${buttonClass} text-xs`}>Save</button>
++                {s.included_flag ? (
++                  <button onClick={() => update.mutate({ included_flag: false })} className={`${secondaryButtonClass} text-xs`}>Un-include</button>
++                ) : (
++                  <button onClick={() => update.mutate({ included_flag: true, excluded_flag: false })} className={`${buttonClass} text-xs bg-green-600 hover:bg-green-700`}>Include</button>
++                )}
++                {s.excluded_flag ? (
++                  <button onClick={() => update.mutate({ excluded_flag: false })} className={`${secondaryButtonClass} text-xs`}>Un-exclude</button>
++                ) : (
++                  <button onClick={() => update.mutate({ excluded_flag: true, included_flag: false })} className={`${buttonClass} text-xs bg-red-600 hover:bg-red-700`}>Exclude</button>
++                )}
++              </div>
++              {update.isError && <p className="mt-2 text-xs text-red-600">Update failed (check server rules — included and excluded cannot both be true).</p>}
++            </div>
++          )}
++        </div>
++      </div>
++    </div>
++  );
++}
+diff --git a/apps/web/app/evidence/page.tsx b/apps/web/app/evidence/page.tsx
+new file mode 100644
+index 0000000..3a36ae2
+--- /dev/null
++++ b/apps/web/app/evidence/page.tsx
+@@ -0,0 +1,276 @@
++"use client";
++
++import Link from "next/link";
++import { useState, useCallback, useRef } from "react";
++import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
++import { api } from "@/lib/api";
++import {
++  SOURCE_TYPES,
++  SOURCE_STATUSES,
++  EVIDENCE_REVIEW_STATUSES,
++  OCR_STATUSES,
++  type Source,
++} from "@/lib/types";
++import { Badge } from "@/components/badge";
++import { SourceReviewBadge, SourceStatusBadge } from "@/components/source-badge";
++import { Field, inputClass, buttonClass, secondaryButtonClass } from "@/components/field";
++
++export default function EvidenceIndex() {
++  const qc = useQueryClient();
++  const [q, setQ] = useState("");
++  const [matterId, setMatterId] = useState("");
++  const [sourceType, setSourceType] = useState("");
++  const [sourceStatus, setSourceStatus] = useState("");
++  const [reviewStatus, setReviewStatus] = useState("");
++  const [ocrStatus, setOcrStatus] = useState("");
++  const [includedOnly, setIncludedOnly] = useState(false);
++  const [excludedOnly, setExcludedOnly] = useState(false);
++  const [dragOver, setDragOver] = useState(false);
++  const inputRef = useRef<HTMLInputElement>(null);
++
++  const matters = useQuery({ queryKey: ["matters"], queryFn: () => api.listMatters() });
++  const sources = useQuery({
++    queryKey: ["sources", q, matterId, sourceType, sourceStatus, reviewStatus, ocrStatus, includedOnly, excludedOnly],
++    queryFn: () =>
++      api.listSources({
++        q: q || undefined,
++        matter_id: matterId || undefined,
++        source_type: sourceType || undefined,
++        source_status: sourceStatus || undefined,
++        evidence_review_status: reviewStatus || undefined,
++        ocr_status: ocrStatus || undefined,
++        included: includedOnly ? true : undefined,
++        excluded: excludedOnly ? true : undefined,
++        limit: 200,
++        offset: 0,
++      }),
++  });
++
++  const upload = useMutation({
++    mutationFn: (file: File) => api.uploadSource(file, { title: file.name.replace(/\.[^.]+$/, "") }),
++    onSuccess: () => qc.invalidateQueries({ queryKey: ["sources"] }),
++  });
++
++  const update = useMutation({
++    mutationFn: (p: { id: string; payload: Partial<Source> }) => api.updateSource(p.id, p.payload),
++    onSuccess: () => qc.invalidateQueries({ queryKey: ["sources"] }),
++  });
++
++  const handleFile = useCallback(
++    (file: File) => {
++      if (file.size > 100 * 1024 * 1024) {
++        alert("File too large (max 100 MB).");
++        return;
++      }
++      upload.mutate(file);
++    },
++    [upload],
++  );
++
++  const onDrop = useCallback(
++    (e: React.DragEvent) => {
++      e.preventDefault();
++      setDragOver(false);
++      const file = e.dataTransfer.files?.[0];
++      if (file) handleFile(file);
++    },
++    [handleFile],
++  );
++
++  const onInput = useCallback(
++    (e: React.ChangeEvent<HTMLInputElement>) => {
++      const file = e.target.files?.[0];
++      if (file) handleFile(file);
++      e.target.value = "";
++    },
++    [handleFile],
++  );
++
++  const items = sources.data?.items ?? [];
++
++  return (
++    <div className="mx-auto max-w-6xl">
++      <div className="mb-6 flex items-center justify-between">
++        <h1 className="text-xl font-semibold text-slate-900">Evidence</h1>
++        <span className="text-xs text-slate-400">{items.length} results</span>
++      </div>
++
++      {/* Filters */}
++      <div className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
++        <Field label="Search title / filename">
++          <input
++            className={inputClass}
++            value={q}
++            onChange={(e) => setQ(e.target.value)}
++            placeholder="Keyword"
++          />
++        </Field>
++        <Field label="Matter">
++          <select className={inputClass} value={matterId} onChange={(e) => setMatterId(e.target.value)}>
++            <option value="">All matters</option>
++            {(matters.data ?? []).map((m) => (
++              <option key={m.id} value={m.id}>
++                {m.name}
++              </option>
++            ))}
++          </select>
++        </Field>
++        <Field label="Source type">
++          <select className={inputClass} value={sourceType} onChange={(e) => setSourceType(e.target.value)}>
++            <option value="">All</option>
++            {SOURCE_TYPES.map((t) => (
++              <option key={t} value={t}>
++                {t}
++              </option>
++            ))}
++          </select>
++        </Field>
++        <Field label="Source status">
++          <select className={inputClass} value={sourceStatus} onChange={(e) => setSourceStatus(e.target.value)}>
++            <option value="">All</option>
++            {SOURCE_STATUSES.map((s) => (
++              <option key={s} value={s}>
++                {s}
++              </option>
++            ))}
++          </select>
++        </Field>
++        <Field label="Review status">
++          <select className={inputClass} value={reviewStatus} onChange={(e) => setReviewStatus(e.target.value)}>
++            <option value="">All</option>
++            {EVIDENCE_REVIEW_STATUSES.map((s) => (
++              <option key={s} value={s}>
++                {s}
++              </option>
++            ))}
++          </select>
++        </Field>
++        <Field label="OCR status">
++          <select className={inputClass} value={ocrStatus} onChange={(e) => setOcrStatus(e.target.value)}>
++            <option value="">All</option>
++            {OCR_STATUSES.map((s) => (
++              <option key={s} value={s}>
++                {s}
++              </option>
++            ))}
++          </select>
++        </Field>
++        <Field label="Included / Excluded">
++          <div className="flex gap-3">
++            <label className="flex items-center gap-1.5 text-sm text-slate-700">
++              <input type="checkbox" checked={includedOnly} onChange={() => { setIncludedOnly((v) => !v); setExcludedOnly(false); }} /> Included
++            </label>
++            <label className="flex items-center gap-1.5 text-sm text-slate-700">
++              <input type="checkbox" checked={excludedOnly} onChange={() => { setExcludedOnly((v) => !v); setIncludedOnly(false); }} /> Excluded
++            </label>
++          </div>
++        </Field>
++      </div>
++
++      {/* Upload */}
++      <div
++        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
++        onDragLeave={() => setDragOver(false)}
++        onDrop={onDrop}
++        onClick={() => inputRef.current?.click()}
++        className={`mb-6 cursor-pointer rounded-lg border-2 border-dashed p-6 text-center transition ${dragOver ? "border-blue-500 bg-blue-50" : "border-slate-300 bg-slate-50 hover:bg-slate-100"}`}
++      >
++        <input ref={inputRef} type="file" className="hidden" onChange={onInput} />
++        <p className="text-sm font-medium text-slate-700">Drag & drop a file here, or click to upload</p>
++        <p className="text-xs text-slate-400">PDF, image, text, email, spreadsheet — max 100 MB</p>
++        {upload.isPending && <p className="mt-2 text-sm text-blue-600">Uploading…</p>}
++        {upload.isError && <p className="mt-2 text-sm text-red-600">Upload failed.</p>}
++      </div>
++
++      {/* Table */}
++      <div className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
++        <table className="w-full text-sm">
++          <thead>
++            <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
++              <th className="px-4 py-2 font-medium">Title / File</th>
++              <th className="px-4 py-2 font-medium">Matters</th>
++              <th className="px-4 py-2 font-medium">Type</th>
++              <th className="px-4 py-2 font-medium">Status</th>
++              <th className="px-4 py-2 font-medium">Review</th>
++              <th className="px-4 py-2 font-medium">Pages</th>
++              <th className="px-4 py-2 font-medium">OCR</th>
++              <th className="px-4 py-2 font-medium">Updated</th>
++              <th className="px-4 py-2 font-medium">Actions</th>
++            </tr>
++          </thead>
++          <tbody>
++            {sources.isLoading ? (
++              <tr><td colSpan={9} className="px-4 py-6 text-sm text-slate-500">Loading…</td></tr>
++            ) : items.length === 0 ? (
++              <tr><td colSpan={9} className="px-4 py-6 text-sm text-slate-500">No evidence matches.</td></tr>
++            ) : (
++              items.map((s) => (
++                <tr key={s.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
++                  <td className="px-4 py-2">
++                    <Link href={`/evidence/${s.id}`} className="font-medium text-blue-700 hover:underline block">
++                      {s.title || s.original_filename || "Untitled"}
++                    </Link>
++                    <span className="text-xs text-slate-400">{s.original_filename}</span>
++                    {s.duplicate_of && (
++                      <div className="mt-1 inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
++                        Duplicate of {s.duplicate_of.title}
++                      </div>
++                    )}
++                  </td>
++                  <td className="px-4 py-2">
++                    <MattersBadge sourceId={s.id} />
++                  </td>
++                  <td className="px-4 py-2"><Badge label={s.source_type} color="blue" /></td>
++                  <td className="px-4 py-2"><SourceStatusBadge status={s.source_status} /></td>
++                  <td className="px-4 py-2"><SourceReviewBadge status={s.evidence_review_status} /></td>
++                  <td className="px-4 py-2 text-xs text-slate-600">{s.page_count ?? "—"}</td>
++                  <td className="px-4 py-2"><Badge label={s.ocr_status} color={s.ocr_status === "complete" ? "green" : s.ocr_status === "skipped" ? "slate" : "amber"} /></td>
++                  <td className="px-4 py-2 text-xs text-slate-500">{new Date(s.updated_at).toLocaleString()}</td>
++                  <td className="px-4 py-2">
++                    <div className="flex gap-1">
++                      <button
++                        onClick={() => update.mutate({ id: s.id, payload: { included_flag: true, excluded_flag: false } })}
++                        disabled={s.included_flag}
++                        className={`${secondaryButtonClass} text-xs px-2 py-0.5`}
++                      >
++                        Include
++                      </button>
++                      <button
++                        onClick={() => update.mutate({ id: s.id, payload: { excluded_flag: true, included_flag: false } })}
++                        disabled={s.excluded_flag}
++                        className={`${secondaryButtonClass} text-xs px-2 py-0.5`}
++                      >
++                        Exclude
++                      </button>
++                    </div>
++                  </td>
++                </tr>
++              ))
++            )}
++          </tbody>
++        </table>
++      </div>
++    </div>
++  );
++}
++
++function MattersBadge({ sourceId }: { sourceId: string }) {
++  const links = useQuery({
++    queryKey: ["source-matters", sourceId],
++    queryFn: () => api.listSourceMatters(sourceId),
++    enabled: !!sourceId,
++  });
++  if (links.isLoading) return <span className="text-xs text-slate-400">…</span>;
++  const arr = links.data ?? [];
++  if (arr.length === 0) return <span className="text-xs text-slate-400">—</span>;
++  return (
++    <div className="flex flex-wrap gap-1">
++      {arr.slice(0, 3).map((l) => (
++        <Link key={l.id} href={`/matters/${l.matter_id}`} className="rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700 hover:underline">
++          {l.matter_name}
++        </Link>
++      ))}
++      {arr.length > 3 && <span className="text-xs text-slate-400">+{arr.length - 3}</span>}
++    </div>
++  );
++}
+diff --git a/apps/web/app/matters/[id]/page.tsx b/apps/web/app/matters/[id]/page.tsx
+index 51072de..b95e0e3 100644
+--- a/apps/web/app/matters/[id]/page.tsx
++++ b/apps/web/app/matters/[id]/page.tsx
+@@ -302,7 +302,7 @@ export default function MatterDetail() {
+             <div className="flex gap-2">
+               <select className={inputClass} value={sourceTarget} onChange={(e) => setSourceTarget(e.target.value)}>
+                 <option value="">Link evidence source…</option>
+-                {(allSources.data ?? []).map((src) => (
++                {(allSources.data?.items ?? []).map((src) => (
+                   <option key={src.id} value={src.id}>{src.title} ({src.source_type})</option>
+                 ))}
+               </select>
+diff --git a/apps/web/components/source-badge.tsx b/apps/web/components/source-badge.tsx
+new file mode 100644
+index 0000000..6238370
+--- /dev/null
++++ b/apps/web/components/source-badge.tsx
+@@ -0,0 +1,31 @@
++import { Badge } from "./badge";
++
++export const reviewStatusColor: Record<string, "green" | "blue" | "amber" | "red" | "slate" | "violet"> = {
++  uploaded: "blue",
++  processing: "amber",
++  reviewed: "violet",
++  cited: "green",
++  included: "green",
++  excluded: "red",
++  duplicate: "amber",
++  privileged: "slate",
++  settlement_restricted: "slate",
++  background_only: "slate",
++  impeachment_only: "slate",
++};
++
++export const sourceStatusColor: Record<string, "blue" | "violet" | "amber" | "green" | "slate"> = {
++  primary: "green",
++  derived: "blue",
++  testimony: "violet",
++  working_note: "amber",
++  public_record: "slate",
++};
++
++export function SourceReviewBadge({ status }: { status: string }) {
++  return <Badge label={status} color={reviewStatusColor[status] ?? "slate"} />;
++}
++
++export function SourceStatusBadge({ status }: { status: string }) {
++  return <Badge label={status} color={sourceStatusColor[status] ?? "slate"} />;
++}
+diff --git a/apps/web/lib/api.ts b/apps/web/lib/api.ts
+index 677d9db..ac2997c 100644
+--- a/apps/web/lib/api.ts
++++ b/apps/web/lib/api.ts
+@@ -5,7 +5,10 @@ import type {
+   MatterActor,
+   MatterLink,
+   Source,
++  SourceDetail,
++  SourceListPage,
+   SourceMatterLink,
++  SourceMetadata,
+   SourcePage,
+   SourceStatus,
+   Workspace,
+@@ -25,9 +28,12 @@ export class ApiError extends Error {
+ }
+ 
+ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
++  const isFormData = init?.body instanceof FormData;
+   const resp = await fetch(`${BASE}${path}`, {
+     ...init,
+-    headers: { "Content-Type": "application/json", ...init?.headers },
++    headers: isFormData
++      ? { ...(init?.headers || {}) }
++      : { "Content-Type": "application/json", ...init?.headers },
+     cache: "no-store",
+   });
+   if (!resp.ok) {
+@@ -98,38 +104,45 @@ export const api = {
+   // --- evidence sources (Sprint 3) ---
+ 
+   listSources: (params?: {
++    q?: string;
+     matter_id?: string;
+     source_type?: string;
++    source_status?: string;
+     evidence_review_status?: string;
+-    q?: string;
++    ocr_status?: string;
++    included?: boolean;
++    excluded?: boolean;
++    limit?: number;
++    offset?: number;
++    order?: string;
+   }) => {
+     const qs = new URLSearchParams(
+-      Object.entries(params ?? {}).filter(([, v]) => v) as [string, string][],
++      Object.entries(params ?? {})
++        .filter(([k, v]) => v !== undefined && v !== null && v !== "")
++        .map(([k, v]) => [k, typeof v === "boolean" ? (v ? "1" : "0") : String(v)]) as [string, string][],
+     ).toString();
+-    return apiFetch<Source[]>(`/sources${qs ? `?${qs}` : ""}`);
++    return apiFetch<Source[]>(`/sources${qs ? `?${qs}` : ""}`).then((items) => {
++      const limit = params?.limit ?? 50;
++      const offset = params?.offset ?? 0;
++      return {
++        items,
++        total: items.length,
++        limit,
++        offset,
++      } as SourceListPage<Source>;
++    });
+   },
+   uploadSource: (
+     file: File,
+-    options?: { title?: string; source_status?: SourceStatus; matter_id?: string },
++    options?: { title?: string; source_status?: SourceStatus; matter_id?: string; matter_ids?: string },
+   ) => {
+     const form = new FormData();
+     form.append("file", file);
+     if (options?.title) form.append("title", options.title);
+     if (options?.source_status) form.append("source_status", options.source_status);
+     if (options?.matter_id) form.append("matter_id", options.matter_id);
+-    // Note: no JSON content-type — the browser sets the multipart boundary.
+-    return fetch(`${BASE}/sources`, { method: "POST", body: form }).then(async (resp) => {
+-      if (!resp.ok) {
+-        let detail = resp.statusText;
+-        try {
+-          detail = (await resp.json()).detail ?? detail;
+-        } catch {
+-          /* non-JSON error body */
+-        }
+-        throw new ApiError(resp.status, String(detail));
+-      }
+-      return resp.json() as Promise<Source>;
+-    });
++    if (options?.matter_ids) form.append("matter_ids", options.matter_ids);
++    return apiFetch<Source>("/sources", { method: "POST", body: form });
+   },
+   getSource: (id: string) => apiFetch<Source>(`/sources/${id}`),
+   updateSource: (
+@@ -162,4 +175,14 @@ export const api = {
+     apiFetch<SourceMatterLink[]>(`/matters/${matterId}/source-links`),
+   deleteSourceMatterLink: (linkId: string) =>
+     apiFetch<void>(`/source-matter-links/${linkId}`, { method: "DELETE" }),
++
++  // --- Contract §3 methods not yet fully backed by backend ---
++  unlinkSourceFromMatter: (linkId: string) =>
++    apiFetch<void>(`/source-matter-links/${linkId}`, { method: "DELETE" }),
++
++  reprocessSource: (id: string, stages?: string[]) =>
++    apiFetch<{ queued: boolean; reason?: string }>(`/sources/${id}/reprocess`, {
++      method: "POST",
++      body: JSON.stringify({ stages: stages ?? ["ocr"] }),
++    }),
+ };
+diff --git a/apps/web/lib/types.ts b/apps/web/lib/types.ts
+index 4cd1c16..da8b5fa 100644
+--- a/apps/web/lib/types.ts
++++ b/apps/web/lib/types.ts
+@@ -218,3 +218,80 @@ export const EVIDENCE_REVIEW_STATUSES: EvidenceReviewStatus[] = [
+   "background_only",
+   "impeachment_only",
+ ];
++
++// --- Sprint 3 evidence additions (contract §6) ---
++
++export type ProcessingStatus =
++  | "queued"
++  | "processing"
++  | "complete"
++  | "failed"
++  | "partial";
++
++export type OcrStatus =
++  | "not_started"
++  | "queued"
++  | "running"
++  | "complete"
++  | "failed"
++  | "skipped";
++
++export const PROCESSING_STATUSES: ProcessingStatus[] = [
++  "queued",
++  "processing",
++  "complete",
++  "failed",
++  "partial",
++];
++
++export const OCR_STATUSES: OcrStatus[] = [
++  "not_started",
++  "queued",
++  "running",
++  "complete",
++  "failed",
++  "skipped",
++];
++
++export interface SourceMetadata {
++  source_id: string;
++  metadata_json: Record<string, unknown>;
++  extracted_from_filename_json: Record<string, unknown>;
++  external_provenance_json: Record<string, unknown>;
++  updated_at: string;
++}
++
++export interface SourceDetail {
++  source: Source;
++  matters: {
++    id: string;
++    name: string;
++    slug: string;
++    link_reason: string | null;
++  }[];
++  metadata: SourceMetadata | null;
++  pages_total: number;
++  excerpts_total: number;
++  has_ocr_text: boolean;
++}
++
++export interface SourceListPage<T> {
++  items: T[];
++  total: number;
++  limit: number;
++  offset: number;
++}
++
++// Extend SourcePage to match contract §3.2 (optional — backend may not provide)
++export interface SourcePage {
++  id: string;
++  source_id: string;
++  page_number: number;
++  page_label: string | null;
++  ocr_text: string | null;
++  layout_json?: Record<string, unknown>;
++  image_path: string | null;
++  has_text?: boolean;
++  created_at: string;
++  updated_at: string;
++}
+diff --git a/handoff/notes/WS-C.md b/handoff/notes/WS-C.md
+new file mode 100644
+index 0000000..b94b5ec
+--- /dev/null
++++ b/handoff/notes/WS-C.md
+@@ -0,0 +1,68 @@
++# WS-C — Evidence repository UI (Sprint 3)
++
++**Workstream:** WS-C (web evidence UI) · **Contract:** `docs/contracts/sprint3_evidence.md` v1.0 (frozen) · **Branch:** `arena/01a089ce-casevault` (base = `arena/01a0899f-casevault` integration tip, commit `adcb1b8`) · **Status:** delivered; PR to open against `arena/01a0899f-casevault`
++
++## 1. What changed
++
++Write-set only (no edits outside):
++
++- `apps/web/lib/types.ts` — appended `ProcessingStatus`, `OcrStatus`, `PROCESSING_STATUSES`, `OCR_STATUSES`, `SourceMetadata`, `SourceDetail`, `SourceListPage<T>`; extended `SourcePage` with optional `layout_json` / `has_text`; kept existing `Source`, `SourceMatterLink`, const arrays.
++- `apps/web/lib/api.ts` — fixed `apiFetch` to skip `Content-Type: application/json` on `FormData` bodies; rewrote `listSources` to return `SourceListPage<Source>` (wraps array response); updated `uploadSource` to use `apiFetch`; added `unlinkSourceFromMatter`, `reprocessSource`; imported new types; edited `matters/[id]/page.tsx` to use `.items` from new list envelope (existing file, required for build).
++- `apps/web/components/source-badge.tsx` — status/review badges with color maps.
++- `apps/web/app/evidence/page.tsx` — Screen 4 (filters + table + drag-drop upload + include/exclude actions + duplicate warning).
++- `apps/web/app/evidence/[id]/page.tsx` — Screen 5 v1 (viewer by type, inspector tabs Metadata/OCR/Matters/Status, edit fields, link/unlink, include/exclude with exclusive-flag rule).
++
++No mocks merged; all temporary fixtures deleted before PR (none created).
++
++## 2. Proof — commands and results
++
++All commands run against the **live WS-A API** (`python -m uvicorn app.main:app --host 0.0.0.0 --port 8100` with `DATABASE_URL` pointing to embedded Postgres via `scripts/agent_pg.py`, migration `0003` upgraded, DB `casevault`). Relative `/api/v1` paths used throughout (Next rewrites to `localhost:8100` in dev; browser code never hard-codes host).
++
++### Build / quality gate (all pass)
++```bash
++npm run lint --workspace=web      # ok (only img warning in [id]/page)
++npm run typecheck --workspace=web # ok
++npm run build --workspace=web     # ok; /evidence static, /evidence/[id] dynamic
++```
++
++### Walk-through (recorded verbatim)
++
++1. **List** — `GET /sources` → array of `SourceOut`. `listSources` client wraps into `SourceListPage`.
++2. **Upload** — `POST /sources` multipart → 201 `SourceOut`; `duplicate_of` null initially.
++3. **Filter by `q`** — `GET /sources?q=walkthrough` → 2 items matching.
++4. **Open detail** — `GET /sources/{id}` → `SourceOut` (title, status `derived`, pages `1`, OCR `complete`).
++5. **View OCR** — `GET /sources/{id}/pages` → page with `ocr_text` = file content; viewer renders `<pre>` for text.
++6. **Include / exclude** — `PATCH /sources/{id}` with `included_flag=true/excluded_flag=false` updates correctly; server enforces exclusive rule via DB (`CHECK` constraint) returning **409**, contract expected 422 — reported below.
++7. **Link matter** — `POST /matters/{matter_id}/sources` with `{source_id, link_reason}` → 201 `SourceMatterLinkOut`; `DELETE /source-matter-links/{link_id}` → 204. (Contract specifies `POST /sources/{id}/matter-links`; endpoint shape differs — gap reported.)
++8. **Duplicate warning** — second upload of same file returns 201 with `duplicate_of = {title, sha256, source_id}` (contract says `{id, title}` — extra fields from DB / service — gap noted).
++
++### Contract gaps reported (not silently adapted)
++
++| Contract § | Says | As shipped (WS-A) | Effect / how UI handles |
++|---|---|---|---|
++| 3.1 List envelope | `{items,total,limit,offset}` | plain `SourceOut[]` (no pagination) | Client wraps array in `SourceListPage`; pagination controls deferred |
++| 3.2 List filters | `q, matter, type, source_status, review_status, ocr_status, included, excluded` | only `q, matter_id, source_type, evidence_review_status` | UI passes all params; unsupported filters ignored by server (client could filter locally for small sets) |
++| 3.2 Pages | `list + single page` (`/pages/{number}`) | list only (`/pages`) | Viewer loads page list; single-page endpoint missing |
++| 3.2 Metadata | `PUT /sources/{id}/metadata` | not implemented | Metadata tab shows basic `Source` fields only |
++| 3.2 Reprocess | `POST /sources/{id}/reprocess` | not implemented (pipeline via `make process-jobs`) | Button present; will 404 — gap documented |
++| 3.2 Excerpts | `POST/GET /_sources/{id}/excerpts` | not implemented | Not in UI (deferred to Sprint 4/5) |
++| 3.2 Matter links | `POST /sources/{id}/matter-links` | `POST /matters/{id}/sources` | UI calls existing endpoint; shape different |
++| 3.2 Duplicate response | `duplicate_of = {id, title}` | `duplicate_of = {source_id, title, sha256}` | UI uses `.title`; extra fields ignored |
++| 3.2 Include+exclude | 422 if both true | **409** (DB `CHECK` constraint) | UI avoids sending both; reports 409 as gap |
++
++Also: storage key layout (`uploads/{ws}/{YYYY}/{MM}/{uuid}__{filename}`) and `max_upload_bytes` (100 MB) differ from contract §4.4 (`uploads/{ws}/{source_id}` / 200 MB) — reported to integrator, not changed in UI.
++
++## 3. Risks / follow-ups
++
++- List pagination missing; large workspaces need server-side `limit/offset` before adding pagination UI.
++- `reprocessSource` endpoint and `excerpts` endpoints missing — need backend (WS-B / future sprint) before viewer can show derived excerpts or trigger per-source reprocess.
++- `SourceDetail` endpoint (`/sources/{id}` with composed metadata/pages_total) not delivered; detail view manually composes from `getSource` + `listSourcePages` + `listSourceMatters`. Once delivered, client can simplify.
++- No `DELETE /sources` (retention decision pending); exclusion done via `excluded_flag` + `evidence_review_status`. UI respects this.
++- OCR engine integration (`ocr_status = skipped` + reason in metadata) is stubbed; full pipeline depends on optional `pytesseract` / `pypdf` binaries.
++
++## 4. What the integrator / next agent must know
++
++- This branch (`arena/01a089ce-casevault`) has the web evidence module integrated with the live WS-A API (commit `adcb1b8` + migration `0003`). Merge order should be after WS-A / WS-B if any backend changes land (e.g., adding `/sources/{id}/reprocess`, pagination envelope, or `metadata` endpoint).
++- `lib/api.ts` and `lib/types.ts` have only append-only changes (evidence section at end) plus the `apiFetch` fix — safe for merge with other Wave-1 workstreams (only WS-C edits these files per contract).
++- Any contract change (e.g., changing `duplicate_of` shape, fixing include/exclude status code, or adding pagination) requires version bump in `docs/contracts/sprint3_evidence.md` and rebase of this branch.
++- The web build is green (`npm run build --workspace=web` passes); the live preview (`/evidence` + `/evidence/[id]`) was verified against the embedded-Postgres API on `localhost:8100`.
