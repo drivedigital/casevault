@@ -5,6 +5,41 @@ Fields: Date / Branch / What changed / Why / Files affected / What needs local t
 
 ---
 
+## 2026-09-10 — Integrator: W2-EV merged (evidence follow-ups)
+
+**Branch:** `arena/01a0899f-casevault` (fast-forward merge of `d235998`)
+
+### What changed
+- **W2-EV integrated.** New session `arena/01a089cb-casevault` delivered the
+  Sprint 3 delta-table gaps: `POST/GET /sources/{id}/excerpts`,
+  `DELETE /source-excerpts/{id}`, and `POST /sources/{id}/reprocess`
+  (202 `{queued, job_id, reason}`, redis-optional), plus RQ entry points
+  `ingest_source` / `ocr_source` and 4 new tests.
+- Review notes: stayed exactly inside its write set; workspace-scoped excerpt
+  CRUD (source resolved before every operation); no existing response shape
+  changed; `GET /sources` untouched (pagination still backlog); graceful
+  degradation verified — without redis the API returns 202 with
+  `queued: false` and the connection reason, and the statuses remain `queued`.
+- Archived the superseded Wave 1 briefs (`WS-A..WS-D.md`) to
+  `handoff/notes/archive/wave1/` so nobody spawns them; the kickoff README now
+  carries a live workstream-status table.
+
+### Verified on the merged tip
+- `bash scripts/verify_all.sh` → **GATE GREEN**: migrations up/down/up,
+  `pytest` **21 passed**, ruff clean, web lint/typecheck/build clean.
+
+### What the next agents must know
+- **W2-E (migration 0004 + models + router stubs) is still unstarted and is the
+  critical path** — F, G and J are blocked until it merges.
+- Excerpts exist now, so W2-G can attach `fact_source_links.excerpt_id` to real
+  rows; nothing about the intake contract changes.
+
+### Blockers / risks
+- Only one of the newly started sessions has pushed work so far (W2-EV). If a
+  second session is free, W2-E is the highest-value assignment.
+
+---
+
 ## 2026-09-10 — Integrator: agent policy + Wave 2 contract and briefs
 
 **Branch:** `arena/01a0899f-casevault`

@@ -90,13 +90,13 @@ rollback depth, polymorphic comment FKs, confidence/strength enum split).
 
 ## Wave 2 — intake core (Sprints 4 + 5, in progress from 2026-09-10)
 
-- [ ] W2-E spine: migration `0004` + models + router stubs (critical path)
+- [ ] W2-E spine: migration `0004` + models + router stubs (**critical path, unstarted**)
 - [ ] W2-F ledger API (CRUD, filters, CSV import/export, bulk ops)
 - [ ] W2-G intake API (proposal review, trusted facts, links, generation job)
 - [ ] W2-H `/ledger` UI (+ nav entry)
 - [ ] W2-I `/ai-review` inbox + accepted-facts tab
 - [ ] W2-J end-to-end verification + CI intake job
-- [ ] W2-EV evidence follow-ups (excerpts API, per-source reprocess)
+- [x] W2-EV evidence follow-ups (excerpts API, per-source reprocess) — merged 2026-09-10
 - [ ] W2 integration by the integrator: merge order E → F → G → J, gate after
       each merge, contract/backlog/handoff consolidation
 - [ ] After W2: scheduler for `verification_task` proposals, ledger→claims

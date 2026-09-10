@@ -8,7 +8,22 @@ as-shipped contract. This folder now assigns **Wave 2**.
 `docs/contracts/wave2_intake_core.md` **v1.0 (frozen)** (the interfaces) ·
 `handoff/PARALLEL_PLAN.md` §4a (the plan).
 
-## Wave 2 roster
+## Live status (updated 2026-09-10, 05:45 UTC)
+
+| Brief | Workstream | Session | Status |
+|---|---|---|---|
+| `W2-EV.md` | evidence follow-ups | `arena/01a089cb-casevault` | ✅ **merged** (`d235998`, gate green, 21 tests) |
+| `W2-E.md` | **spine: migration `0004` + models + stubs** | — | ⛔ **unstarted — critical path; F/G/J are blocked** |
+| `W2-F.md` | ledger API | — | ⏸ waiting on E |
+| `W2-G.md` | intake API | — | ⏸ waiting on E |
+| `W2-H.md` | ledger UI | — | ▶ ready to start (contract-only) |
+| `W2-I.md` | inbox UI | — | ▶ ready to start (contract-only) |
+| `W2-J.md` | verification | — | ⏸ waiting on E, F, G |
+
+Wave 1's briefs (`WS-A..WS-D.md`) are archived under `handoff/notes/archive/wave1/` —
+they were never used (Sprint 3 shipped single-handedly) and must not be spawned.
+
+## Wave 2 roster (reference)
 
 | Brief | Workstream | Deliverable | Starts | Merge order |
 |---|---|---|---|---|
@@ -18,7 +33,7 @@ as-shipped contract. This folder now assigns **Wave 2**.
 | `W2-H.md` | ledger UI | `/ledger` table, filters, CSV dialogs, bulk | now (contract-only) | 2nd |
 | `W2-I.md` | inbox UI | `/ai-review` queue + accepted-facts tab | now (contract-only) | 2nd |
 | `W2-J.md` | verification | e2e smoke script + integration test + CI job | after E, F, G | 3rd |
-| `W2-EV.md` | evidence follow-ups | excerpts API + per-source reprocess | now | parallel |
+| `W2-EV.md` | evidence follow-ups | excerpts API + per-source reprocess | ✅ done | merged |
 
 F and G share no files. H and I share only the append-only sections of
 `lib/api.ts` / `lib/types.ts`. E is short and lands first — everyone else is

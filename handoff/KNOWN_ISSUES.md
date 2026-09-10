@@ -50,6 +50,11 @@ Current defects and limitations, newest first. Triage per Roadmap §9
   Upgrade paths and revision ids unchanged — no local DB rebuild needed.
 - **[Low] Global nav links to `/evidence`, which has no page.** Clicking
   "Evidence" from any screen 404s until Sprint 3 (WS-C) lands the route.
+- **[Low] `POST /sources/{id}/reprocess` reports `queued` without a worker when
+  redis is absent** (by design: the 202 carries `queued:false` plus the
+  connection reason, and the status stays `queued` until something drains it —
+  `make process-jobs` with redis down does nothing, so use redis or the direct
+  job runner for actual reprocessing).
 - **[Medium] PDF/image OCR is a stub.** Uploads succeed and the source/preview
   page records `ocr_status=skipped` with a reason, but no text extraction
   happens until the Tesseract/OCRmyPDF engine integration lands
