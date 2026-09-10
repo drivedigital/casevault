@@ -17,6 +17,10 @@ from app.db.session import get_db
 from app.models.enums import EvidenceReviewStatus, SourceStatus, SourceType
 from app.routers.matters import resolve_workspace_id
 from app.schemas.source import (
+    ReprocessOut,
+    ReprocessRequest,
+    SourceExcerptCreate,
+    SourceExcerptOut,
     SourceMatterLinkCreate,
     SourceMatterLinkOut,
     SourceOut,
@@ -206,3 +210,67 @@ def _link_out(db: Session, link) -> SourceMatterLinkOut:
         link_reason=link.link_reason,
         created_at=link.created_at,
     )
+
+# ---------------------------------------------------------------------------
+# Wave 2 W2-EV: source excerpts and per-source reprocessing.
+
+
+@router.post(
+    "/sources/{source_id}/excerpts",
+    response_model=SourceExcerptOut,
+    status_code=201,
+)
+def create_source_excerpt(
+    source_id: uuid.UUID,
+    payload: SourceExcerptCreate,
+    workspace_id: uuid.UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    ws_id = resolve_workspace_id(db, workspace_id)
+    return source_service.create_excerpt(
+        db,
+        ws_id,
+        source_id,
+        page_start=payload.page_start,
+        page_end=payload.page_end,
+        locator_text=payload.locator_text,
+        excerpt_text=payload.excerpt_text,
+        excerpt_type=payload.excerpt_type,
+        anchor_json=payload.anchor_json,
+    )
+
+
+@router.get(
+    "/sources/{source_id}/excerpts",
+    response_model=list[SourceExcerptOut],
+)
+def list_source_excerpts(
+    source_id: uuid.UUID,
+    workspace_id: uuid.UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    ws_id = resolve_workspace_id(db, workspace_id)
+    return source_service.list_excerpts(db, ws_id, source_id)
+
+
+@router.delete("/source-excerpts/{excerpt_id}", status_code=204)
+def delete_source_excerpt(
+    excerpt_id: uuid.UUID,
+    workspace_id: uuid.UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    ws_id = resolve_workspace_id(db, workspace_id)
+    source_service.delete_excerpt(db, ws_id, excerpt_id)
+    return Response(status_code=204)
+
+
+@router.post("/sources/{source_id}/reprocess", response_model=ReprocessOut, status_code=202)
+def reprocess_source(
+    source_id: uuid.UUID,
+    payload: ReprocessRequest | None = None,
+    workspace_id: uuid.UUID | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    ws_id = resolve_workspace_id(db, workspace_id)
+    stages = payload.stages if payload is not None else ["ocr"]
+    return source_service.reprocess_source(db, ws_id, source_id, stages)

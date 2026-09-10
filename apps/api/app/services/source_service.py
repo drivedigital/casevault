@@ -13,7 +13,13 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.models.enums import EvidenceReviewStatus, SourceStatus, SourceType
 from app.models.matter import Matter
-from app.models.source import Source, SourceMatterLink, SourceMetadata, SourcePage
+from app.models.source import (
+    Source,
+    SourceExcerpt,
+    SourceMatterLink,
+    SourceMetadata,
+    SourcePage,
+)
 from app.schemas.source import SourceUpdate
 from app.services import identity_service
 from app.services.storage import LocalStorage
@@ -348,3 +354,135 @@ def _try_enqueue_process(source_id: uuid.UUID) -> bool:
     except Exception as exc:  # noqa: BLE001 - enqueue must never fail an upload
         logger.warning("ingest enqueue skipped for source %s: %s", source_id, exc)
         return False
+
+# ---------------------------------------------------------------------------
+# Wave 2 W2-EV: excerpt CRUD and per-source reprocessing.
+# Keep these additions below the Sprint 3 service implementation so existing
+# source response shapes and enqueue behavior remain unchanged.
+
+_EXCERPT_TYPES = {"quote", "region", "timestamp", "bates", "paragraph", "other"}
+
+
+def create_excerpt(
+    db: Session,
+    workspace_id: uuid.UUID,
+    source_id: uuid.UUID,
+    *,
+    page_start: int | None,
+    page_end: int | None,
+    locator_text: str | None,
+    excerpt_text: str | None,
+    excerpt_type: str,
+    anchor_json: dict | None,
+) -> SourceExcerpt:
+    """Create an excerpt after resolving the source in the requested workspace."""
+    source = get_source(db, workspace_id, source_id)
+    if excerpt_type not in _EXCERPT_TYPES:
+        # Normally enforced by the Pydantic request schema; retain a service
+        # guard for callers that use this module directly.
+        raise HTTPException(status_code=422, detail="Invalid excerpt type.")
+
+    excerpt = SourceExcerpt(
+        source_id=source.id,
+        page_start=page_start,
+        page_end=page_end,
+        locator_text=locator_text,
+        excerpt_text=excerpt_text,
+        excerpt_type=excerpt_type,
+        anchor_json=anchor_json or {},
+    )
+    db.add(excerpt)
+    db.commit()
+    db.refresh(excerpt)
+    return excerpt
+
+
+def list_excerpts(
+    db: Session, workspace_id: uuid.UUID, source_id: uuid.UUID
+) -> list[SourceExcerpt]:
+    """List excerpts in source/page order, scoped through the source workspace."""
+    get_source(db, workspace_id, source_id)
+    return list(
+        db.scalars(
+            select(SourceExcerpt)
+            .where(SourceExcerpt.source_id == source_id)
+            .order_by(SourceExcerpt.page_start, SourceExcerpt.created_at, SourceExcerpt.id)
+        )
+    )
+
+
+def delete_excerpt(db: Session, workspace_id: uuid.UUID, excerpt_id: uuid.UUID) -> None:
+    """Delete an excerpt only when its source belongs to the workspace."""
+    excerpt = db.scalar(
+        select(SourceExcerpt)
+        .join(Source, SourceExcerpt.source_id == Source.id)
+        .where(SourceExcerpt.id == excerpt_id, Source.workspace_id == workspace_id)
+    )
+    if excerpt is None:
+        raise HTTPException(status_code=404, detail="Excerpt not found.")
+    db.delete(excerpt)
+    db.commit()
+
+
+def _enqueue_reprocess_stage(
+    source_id: uuid.UUID, workspace_id: uuid.UUID, stage: str
+) -> dict[str, bool | str | None]:
+    """Enqueue one reprocessing stage, degrading cleanly when RQ/Redis is absent."""
+    queue_jobs = {
+        "ingest": ("ingest", "workers.pipeline.jobs.ingest_source"),
+        "ocr": ("ocr", "workers.pipeline.jobs.ocr_source"),
+    }
+    queue_name, job_path = queue_jobs[stage]
+    try:
+        import redis
+        from rq import Queue
+
+        connection = redis.Redis.from_url(get_settings().redis_url)
+        job = Queue(queue_name, connection=connection).enqueue(
+            job_path, str(source_id), str(workspace_id)
+        )
+        return {"queued": True, "job_id": str(job.id), "reason": None}
+    except Exception as exc:  # noqa: BLE001 - queueing must not fail a 202 response
+        logger.warning(
+            "%s enqueue skipped for source %s: %s", stage, source_id, exc
+        )
+        return {
+            "queued": False,
+            "job_id": None,
+            "reason": f"{stage} queue unavailable: {exc}",
+        }
+
+
+def reprocess_source(
+    db: Session,
+    workspace_id: uuid.UUID,
+    source_id: uuid.UUID,
+    stages: list[str],
+) -> dict[str, bool | str | None]:
+    """Mark requested stages queued and best-effort enqueue their jobs.
+
+    Statuses are committed before contacting Redis. This is intentional: a
+    redis-free installation still reports the requested work as queued, while
+    the response makes clear that no remote job was created.
+    """
+    source = get_source(db, workspace_id, source_id)
+    requested = list(dict.fromkeys(stages))
+    if not requested or any(stage not in {"ingest", "ocr"} for stage in requested):
+        raise HTTPException(status_code=422, detail="Stages must be ingest or ocr.")
+
+    if "ingest" in requested:
+        source.processing_status = "queued"
+    if "ocr" in requested:
+        source.ocr_status = "queued"
+    db.commit()
+
+    results = [
+        _enqueue_reprocess_stage(source.id, workspace_id, stage) for stage in requested
+    ]
+    successful = [result for result in results if result["queued"]]
+    failed_reasons = [result["reason"] for result in results if result["reason"]]
+    return {
+        "queued": bool(successful),
+        "job_id": successful[0]["job_id"] if successful else None,
+        "reason": "; ".join(str(reason) for reason in failed_reasons) or None,
+    }

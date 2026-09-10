@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -74,3 +75,44 @@ class SourceMatterLinkOut(BaseModel):
     matter_slug: str
     link_reason: str | None
     created_at: datetime
+
+# Wave 2 W2-EV: source excerpts and per-source pipeline reprocessing.
+
+
+ExcerptType = Literal["quote", "region", "timestamp", "bates", "paragraph", "other"]
+
+
+class SourceExcerptCreate(BaseModel):
+    page_start: int | None = None
+    page_end: int | None = None
+    locator_text: str | None = None
+    excerpt_text: str | None = None
+    excerpt_type: ExcerptType
+    anchor_json: dict[str, Any] | None = None
+
+
+class SourceExcerptOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    source_id: uuid.UUID
+    page_start: int | None
+    page_end: int | None
+    locator_text: str | None
+    excerpt_text: str | None
+    excerpt_type: ExcerptType
+    anchor_json: dict[str, Any]
+    created_by: str
+    created_by_user_id: uuid.UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReprocessRequest(BaseModel):
+    stages: list[Literal["ingest", "ocr"]] = Field(default_factory=lambda: ["ocr"], min_length=1)
+
+
+class ReprocessOut(BaseModel):
+    queued: bool
+    job_id: str | None
+    reason: str | None

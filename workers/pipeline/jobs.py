@@ -189,3 +189,91 @@ def ping() -> dict:
 def health_check() -> dict:
     """Placeholder job registration target for later pipelines."""
     return {"job": "health_check", "status": "ok", "registered": True, "time_utc": _now()}
+
+
+# ---------------------------------------------------------------------------
+# Wave 2 W2-EV: per-source reprocessing entry points.
+# The existing process_source implementation remains the compatibility path
+# for Sprint 3 uploads; these RQ-callable names give the API distinct targets
+# for the ingest and OCR queues.
+
+
+def ingest_source(
+    source_id: str, workspace_id: str | None = None, database_url: str | None = None
+) -> dict:
+    """RQ entry point for an ingest reprocess request."""
+    del workspace_id  # workspace scoping is enforced before enqueueing
+    result = process_source(source_id, database_url=database_url)
+    return {"job": "ingest_source", **result}
+
+
+def ocr_source(
+    source_id: str, workspace_id: str | None = None, database_url: str | None = None
+) -> dict:
+    """RQ entry point for OCR reprocessing, including the existing OCR stub."""
+    del workspace_id  # workspace scoping is enforced before enqueueing
+    session = _connect(database_url)
+    try:
+        from app.models.enums import SourceType
+        from app.models.source import Source, SourcePage
+        from app.services.storage import LocalStorage
+
+        source = session.get(Source, source_id)
+        if source is None:
+            raise ValueError(f"source {source_id} not found")
+        source.ocr_status = "running"
+        session.commit()
+
+        if source.source_type in (
+            SourceType.text,
+            SourceType.markdown,
+            SourceType.email,
+            SourceType.note,
+        ):
+            content = LocalStorage().read(source.storage_path)
+            for page in source.pages:
+                session.delete(page)
+            session.flush()
+            session.add(
+                SourcePage(
+                    source_id=source.id,
+                    page_number=1,
+                    page_label="1",
+                    ocr_text=content.decode("utf-8", errors="replace"),
+                )
+            )
+            source.page_count = 1
+            source.ocr_status = "complete"
+        else:
+            source.ocr_status = "skipped"
+            _merge_metadata(
+                session,
+                source_id,
+                {
+                    "ocr": {
+                        "engine": "stub",
+                        "reason": "No OCR engine wired in this build "
+                        "(Tesseract/OCRmyPDF integration is a later sprint item).",
+                    },
+                    "ocr_reprocessed_at": _now(),
+                },
+            )
+        session.commit()
+        return {
+            "job": "ocr_source",
+            "source_id": source_id,
+            "status": "complete",
+            "ocr_status": source.ocr_status,
+            "page_count": source.page_count,
+        }
+    except Exception as exc:  # noqa: BLE001 - jobs report failure rather than escape
+        session.rollback()
+        _mark_failed_quietly(session, source_id)
+        return {
+            "job": "ocr_source",
+            "source_id": source_id,
+            "status": "failed",
+            "reason": str(exc),
+        }
+    finally:
+        session.close()
