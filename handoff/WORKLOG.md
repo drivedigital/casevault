@@ -755,3 +755,20 @@ API HTTP-status preflight diagnostics to step summary, without response bodies,
 credential output, permissions changes, or weakening scanner failure behavior.
 Owner may instead supply redacted failing action output from GitHub UI. No
 product changes or additional merges in this diagnostic pass.
+
+## 2026-09-10 — secrets CI root cause confirmed; least-privilege fix
+
+Owner supplied redacted failing PR #14 action output. Gitleaks installed from
+cache, then GET /repos/drivedigital/casevault/pulls/14/commits returned 403,
+with `x-accepted-github-permissions: pull_requests=read`. This establishes a
+PR-metadata permission failure before scanning, not a Node deprecation issue.
+It does not establish that the unexecuted scan would find no secrets.
+
+Integrator added only secrets-job-scoped `contents: read` and
+`pull-requests: read`, plus automatic GITHUB_TOKEN env to the existing action.
+No write permissions, personal credentials, scanner bypass, or insecure Node
+fallback. Token env overlaps WS-D's pending change; preserve one block on
+rebase. YAML parsed; assertions confirm python/web/intake jobs unchanged,
+read-only job scope, scanner intact; git diff --check passes. Product gate
+not rerun for this workflow-only repair. PR-event verification must run on
+WS-D's rebased head before claiming the secrets check is green.

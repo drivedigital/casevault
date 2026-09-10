@@ -121,3 +121,8 @@ intake generation, complete job results, idempotency and cap=2 with PYTHONPATH
 unset; J follow-up integrated as `15174cd`, strict 96-test gate green. The
 normal-worker verification blocker is closed. Remaining wave blockers include
 WS-D's unexplained secrets CI failure and the incomplete evidence UI follow-up.
+
+**Secrets check diagnosis:** owner-provided PR #14 log confirms a 403 on listing
+PR commits, requiring `pull_requests=read`; Node warnings are unrelated. A
+secrets-job-only read permission and automatic-token fix is now committed.
+WS-D must rebase and rerun PR-event CI to verify; scanner result still pending.
