@@ -162,7 +162,187 @@ export const api = {
     apiFetch<SourceMatterLink[]>(`/matters/${matterId}/source-links`),
   deleteSourceMatterLink: (linkId: string) =>
     apiFetch<void>(`/source-matter-links/${linkId}`, { method: "DELETE" }),
+
+  // -------------------------------------------------------------------------
+  // Wave 2 · intake core — WS-I (/ai-review) — contract
+  // docs/contracts/wave2_intake_core.md v1.0 §4.2–§4.3 + §5.3.
+  //
+  // APPEND-ONLY section (handoff/AGENT_POLICY.md §2.4): WS-H's ledger client
+  // functions live in their own section above; nothing above this line is
+  // reordered or reformatted by WS-I.
+  //
+  // Floor rule (contract §4.1): reviewProposal(accept|accept_with_edits) only
+  // creates a fact with review_state `proposed`. approveFact is the one and
+  // only client call that can make a fact `accepted`.
+  // -------------------------------------------------------------------------
+
+  listProposals: (params?: ProposalListParams) =>
+    apiFetch<ProposalPage>(`/proposals${intakeQuery({ ...params })}`),
+  createProposal: (payload: NewProposalInput) =>
+    apiFetch<Proposal>("/proposals", { method: "POST", body: JSON.stringify(payload) }),
+  getProposal: (id: string) => apiFetch<Proposal>(`/proposals/${id}`),
+  // PATCH /proposals/{id} is only valid while review_state=proposed (contract §4.2).
+  updateProposal: (
+    id: string,
+    payload: {
+      title?: string | null;
+      proposed_text?: string | null;
+      proposed_structured_json?: ProposedStructuredJson;
+      confidence_score?: number | null;
+    },
+  ) =>
+    apiFetch<Proposal>(`/proposals/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  reviewProposal: (
+    id: string,
+    payload: { action: ProposalReviewAction; edits?: ProposalEdits; review_notes?: string | null },
+  ) =>
+    apiFetch<ProposalReviewResult>(`/proposals/${id}/review`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  bulkReviewProposals: (
+    ids: string[],
+    action: ProposalReviewAction,
+    review_notes?: string | null,
+  ) =>
+    apiFetch<BulkReviewResult>("/proposals/bulk-review", {
+      method: "POST",
+      body: JSON.stringify({ ids, action, review_notes: review_notes ?? null }),
+    }),
+  generateProposals: (sourceId: string, maxProposals?: number) =>
+    apiFetch<ProposalGenerateResult>("/proposals/generate", {
+      method: "POST",
+      body: JSON.stringify({
+        source_id: sourceId,
+        ...(maxProposals ? { max_proposals: maxProposals } : {}),
+      }),
+    }),
+
+  listFacts: (params?: FactListParams) =>
+    apiFetch<FactPage>(`/facts${intakeQuery({ ...params })}`),
+  getFact: (id: string) => apiFetch<Fact>(`/facts/${id}`),
+  // Never sends review_state — that is a review action, not an edit (§4.1).
+  updateFact: (
+    id: string,
+    payload: {
+      short_label?: string | null;
+      statement_text?: string;
+      fact_type?: FactType;
+      confidence_level?: StrengthLabel | null;
+      is_material?: boolean;
+    },
+  ) => apiFetch<Fact>(`/facts/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  // The ONLY route to `accepted` (contract §4.1).
+  approveFact: (id: string) =>
+    apiFetch<Fact>(`/facts/${id}/approve`, { method: "POST" }),
+  setFactReviewState: (id: string, reviewState: FactReviewStateTarget, notes?: string | null) =>
+    apiFetch<Fact>(`/facts/${id}/review-state`, {
+      method: "POST",
+      body: JSON.stringify({ review_state: reviewState, notes: notes ?? null }),
+    }),
+  supersedeFact: (
+    id: string,
+    payload: {
+      statement_text: string;
+      short_label?: string | null;
+      fact_type?: FactType;
+      confidence_level?: StrengthLabel | null;
+    },
+  ) =>
+    apiFetch<FactSupersedeResult>(`/facts/${id}/supersede`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  addFactSourceLink: (
+    factId: string,
+    payload: {
+      source_id: string;
+      excerpt_id?: string | null;
+      support_type?: SupportType;
+      strength?: StrengthLabel | null;
+      notes?: string | null;
+    },
+  ) =>
+    apiFetch<FactSourceLink>(`/facts/${factId}/source-links`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  deleteFactSourceLink: (linkId: string) =>
+    apiFetch<void>(`/fact-source-links/${linkId}`, { method: "DELETE" }),
+  addFactActorLink: (factId: string, payload: { actor_id: string; role_in_fact?: string | null }) =>
+    apiFetch<FactActorLink>(`/facts/${factId}/actor-links`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  deleteFactActorLink: (linkId: string) =>
+    apiFetch<void>(`/fact-actor-links/${linkId}`, { method: "DELETE" }),
 };
+
+// --- WS-I section (append-only): imports, param types, query helper --------
+// Imports for WS-I's own section are declared here rather than inserted into
+// the shared import block at the top of the file, so the append-only rule
+// holds for both WS-H and WS-I (handoff/AGENT_POLICY.md §2.4).
+import type {
+  BulkReviewResult,
+  Fact,
+  FactActorLink,
+  FactPage,
+  FactReviewStateTarget,
+  FactSourceLink,
+  FactSupersedeResult,
+  FactType,
+  NewProposalInput,
+  Proposal,
+  ProposalEdits,
+  ProposalGenerateResult,
+  ProposalPage,
+  ProposalReviewAction,
+  ProposalReviewResult,
+  ProposedStructuredJson,
+  ReviewState,
+  StrengthLabel,
+  SupportType,
+} from "./types";
+
+/** GET /proposals filters (contract §4.2). */
+export type ProposalListParams = {
+  matter_id?: string;
+  proposal_type?: string;
+  review_state?: ReviewState;
+  source_id?: string;
+  min_confidence?: number;
+  limit?: number;
+  offset?: number;
+};
+
+/** GET /facts filters (contract §4.3); `review_state` is repeatable. */
+export type FactListParams = {
+  matter_id?: string;
+  review_state?: ReviewState[];
+  fact_type?: FactType;
+  is_material?: boolean;
+  q?: string;
+  limit?: number;
+  offset?: number;
+};
+
+type IntakeQueryValue = string | number | boolean | string[] | undefined | null;
+
+/** Builds `?a=1&b=2` (repeating the key for arrays, e.g. facts' repeatable
+ *  `review_state`). Empty strings and null/undefined are omitted; `0` and
+ *  `false` are sent deliberately — `is_material=false` must reach the API. */
+function intakeQuery(params: Record<string, IntakeQueryValue>): string {
+  const qs = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === "") continue;
+    for (const item of Array.isArray(value) ? value : [value]) {
+      qs.append(key, String(item));
+    }
+  }
+  const encoded = qs.toString();
+  return encoded ? `?${encoded}` : "";
+}
 
 // --- Source ledger (Wave 2 / WS-H) ---
 
