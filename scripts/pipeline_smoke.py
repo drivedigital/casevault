@@ -127,10 +127,22 @@ def scratch_url_from(server_url: str) -> str:
     return urlunsplit((parts.scheme, parts.netloc, f"/{SCRATCH_DB}", parts.query, ""))
 
 
-def provision_scratch_db(server_url: str) -> None:
+def connect_with_retry(server_url: str, attempts: int = 3, delay: float = 2.0):
+    """psycopg2 connect with retries — CI service containers can lag the job."""
     import psycopg2
 
-    conn = psycopg2.connect(server_url)
+    last: Exception | None = None
+    for _ in range(attempts):
+        try:
+            return psycopg2.connect(server_url, connect_timeout=10)
+        except psycopg2.OperationalError as exc:
+            last = exc
+            time.sleep(delay)
+    raise SystemExit(f"could not reach Postgres after {attempts} attempts: {last}")
+
+
+def provision_scratch_db(server_url: str) -> None:
+    conn = connect_with_retry(server_url)
     conn.autocommit = True
     try:
         with conn.cursor() as cur:
@@ -146,9 +158,7 @@ def provision_scratch_db(server_url: str) -> None:
 
 
 def drop_scratch_db(server_url: str) -> None:
-    import psycopg2
-
-    conn = psycopg2.connect(server_url)
+    conn = connect_with_retry(server_url)
     conn.autocommit = True
     try:
         with conn.cursor() as cur:
@@ -221,6 +231,18 @@ def upload(client, filename: str, content: bytes, mime: str, **fields):
     return client.post("/api/v1/sources", files=files, data=data or None)
 
 
+def write_step_summary(text: str) -> None:
+    """Append diagnostics to the GitHub Actions step summary when available.
+
+    The agent sandbox cannot download CI logs (egress-blocked
+    results-receiver domain), so the smoke reports itself into the run page.
+    """
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a") as fh:
+            fh.write(text)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--keep", action="store_true", help="keep scratch DB + storage for debugging")
@@ -271,9 +293,14 @@ def main() -> int:
         print(f"Contract v1.0 deviations (as-shipped; see contract delta table): {len(DEVIATIONS)}")
         for d in DEVIATIONS:
             print(f"  - §{d['section']}: expected {d['expected']} · observed {d['observed']}")
-    print(
+    result = (
         f"RESULT: {smoke.steps - smoke.failures}/{smoke.steps} checks passed"
         f"{' — SMOKE GREEN' if smoke.failures == 0 else ' — SMOKE RED'}"
+    )
+    print(result)
+    write_step_summary(
+        f"**pipeline smoke:** `{result}` — python {sys.version.split()[0]}, "
+        f"{len(DEVIATIONS)} documented contract deviations\n"
     )
     return 1 if smoke.failures else 0
 
