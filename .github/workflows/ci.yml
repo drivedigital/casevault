@@ -8,6 +8,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write-all
+  
 jobs:
   python:
     runs-on: ubuntu-latest
