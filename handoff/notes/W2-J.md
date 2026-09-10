@@ -10,12 +10,10 @@ uniqueness) rehearsed against the real G code. Inline generation is green; the
 import `app`; the job swallows the error and RQ still reports success) — reported
 below, minimal change identified, no feature code touched in this PR.
 
-> ⚠️ **Do not merge PR #3 before the rebase.** The branch head still sits on the
-> pre-W2-G base (`afef55be`), so GitHub's diff shows deletions of already-merged
-> W2-E/F/H work. It also still carries the other agent's WS-A note, which is not
-> part of this workstream. Rebase onto the post-G merge tip is deliberately
-> deferred to the integrator's merge signal; the J write set itself is stable
-> (verified by replaying it on top of the merged tree).
+**Branch state:** rebased onto the post-W2-G integration tip `908e96f`; the diff
+against it is exactly the five J files (+3001 lines, **zero deletions**), so the
+PR is reviewable as-is and carries no other workstream's content. The WS-A note
+that this session branch once held is not in the diff.
 
 ## What changed
 
@@ -205,6 +203,13 @@ $ cd /tmp && env -u PYTHONPATH pytest /repo/tests/integration/test_intake_e2e.py
 ```
 
 ### F. CI
+
+On the pushed head, CI runs `intake` (new, additive) plus the existing jobs;
+`python`, `web` and `intake` pass. The `secrets` (gitleaks) job is the known
+WS-D flake: it failed on one of two runs of the *same* commit (the sibling run
+passed) and fails on this branch's earlier heads while the integration branch
+runs happen to pass — the documented missing `GITHUB_TOKEN` env block that WS-D
+owns (`handoff/WORKLOG.md`). This workstream does not touch that job.
 
 `.github/workflows/ci.yml` gains one **additive** job (`intake`) with
 `INTAKE_REQUIRE=1` + `INTAKE_ALLOW_APP_DB=1`, running the guard suite, the e2e
