@@ -230,12 +230,17 @@ $ cd /tmp && env -u PYTHONPATH pytest /repo/tests/integration/test_intake_e2e.py
 
 ### F. CI
 
-On the pushed head, CI runs `intake` (new, additive) plus the existing jobs;
-`python`, `web` and `intake` pass. The `secrets` (gitleaks) job is the known
-WS-D flake: it failed on one of two runs of the *same* commit (the sibling run
-passed) and fails on this branch's earlier heads while the integration branch
-runs happen to pass — the documented missing `GITHUB_TOKEN` env block that WS-D
-owns (`handoff/WORKLOG.md`). This workstream does not touch that job.
+CI runs the new `intake` job (purely additive) plus the existing `python`, `web`
+and `secrets` jobs. The most recent heads (`d62e5ce7`, `2c99ec85`, `0aaac90a`,
+`81dcff79`) are **fully green — all four jobs success**, including the gitleaks
+`secrets` job, so this workstream's CI is clean end-to-end.
+
+One earlier run of the *same* commit (`5755cc32`) showed `secrets: failure` while
+its sibling run passed — the known WS-D gitleaks flake: the documented
+`GITHUB_TOKEN` env block for `gitleaks/gitleaks-action@v2` (`handoff/WORKLOG.md`)
+is still missing, so its unauthenticated owner-type lookup can flip into license
+enforcement on rate-limited runners. The diff to `.github/workflows/ci.yml` here
+is append-only (no deletions, no edits to that job); WS-D owns the fix.
 
 `.github/workflows/ci.yml` gains one **additive** job (`intake`) with
 `INTAKE_REQUIRE=1` + `INTAKE_ALLOW_APP_DB=1`, running the guard suite, the e2e
