@@ -4,10 +4,11 @@ Contract: `docs/contracts/sprint3_evidence.md` v1.0 with its 2026-09-10 **as-shi
 ## What changed
 - `scripts/pipeline_smoke.py`: real HTTP/Uvicorn, independently queried PostgreSQL rows, actual direct/RQ stage jobs, private online/offline Redis; valid synthetic TXT/two-page PDF/PNG; hashes, pages, duplicates, lifecycle rollback, links, scoping and download byte equality; fatal WS-C route-entrypoint guard; strict-original-v1 mode.
 - `tests/integration/test_evidence_e2e.py`: same flow plus fixture-structure and strict-policy tests. No API fixture overrides, `create_all`, mocked DB/storage/queue or xfails. Only absent Redis binary/unavailable scratch storage may explicitly skip; CI turns those into failures.
+- `tests/integration/__init__.py`: package marker so the narrow plain `pytest tests/integration/test_evidence_e2e.py` command collects without a PYTHONPATH override (confirmed: 3 tests collected).
 - `tests/integration/README.md`: prerequisites, isolation, failure/skip policy and exact scope.
 - `.github/workflows/ci.yml`: **append only** `evidence` job; PostgreSQL 16 migrations; install Redis; run pytest with `EVIDENCE_REQUIRE_DEPS=1`; publish console/JUnit proof only, never uploaded files.
 - This note is the explicitly required handoff exception to the code write set. No product files, migration, dependency manifest, ignore rule or existing CI job changed.
-- Session: `arena/01a089cf-casevault`. Started/reset clean at `adcb1b8`; rebased without conflicts onto `c7842bb` (WS-EV) and then `e62daae0271bbaf6978b7dcdb3635823178e7082` (current integration tip at proof time). Executable proof revision: `802690938c2a5cb4e963e45214dba812237f48bb`.
+- Session: `arena/01a089cf-casevault`. Started/reset clean at `adcb1b8`; rebased without conflicts onto `c7842bb` (WS-EV) and then `e62daae0271bbaf6978b7dcdb3635823178e7082` (current integration tip at proof time). Executable proof revision: `1d2a144794f2fc0270f6a0cfe9f39c1a357aad2e`.
 
 ## Proof
 **Status: BLOCKED, not a conformance sign-off.** Both API/worker scenarios pass all 24 reported checks; the new UI guard correctly fails. Full gate: **1 failed, 36 passed, 0 skipped**; the failure is the missing evidence pages. Do not remove/xfail the assertion to manufacture a green gate.
@@ -26,7 +27,7 @@ python scripts/pipeline_smoke.py
 ```
 
 ```text
-Synthetic artifacts and diagnostic logs: /home/user/casevault/data/temp/evidence-smoke-wcs90_7n
+Synthetic artifacts and diagnostic logs: /home/user/casevault/data/temp/evidence-smoke-8n51aprm
 Evidence smoke: as-shipped contract; synthetic fixtures; original-v1 GAPs are explicit.
 PASS PostgreSQL 16.2; migrations through 0004 in a disposable schema
 PASS no-redis: HTTP bootstrap + isolated workspace
@@ -99,7 +100,7 @@ base -> 0001 -> 0002 -> 0003 -> 0004
 ==> pytest (real Postgres)
 FAILED tests/integration/test_evidence_e2e.py::test_evidence_e2e
 SmokeFailure: §6 / §7 WS-C: expected Next page entrypoints for /evidence, /evidence/{id}; observed missing apps/web/app/evidence pages. Owning UI workstream must restore them.
-1 failed, 36 passed, 2 warnings in 17.49s
+1 failed, 36 passed, 2 warnings in 17.66s
 ```
 
 The gate stops at pytest as designed. Ran the remaining commands separately on the same tip:
@@ -136,6 +137,10 @@ Fail-closed checks also executed (ignored logs `data/logs/ws-d-*.log`):
 - Fixture validity / policy unit tests: **2 passed**.
 - After failed contract runs: zero `evidence_smoke_%` schemas; no Uvicorn/RQ/Redis/Next processes remained. Only the generated schema is dropped; app/test public schemas are not truncated by this verifier.
 - YAML parsed; CI content byte-prefix check confirms all pre-existing jobs are unchanged; `git diff --check` passes. Only `data/README.md` is tracked under `data/`.
+
+- Draft PR: https://github.com/drivedigital/casevault/pull/10 (correct integration base). Initial published code `043ad35`: CI Python/web checks succeeded; the new evidence job failed, as did the separate PR-only secrets job. CI log downloads were unavailable here (results-receiver EOF), so remote failure detail is not substituted for the local proof above.
+- The secrets check annotation is an **existing workflow configuration blocker**: `GITHUB_TOKEN is now required to scan pull requests`; the push secrets check succeeded. Existing jobs are outside this append-only change; integrator must configure the automatic Actions token, not ask anyone to supply credentials. Initial PR run: https://github.com/drivedigital/casevault/actions/runs/34443416495 .
+- Embedded PostgreSQL was explicitly stopped after final proof. Downloaded Redis build inputs were removed; its runnable binary and tiny synthetic proof artifacts remain only under ignored `data/`.
 
 ## Contract gaps
 ### Blocking issue text — WS-C: missing evidence index and viewer
