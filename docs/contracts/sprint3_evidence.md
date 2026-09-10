@@ -1,7 +1,8 @@
 # Contract — Sprint 3: Evidence repository, upload, OCR
 
-**Version:** 1.0 (proposed) · **Status:** DRAFT for Wave 1 freeze ·
-**Scope owner:** integrator (`arena/01a0899f-casevault`) ·
+**Version:** 1.0 · **Status:** **FROZEN** 2026-09-10 (introduced in commit
+`39ce8fb`; Wave 1 agents must implement it as written — see §8 for change
+control) · **Scope owner:** integrator (`arena/01a0899f-casevault`) ·
 **Implemented by:** WS-A (sources core), WS-B (storage + pipeline), WS-C (web UI), WS-D (verification)
 
 This document is the *only* coordination mechanism between parallel agents for

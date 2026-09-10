@@ -69,6 +69,21 @@ make migrate      # Alembic upgrade head (0001 + 0002)
 - [ ] `make test` — 8 passing (requires `make infra-up`)
 - [ ] `make lint` clean
 
+## Agent-side wave gate (added 2026-09-10)
+
+For agent/automation environments without Docker, the same checks run without
+compose:
+
+```bash
+bash scripts/setup_local.sh      # idempotent
+.venv/bin/pip install pgserver   # on-demand, agent sandboxes only
+python scripts/agent_pg.py start
+bash scripts/verify_all.sh       # migrations up/down/up + pytest + ruff + web
+```
+
+Nothing here changes the tester path below; it exists so parallel agents can
+prove a branch is green before opening a PR (`handoff/PARALLEL_PLAN.md`).
+
 ## macOS notes (from the 2026-09-09 local run)
 
 - Homebrew PostgreSQL occupies :5432 → stop it before `make infra-up`

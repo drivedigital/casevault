@@ -1,7 +1,11 @@
 # Parallel Build Plan — coordinating multiple agents
 
-**Status:** proposed (integrator: `arena/01a0899f-casevault`) · **Date:** 2026-09-10
-**Companion:** `docs/contracts/sprint3_evidence.md` (Wave 1 interface freeze)
+**Status:** approved 2026-09-10 — this session is the **integrator only**; other
+workstreams run in separate agent sessions on their own branches and open PRs
+into `arena/01a0899f-casevault`.
+**Companion:** `docs/contracts/sprint3_evidence.md` v1.0 (frozen) ·
+**Kickoff briefs:** `handoff/kickoff/WS-A.md` … `WS-D.md` ·
+**Wave gate:** `scripts/verify_all.sh`
 
 Purpose: allow several coding agents to build this repo **in parallel without
 merge chaos**, while one agent (the integrator) keeps the shared surfaces
@@ -110,6 +114,19 @@ Wave 2 contracts get their own frozen docs before any code starts.
 - **Agent branches:** Arena sessions use their own session branch; local agents
   (Claude Code / Codex / worktrees) use `feature/<ws-id>-<topic>`, e.g.
   `feature/ws-a-sources-core`.
+- **Step 0 in every agent session — base the branch on the integration tip.**
+  `origin/main` and the integration branch have *unrelated histories* (main is a
+  squashed Phase-0 snapshot), so a session started from `main` lacks Phase 1 and
+  cannot merge:
+  ```bash
+  git fetch origin arena/01a0899f-casevault
+  git reset --hard FETCH_HEAD        # own session branch = integration tip
+  # if the branch was already pushed:
+  git push --force-with-lease origin HEAD
+  ```
+- **Integrator role (this session):** review PRs against the contract + write
+  set, merge A → B → C → D, re-run `scripts/verify_all.sh` after each merge,
+  fix/sequence shared-surface conflicts, consolidate handoff docs per wave.
 - **Before opening a PR:** rebase onto the current integration tip; run the
   workstream proof (§7); keep the diff inside your write set.
 - **Merge order within a wave:** A → B → C → D. The integrator merges, re-runs
@@ -122,19 +139,20 @@ Wave 2 contracts get their own frozen docs before any code starts.
 
 ## 6. Verification (every workstream)
 
-Sandbox without Docker (agent environments):
+Sandbox without Docker (agent environments) — one command runs the whole gate
+on a **fresh** database (migrations up → down → up, pytest, ruff, web):
 
 ```bash
-bash scripts/setup_local.sh                  # venv, deps, data dirs, .env.local (idempotent)
-.venv/bin/pip install pgserver               # once — embedded Postgres 16
-python scripts/agent_pg.py start             # init + start + create casevault{,_test}
-eval "$(python scripts/agent_pg.py env)"     # DATABASE_URL / TEST_DATABASE_URL
-.venv/bin/python -m alembic -c apps/api/alembic.ini upgrade head
-.venv/bin/python -m pytest -q                # real Postgres, no mocks
-.venv/bin/python -m ruff check apps workers scripts tests
-npm run lint --workspace=web && npm run typecheck --workspace=web && npm run build --workspace=web
-python scripts/agent_pg.py stop              # when finished
+bash scripts/setup_local.sh      # venv, deps, data dirs, .env.local (idempotent)
+.venv/bin/pip install pgserver   # once — embedded Postgres 16, on-demand install
+python scripts/agent_pg.py start
+bash scripts/verify_all.sh       # full gate        (add --no-web for python only)
+python scripts/agent_pg.py stop  # when finished
 ```
+
+Narrower loops: `bash scripts/verify_all.sh --no-web` for API-only work,
+`pytest tests/api/test_sources.py -q` while iterating, and the compose path
+(`make infra-up && make migrate && make test && make lint`) for the local tester.
 
 Local tester path stays authoritative: `make infra-up`, `make migrate`, `make api`,
 `make web`, `make test`, `make lint` (see `handoff/TESTING.md`).
@@ -168,11 +186,26 @@ ruff (+ web lint/typecheck/build for UI work). Then write handoff/notes/<WS>.md
 and open a PR into arena/01a0899f-casevault with the proof output in the body.
 ```
 
-## 9. Open questions for the human owner
+## 9. Locked decisions (owner, 2026-09-10)
 
-1. Agent topology: separate Arena sessions per workstream (PR into this branch),
-   local agents in worktrees, or a single agent working the wave sequentially?
-2. Whether this session should (a) coordinate only, (b) also implement WS-A, or
-   (c) implement the whole wave itself.
-3. Whether the first parallel wave is Sprint 3 (roadmap order) or something the
-   tester needs sooner (e.g. Sprint 4 CSV ledger import, Sprint 5 review inbox).
+1. **This session coordinates only** — contracts, review, merges, integration
+   testing, handoff docs. Feature code is written by the other sessions.
+2. **Topology: separate Arena sessions.** Each workstream runs in its own
+   session on its own branch and opens a PR into `arena/01a0899f-casevault`
+   (see §5; step 0 base-branch reset is mandatory). Local agents may mirror the
+   same workstreams on `feature/<ws>-*` branches if needed.
+3. **First parallel wave: Sprint 3** (evidence repository / upload / OCR) in the
+   A/B/C/D split above, contract frozen at v1.0.
+
+## 10. Readiness checklist (integrator)
+
+- [x] Sprint 3 contract written and frozen (`docs/contracts/sprint3_evidence.md`)
+- [x] Four kickoff briefs with paste-ready prompts (`handoff/kickoff/`)
+- [x] Wave gate script (`scripts/verify_all.sh`) — green on the current tip
+- [x] PR template enforcing contract/write-set/proof reporting
+- [x] Baseline defects fixed: migrations 0001/0002 `downgrade()` were broken
+      (stray autogenerated statements + missing enum type drops) — found by the
+      new gate, fixed, and re-verified `upgrade → downgrade base → upgrade`
+- [ ] Wave 2 contracts (Sprint 4 ledger `0004`, Sprint 5 proposals/facts `0005`)
+      — write after Wave 1 merges, before those sessions start
+- [ ] CI evidence job (WS-D) wired into the PR checks for this branch
