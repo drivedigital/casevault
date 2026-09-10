@@ -578,3 +578,24 @@ provide explicit original-file download for all types, and expose list/link/
 unlink errors rather than silent failures. OCR query refresh after reprocess
 is also pending. These are not claims covered by the route-shell proof.
 W2-G remains blocked on review fixes; W2-J advanced to `4b21d62` and is active.
+
+## 2026-09-10 — G fix re-review and J verification preflight
+
+- G advanced to `c174051`. Excerpt ownership, internal password-preserving
+  URL rendering, and PATCH-null validation fixes reviewed. Queue correction
+  is still blocking: installed real `rq.Queue.parse_args` rejects positional
+  source/workspace arguments combined with explicit `kwargs` with
+  `AssertionError: Extra positional arguments cannot be used when using
+  explicit args and kwargs`. The fake queue test accepts this invalid call.
+  Explicit `args=(source, workspace), kwargs={max_proposals: 1}` was confirmed
+  accepted by real RQ parsing (synthetic IDs, no Redis). Requested corrected
+  invocation and real-parser regression test on PR #9. No merge attempted.
+- J at `4b21d62` preflight found wrong repo-root calculation in standalone
+  wrapper (`parents[2]` resolves to tests/), fail-open configured-DB/missing
+  surface skips, metadata.create_all masking migration defects, and full DSN
+  printing. Also requested an explicitly disposable DB target and fixture
+  cleanup rather than automatic application-DATABASE_URL migration fallback.
+  Findings posted to PR #3; final merged-tip proof still waits for G.
+- Evidence recovery is still integrated at `5da141c`; WS-D and UI owner have
+  their follow-up instructions. No new commits from those branches observed
+  in this fetch. No verification sign-off or new feature wave authorized.
