@@ -63,3 +63,50 @@ jobs:
         with:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
+
+  intake:
+    # W2-J: Wave 2 intake end-to-end verification (contract
+    # docs/contracts/wave2_intake_core.md v1.0). Additive job — it appends to the
+    # existing python/web/secrets jobs and changes none of them (the secrets job
+    # is WS-D's; this workstream never restructures CI).
+    #
+    # INTAKE_REQUIRE=1 makes this job fail-closed: a missing migration, table or
+    # router is a failure, never a skip — a green run here means the intake
+    # surface really was verified. INTAKE_ALLOW_APP_DB=1 acknowledges that both
+    # URLs point at this job's disposable postgres:16 service container.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: casevault_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/casevault_ci
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/casevault_ci
+      INTAKE_REQUIRE: "1"
+      INTAKE_ALLOW_APP_DB: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: Verify migrations apply to a fresh database
+        working-directory: apps/api
+        run: alembic upgrade head
+      - name: Verifier guard rails (fail-closed, redaction, scoped cleanup)
+        run: pytest tests/integration/test_intake_e2e_guards.py -v
+      - name: Intake end-to-end integration test (fail-closed)
+        run: pytest tests/integration/test_intake_e2e.py -v
+      - name: Intake headless smoke script
+        run: python scripts/intake_smoke.py --require-intake
