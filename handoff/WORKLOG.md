@@ -668,3 +668,21 @@ has no available detailed log; cause remains UNKNOWN, not established as a
 permissions issue or established as absence of a secret. No broad permission
 change approved on speculation. WS-D merge/review remains pending.
 Evidence UI follow-up is still not visible in fetched remote refs.
+
+## 2026-09-10 — normal intake worker bootstrap fixed (PR #13)
+
+Reviewed `fac1568` and merged as `e3332bd`. The job now calls existing
+`_ensure_app_importable()` before any app-model imports, within the existing
+never-raise boundary. No hub/migration/contract changes. New fresh-subprocess
+regression unsets PYTHONPATH and asserts app is initially unavailable, then
+verifies committed counts for limits 1, 2 and an idempotent repeat. Separate
+bootstrap-failure test preserves failed-result behavior.
+
+Independent strict full gate passed on candidate and committed merge:
+95 tests, migrations upgrade/downgrade/re-upgrade, ruff, web lint/typecheck/build.
+Existing image-performance warning and Python deprecations remain. Agent's
+handoff includes real Redis/normal-worker proof with result=complete and
+scoped cleanup; integrator independently ran subprocess/DB coverage but has
+not repeated that live Redis proof. J instructed to rerun normal-worker queued
+verification on this merge without any PYTHONPATH workaround. Original import
+blocker fixed; final queued-flow sign-off remains pending independent J proof.

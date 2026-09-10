@@ -110,3 +110,8 @@ fails to import `app` in a fresh worker process without external PYTHONPATH.
 It returns a failed result while RQ can mark the job FINISHED. G follow-up
 assigned: bootstrap app imports before model imports and prove with a clean
 subprocess and real worker. Inline test gates do not clear this blocker.
+
+**Update to normal intake worker import blocker:** resolved by PR #13 merge
+`e3332bd` (fresh-process regression and strict 95-test gate pass). Independent
+J normal-worker/Redis E2E rerun requested; do not confuse the passed subprocess
+regression with final live-queue sign-off.
