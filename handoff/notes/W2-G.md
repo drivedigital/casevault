@@ -243,6 +243,35 @@ with the row untouched; `short_label:null` clears (200);
 `POST /proposals/generate {max_proposals:1}` → `{"created":1,"queued":false}`
 through the real `_inline_database_url` path.
 
+### Round 2 (PR #9 comment on `c174051`) — RQ call shape
+
+The finding-3 fix called `Queue.enqueue(fn, sid, wid, kwargs={...})`. RQ 2.x
+`Queue.parse_args` asserts `args == ()` whenever explicit `args=`/`kwargs=`
+keys are present, so that mix raised `AssertionError: Extra positional
+arguments cannot be used when using explicit args and kwargs` **inside** the
+helper's try/except — every queued generation would have silently degraded to
+the inline fallback, invisible to the suite (the round-1 fake queue accepted
+the invalid syntax). Fix: job data now travels only as
+`enqueue(fn, args=(source_id, workspace_id), kwargs={"max_proposals": n})`
+(`kwargs=None` when the cap is omitted, which still keeps the call in the
+explicit form — no positional args are ever used).
+
+Regression test `test_enqueue_forwards_cap_through_real_rq_parsing` drives the
+**real** `rq.Queue.enqueue`/`parse_args` (rq is a declared dependency in
+`workers/requirements.txt`; hard import, no silent skip) with zero Redis by
+stubbing exactly the connection-touching boundary (`create_job`,
+`enqueue_job`); it asserts the worker-side wire payload for both the supplied
+(`args == ("src-id","ws-id")`, `kwargs == {"max_proposals": 1}`) and omitted
+(`kwargs is None`) cap, plus queue name `extract` and `status == "queued"`.
+Revert-probed: with the mixed call restored the test FAILS (helper swallows
+the assert into `queued: False`), and a direct `Queue.parse_args` probe outside
+the module reproduces the integrator's AssertionError verbatim. The superseded
+fake-queue test (which had encoded the invalid call shape) was removed —
+workers suite stays at 9 tests, floor total 38.
+
+Full `bash scripts/verify_all.sh` at the round-2 commit: migrations up/down/up,
+72 passed, ruff clean, web lint/typecheck/build clean — GATE GREEN.
+
 Floor suite grew to **38** (tests/api/test_intake_review.py 29 +
 tests/workers/test_intake_jobs.py 9); repo-wide gate re-run at this commit:
 migrations up/down/up clean, **72 passed**, ruff clean, web

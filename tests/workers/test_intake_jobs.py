@@ -193,41 +193,59 @@ def test_enqueue_reports_gracefully_without_redis(db, workspace, monkeypatch):
     assert isinstance(result["reason"], str) and result["reason"]
 
 
-def test_enqueue_forwards_cap_via_rq_kwargs(monkeypatch):
-    """Integrator review 9a55aee finding 3: a queued run must honor the same
-    max_proposals as the inline one — the cap travels as RQ job kwargs."""
+def test_enqueue_forwards_cap_through_real_rq_parsing(monkeypatch):
+    """Integrator round 2 (on c174051): RQ 2.x `Queue.parse_args` asserts
+    `args == ()` whenever explicit args=/kwargs= are used, so the previous
+    `enqueue(f, sid, wid, kwargs=...)` mix was invalid RQ syntax — and being
+    inside the try/except, it degraded silently to queued=False instead of
+    failing the suite. This test drives the REAL rq argument-parsing layer
+    with zero Redis: `create_job`/`enqueue_job` are the only steps that touch
+    the connection, so they are stubbed at that boundary and everything before
+    (parse_args incl.) runs unmocked. Covers both the supplied and omitted
+    limit."""
     import sys
     import types
+    from unittest import mock
 
-    calls: list = []
+    import rq
+    from workers.pipeline import intake_jobs as ij
 
-    class FakeQueue:
-        def __init__(self, name, connection=None):
-            self.name = name
+    captured: dict = {}
 
-        def enqueue(self, f, *args, kwargs=None):
-            calls.append((self.name, f, args, kwargs))
-            return types.SimpleNamespace(id="job-42")
+    def fake_create_job(self, func, *, args=None, kwargs=None, **options):
+        captured["func"] = func
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        captured["options"] = options
+        return types.SimpleNamespace(id="job-42")
 
-    fake_conn = types.SimpleNamespace(ping=lambda: True)
+    def fake_enqueue_job(self, job, *, pipeline=None, at_front=False, unique=False):
+        captured["queue"] = self.name
+        return job
+
+    monkeypatch.setattr(rq.Queue, "create_job", fake_create_job)
+    monkeypatch.setattr(rq.Queue, "enqueue_job", fake_enqueue_job)
+    conn = mock.MagicMock()
     monkeypatch.setitem(
-        sys.modules, "redis", types.SimpleNamespace(Redis=types.SimpleNamespace(
-            from_url=lambda *a, **k: fake_conn))
+        sys.modules, "redis",
+        types.SimpleNamespace(Redis=types.SimpleNamespace(from_url=lambda *a, **k: conn)),
     )
-    monkeypatch.setitem(sys.modules, "rq", types.SimpleNamespace(Queue=FakeQueue))
 
-    result = enqueue_proposal_generation("src-id", "ws-id", max_proposals=1)
+    result = ij.enqueue_proposal_generation("src-id", "ws-id", max_proposals=1)
     assert result == {"queued": True, "job_id": "job-42", "reason": None}
-    name, fn, args, kwargs = calls[0]
-    assert name == "extract"  # frozen queue name (workers/queues.py)
-    assert fn == "workers.pipeline.intake_jobs.generate_fact_proposals"
-    assert args == ("src-id", "ws-id")
-    assert kwargs == {"max_proposals": 1}
+    assert captured["queue"] == "extract"  # frozen queue name (workers/queues.py)
+    assert captured["func"] == "workers.pipeline.intake_jobs.generate_fact_proposals"
+    # exactly what a worker unpacks: two positional ids + the cap as a kwarg
+    assert captured["args"] == ("src-id", "ws-id")
+    assert captured["kwargs"] == {"max_proposals": 1}
+    assert captured["options"]["status"] == "queued"
 
-    # cap omitted → job default applies; the RQ payload stays clean
-    calls.clear()
-    enqueue_proposal_generation("src-id", "ws-id")
-    assert calls[0][3] is None
+    # cap omitted -> wire stays clean; the job-side default (50) applies
+    captured.clear()
+    result = ij.enqueue_proposal_generation("src-id", "ws-id")
+    assert result["queued"] is True and result["reason"] is None
+    assert captured["args"] == ("src-id", "ws-id")
+    assert captured["kwargs"] is None
 
 
 def test_queued_job_consumes_the_forwarded_cap(db, workspace):

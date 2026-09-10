@@ -161,12 +161,15 @@ def enqueue_proposal_generation(
         redis_url = os.environ.get("REDIS_URL") or _settings_redis_url()
         conn = redis.Redis.from_url(redis_url, socket_connect_timeout=2)
         conn.ping()
-        kwargs = {} if max_proposals is None else {"max_proposals": int(max_proposals)}
+        # RQ 2.x parses `enqueue(f, *args, **kwargs)`: mixing positional job
+        # args with an explicit `kwargs=` trips Queue.parse_args' assert, and
+        # the except below would silently swallow it into the inline fallback.
+        # Job arguments must travel ONLY as explicit args=/kwargs= (round-2
+        # integrator review of c174051).
         job = Queue("extract", connection=conn).enqueue(
             "workers.pipeline.intake_jobs.generate_fact_proposals",
-            str(source_id),
-            str(workspace_id),
-            kwargs=kwargs or None,
+            args=(str(source_id), str(workspace_id)),
+            kwargs=None if max_proposals is None else {"max_proposals": int(max_proposals)},
         )
         return {"queued": True, "job_id": getattr(job, "id", None), "reason": None}
     except Exception as exc:  # noqa: BLE001 - graceful without redis by contract
