@@ -86,3 +86,11 @@ Current defects and limitations, newest first. Triage per Roadmap §9
   verify DB/redis connectivity (deferred from Phase 0).
 - **[Low] Matter deleting is not implemented** (archive instead); hard
   delete needs a retention decision first.
+
+### Evidence recovery follow-ups (2026-09-10, merge `5da141c`)
+- Missing evidence route files are resolved; production route shells return 200.
+  Independent WS-D merged-tip E2E verification remains pending.
+- Entering Status directly does not initialize title/status drafts (Edit does).
+- No explicit original-file download control for all file types.
+- List/link/unlink error presentation and OCR refresh after reprocess need UI
+  follow-up. Assigned to recovery owner via PR #11; not backend scope.

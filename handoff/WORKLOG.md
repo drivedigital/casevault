@@ -560,3 +560,21 @@ until the corrected G implementation is integrated. No new wave authorized.
   Separate older D session at `cd40299` is not another active merge candidate.
 - Existing PR secret-scan configuration lacks automatic `GITHUB_TOKEN` env;
   coordinate the CI fix with verification owner, never supply a personal token.
+
+## 2026-09-10 — evidence UI recovered (PR #11)
+
+Merged `865c624` as `5da141c`. Full gate independently green on merge:
+34 tests, migration round-trip, ruff, web lint/typecheck/build. One nonfatal
+Next `<img>` performance warning. Production HTTP probes returned 200 for
+`/evidence` and `/evidence/00000000-0000-4000-8000-000000000001` (route shells,
+not proof of loaded source data or browser interactions); temporary server
+stopped. Both pages are tracked, while `data/`, root `evidence/`, and
+`uploads/` remain ignored. No backend/storage/worker changes.
+
+WS-D PR #10 is now unblocked for merged-tip verification; no E2E sign-off
+claimed yet. Recovery UI follow-ups for its owner: initialize edit values
+when Status tab is entered directly (currently only Edit initializes them),
+provide explicit original-file download for all types, and expose list/link/
+unlink errors rather than silent failures. OCR query refresh after reprocess
+is also pending. These are not claims covered by the route-shell proof.
+W2-G remains blocked on review fixes; W2-J advanced to `4b21d62` and is active.

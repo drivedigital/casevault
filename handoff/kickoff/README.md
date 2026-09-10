@@ -8,7 +8,7 @@ as-shipped contract. This folder now assigns **Wave 2**.
 `docs/contracts/wave2_intake_core.md` **v1.0 (frozen)** (the interfaces) ·
 `handoff/PARALLEL_PLAN.md` §4a (the plan).
 
-## Live status (updated 2026-09-10, 05:5x UTC)
+## Live status (updated 2026-09-10, evidence UI recovery merged)
 
 | Brief | Workstream | Session / PR | Status |
 |---|---|---|---|
@@ -17,11 +17,11 @@ as-shipped contract. This folder now assigns **Wave 2**.
 | `W2-H.md` | `/ledger` UI | `01a089cc` / PR #2 | ✅ **merged** (`e62daae`) |
 | `W2-I.md` | `/ai-review` UI | `01a089cd` / PR #3 | ✅ **merged** (`0ba7a0c`, cherry-picked; shared-file union resolution) |
 | `W2-EV.md` | evidence follow-ups | `01a089cb` / PR #1 | ✅ **merged** (`c7842bb`) |
-| `WS-D` (archived brief) | independent e2e verification | `01a08429` / PR #6 | ⏸ **parked by integrator** — its smoke asserts `/sources/{id}/reprocess` returns **404**, but W2-EV has since shipped that endpoint (202). Rebase onto the tip, assert the shipped 202 `{queued, job_id, reason}` shape, keep the filter-parity deviations, re-run → then merge. Its `GITHUB_TOKEN` gitleaks fix is wanted and lands with it. |
-| `WS-B` (archived brief) | "Sprint 3 storage service + pipeline" | `01a089ce` / PR #8 (+#5) | ⛔ **do not merge as-is** — duplicates what already shipped: a second storage implementation (`app/integrations/storage`) beside `app/services/storage.py`, and `workers/pipeline/source_jobs.py` with `ingest_source`/`ocr_source` that W2-EV already added to `workers/pipeline/jobs.py`. Either close it, or rework into the *refactor* the backlog asks for (make the shipped `LocalStorage` the local implementation of the ABC seam, rewire imports, reuse the existing jobs, keep the contract tests). |
-| `WS-A` (archived brief) | "sources core — migration 0003 + sources API" | — | 🛑 **stop** — Sprint 3 already shipped migration `0003` and the sources API (merged 2026-09-10). A second `0003` would collide with the existing revision and break the migration chain. Reassign that session. |
-| `W2-G.md` | intake API (proposals, facts, links, generation) | — | ▶ **unblocked** (E merged) — proceed; it is the last blocker for W2-J |
-| `W2-J.md` | intake e2e verification + CI job | `01a089cd` commit `4d2c16d` | ⏸ parked by integrator (depends on W2-G). Rebase onto the tip, open a **J-only** PR once G is merged |
+| `WS-D` (archived brief) | independent evidence E2E | `01a089cf` / PR #10 | Verification delivered at `de18118`; **rerun against recovery merge `5da141c`**. Old PR #6 closed. |
+| `WS-B` → WS-C recovery | evidence UI recovery | `01a089ce` / PR #11 | ✅ **merged** (`5da141c`, full gate 34 tests); old storage PR #8 closed, refactor deferred. UI follow-ups assigned separately. |
+| `WS-A` (archived brief) | sources core | `01a089cd`, note `afef55b` | Retired scope; sources core already integrated. No second migration `0003`. |
+| `W2-G.md` | intake API (proposals, facts, links, generation) | `01a089cc` / PR #9 | **Changes requested** at `c82e5e6`: four review blockers in WORKLOG; agent fixing. Candidate gate 66 tests passed but merge aborted. |
+| `W2-J.md` | intake E2E verification + CI | `01a089cd` / PR #3 | Active at `4b21d62`; final proof waits for corrected G merge. J-only diff required. |
 
 Wave 1's briefs (`WS-A..WS-D.md`) are archived under `handoff/notes/archive/wave1/`;
 three of them were picked up after the fact — see the stop/rework rows above.
@@ -32,7 +32,7 @@ three of them were picked up after the fact — see the stop/rework rows above.
 |---|---|---|---|---|
 | `W2-E.md` | **spine** | migration `0004` + models + router stubs | now | **1st (critical path)** |
 | `W2-F.md` | ledger API | CRUD, filters, CSV import/export, bulk | after E | 2nd |
-| `W2-G.md` | intake API | proposal review, facts, links, generation job | after E | 2nd |
+| `W2-G.md` | intake API (proposals, facts, links, generation) | `01a089cc` / PR #9 | **Changes requested** at `c82e5e6`: four review blockers in WORKLOG; agent fixing. Candidate gate 66 tests passed but merge aborted. |
 | `W2-H.md` | ledger UI | `/ledger` table, filters, CSV dialogs, bulk | now (contract-only) | 2nd |
 | `W2-I.md` | inbox UI | `/ai-review` queue + accepted-facts tab | now (contract-only) | 2nd |
 | `W2-J.md` | verification | e2e smoke script + integration test + CI job | after E, F, G | 3rd |
