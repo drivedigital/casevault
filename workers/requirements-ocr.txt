@@ -1,0 +1,18 @@
+# OPTIONAL heavy dependencies for the Sprint 3 ingest/OCR pipeline
+# (docs/contracts/sprint3_evidence.md §5 dependency policy).
+#
+# These are intentionally NOT in requirements-dev.txt and NOT installed by CI:
+# every import of these libraries in workers/pipeline/source_jobs.py is
+# guarded, and jobs degrade to ocr_status="skipped" + metadata_json["ocr_note"]
+# when the stack is absent. requirements-dev.txt and CI must keep passing
+# without them. Install only where OCR actually runs:
+#
+#     pip install -r workers/requirements-ocr.txt
+#
+# System binaries used when present (not pip-installable):
+#   - tesseract-ocr   image OCR (pytesseract shells out to `tesseract`)
+#   - poppler-utils   scanned-PDF rasterisation (pdf2image needs `pdftoppm`)
+pypdf>=4.0,<7
+Pillow>=10.0,<13
+pytesseract>=0.3.10,<2
+pdf2image>=1.17,<2
