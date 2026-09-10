@@ -621,3 +621,21 @@ Remaining G limitations are in its handoff: fact review-state notes are
 accepted but not persisted pending audit storage; generation queued results
 report created/skipped as zero (not completed counts). These are not claims
 of complete audit support or completed asynchronous execution.
+
+## 2026-09-10 — W2-J corrected verifier independently checked
+
+SHA correction: `c174051` belongs to W2-G; current W2-J PR #3 head is
+`da2a5cf`. Reviewed J-only diff (five files) and temporarily merged onto
+`908e96f` to test against integrated G plus evidence recovery. Results:
+- `INTAKE_REQUIRE=1 INTAKE_ALLOW_APP_DB=1 bash scripts/verify_all.sh`: 87
+  passed, migration round-trip, ruff, web lint/typecheck/build green.
+- Standalone guard + E2E pytest with explicit scratch test DB: 15 passed.
+- `python scripts/intake_smoke.py --require-intake`: SMOKE GREEN; reported
+  cleanup of 23 synthetic rows. No external PYTHONPATH overrides needed.
+Candidate merge aborted after review; J is NOT integrated yet. Agent may
+proceed with rebase/final proof against current integration and handoff update.
+Earlier import, configured-DB failure, schema-healing, credential display and
+DB fallback concerns addressed. Caveat: cleanup remains best-effort, logging
+failures without changing green status; final proof must distinguish cleanup
+failure from success (prefer failure status in required/CI mode). CI automatic
+gitleaks-token fix remains WS-D-owned and absent from this J-only change.
