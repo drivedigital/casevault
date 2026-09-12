@@ -1,3 +1,7 @@
+> Known limitation added2026-09-12: injected server traceback/SQL can appear
+> in list error feedback. Use synthetic data only, keep diagnostic details private,
+> and record this open issue; real-data/full acceptance remains held.
+
 # Limited owner preview — explicit release, 2026-09-12
 
 This is the renewed exact-checkpoint/checklist go-ahead for EU-M. It supersedes

@@ -13,8 +13,10 @@ WORKLOG.md preserves historical merge/gate evidence. No new feature wave is auth
   reports only, not completed independent reviews or code to replay.
 - [x] EU-V PR19 short batch3c405cf: T1 + corrected background-refetch L1.5
   each reported1 pass; integrator source-reviewed only, no full acceptance.
-- [~] EU-V next bounded batch: L2.5 filter/query retry + L3.2–L3.4 row-badge
-  feedback/recovery, exact source identity; checkpoint/stop before expansion.
+- [x] EU-V e7fe31e bounded list batch reported1 pass/1 fail; no acceptance.
+- [ ] EU-ERR: fix list raw error-detail disclosure with focused regression (fresh brief ready).
+- [~] EU-V next: supported RQ result reader + bounded async polling, then real
+  TXT/PDF explicit OCR proof; original badge regression waits for product fix.
 - [ ] EU-V six list-failure groups classified with valid setup/locators/assertions.
 - [ ] EU-V detail save-race candidate proven or refuted using actual overlap timing.
 - [ ] EU-V integrated OCR job/payload/SQL/UI evidence using correct RQ result API,

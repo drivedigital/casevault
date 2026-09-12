@@ -12,7 +12,7 @@ remain binding. Update this page when assignments, holds or merge status change.
   `a040e9f739ec3741cd28ee99756d256ea8b78d43`; subsequent integration changes are docs.
 - EU-D #18 merged `c8c7d27`; EU-L #17 merged `a040e9f`. Both original sessions are
   closed; do not assign remote work or push their branches from another session.
-- EU-V #19 **open, unmerged**, latest inspected `3c405cf`. Only active verifier.
+- EU-V #19 **open, unmerged**, latest inspected `e7fe31e`. Only active verifier.
 - Local-ops proposal `0159466` on `codex/local-ops-safety` remains unmerged,
   approval-blocked follow-up not implemented. Never bypass the approval block.
 - `dev-logs` contains reports/cumulative patches, not a merge source. Notes from
@@ -88,3 +88,18 @@ and ocr_source at a040e9f: each deliberately sets skipped and records no engine
 wired. Successful worker orchestration/native PDF rendering is not extraction.
 3c405cf is the same reviewed short-batch head, not an additional EU-V delivery.
 No agent-launch tool is available here; owner must start the two fresh sessions.
+
+## Latest review — EU-V e7fe31e
+
+Assigned two-case batch complete, NOT final acceptance: agent reports1 pass/1 fail
+(exit1,24.5s). L2.5 now proves exact-ID PATCH failure/retry and preserved controls.
+Row badge accessible error/recovery passes, but injected traceback/SQL appears in
+UI. Source-reviewed unsafe Error.message passthrough corroborates disclosure path;
+no independent browser rerun or observed real-data disclosure claimed here.
+EU-ERR fresh-session brief ready for third slot, not launched. PV-GATE remains
+independent; OCR-PLAN PR20 head61da3b4 submitted for design-only review.
+EU-V next: fix own RQ result reader/async waits, run real TXT+PDF explicit reprocess
+cases only; no full-suite rerun/product edit. After fix merge rerun original badge
+case plus shared-helper regressions. Final acceptance requires remaining list/detail
+cases and full impacted suites, not accumulated partial counts. Limited synthetic
+preview may continue, but record error-disclosure limitation and use no real data.

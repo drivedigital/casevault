@@ -1,3 +1,8 @@
+> Latest2026-09-12: EU-V e7fe31e reports injected traceback/SQL rendered in
+> list matter-badge error. Source review confirms arbitrary Error.message passthrough.
+> Disclosure-boundary fix required (EU-ERR); no real case-data leak demonstrated.
+> Limited synthetic preview only; not final acceptance or real-data approval.
+
 # Current issues and verification gaps — 2026-09-12
 
 See STATUS.md for task ownership. Historical entries below retain earlier evidence,

@@ -969,3 +969,18 @@ Prepared two disjoint fresh-session briefs PV-GATE (focused preview proof) and
 OCR-PLAN (design only), <=45min each, own assigned branches/new PRs/no self-merge.
 No agent-launch tool available here: sessions not spawned, owner relay required.
 No product, dependency, CI or runtime safety changes; no local tests executed.
+
+## 2026-09-12 — EU-V e7fe31e reviewed; disclosure fix separated from verification
+
+PR19 e7fe31e reports exact bounded batch exit1: L2.5 pass, L3.2–3.4 fail (24.5s).
+Filter/query preservation after actual failed PATCH/retry verified by author;
+accessible badge error/recovery also worked but injected traceback/SQL rendered.
+Source review confirms list describeError returns arbitrary Error.message. No
+independent browser rerun here or real-data leak claim. seedSource now anchors
+actual POST response ID; other dependent suites not rerun. PR19 stays unmerged.
+Prepared EU-ERR third fresh-agent brief for narrow error mapping + regression,
+not launched here. EU-V next bounded task is RQ reader/async wait + two real OCR
+fixture cases, not product fixes or full suite. OCR-PLAN PR20 head61da3b4 exists,
+design review pending; PV-GATE report not yet observed. Limited synthetic owner
+preview remains allowed with warning; real-data/full acceptance remain held.
+Restored metadata reconciled to2b7381e after backup and temp-index exact comparison.

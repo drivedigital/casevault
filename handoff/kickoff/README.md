@@ -8,7 +8,7 @@ Read [current status](../STATUS.md), [policy](../AGENT_POLICY.md), and
 |---|---|---|
 | EU-D | PR18 merged c8c7d27; session closed | None. List-review limitation note recovered; new review requires fresh accessible session |
 | EU-L | PR17 merged a040e9f; session closed | None. OCR-review limitation note recovered; corrected plan in REVIEW_PATCH_INTAKE.md |
-| EU-V | PR19 open; latest inspected3c405cf | Short batch done; next L2.5 + L3.2–L3.4 only, work<=30min/tests<=5min, retries0; checkpoint/stop, no long rerun or merge |
+| EU-V | PR19 open; latest inspectede7fe31e | Short batch done; next L2.5 + L3.2–L3.4 only, work<=30min/tests<=5min, retries0; checkpoint/stop, no long rerun or merge |
 | EU-M | Limited synthetic preview released | Follow ../OWNER_PREVIEW.md at a040e9f; full acceptance held |
 | PV-GATE | Fresh session brief ready, not launched | PV-GATE.md; focused independent preview checks, no product changes |
 | OCR-PLAN | Fresh session brief ready, not launched | OCR-PLAN.md; design-only real PDF/image extraction proposal |
@@ -34,3 +34,7 @@ ledger/inbox UIs, excerpts/reprocess, normal-worker fixes and evidence/intake
 verifiers integrated. See ../BRANCH_RECONCILIATION.md, ../WORKLOG.md and the W2-*
 briefs for history. No second0003 or reserved0005 intake migration should be created.
 Old reset/force-push setup instructions were removed in the documentation audit.
+
+Latest: EU-V bounded list batch1 pass/1 fail; next RQ reader/OCR proof batch.
+Third fresh slot EU-ERR.md prepared (not launched) for raw list error disclosure.
+OCR-PLAN submitted design PR20; PV-GATE evidence awaited. See STATUS.md latest entry.
