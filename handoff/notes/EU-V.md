@@ -8,12 +8,17 @@ Final SHA: reported on PR #19 and in the handoff reply — a note cannot contain
 its own commit SHA; verify with
 `git rev-parse origin/arena/01a08ce3-casevault`.
 
-**Status: tooling preparation + acceptance specs complete; NOT final UI
-acceptance.** The six review blockers are fixed and guarded by regressions.
-The product acceptance specs (`detail` / `list` / `ocr`) are written and run —
-they are **red against the current tree by design**, because EU-D and EU-L are
-not integrated. Final acceptance waits for the integrator's corrected D+L merged
-SHA.
+**Status: tooling corrections complete; final integrated acceptance IN
+PROGRESS against the integrator's checkpoint.**
+
+* Product under test: **a040e9f739ec3741cd28ee99756d256ea8b78d43** (EU-D
+  `c8c7d27` + EU-L `14f4491`). Branch tip: **3499164** = my tooling commit
+  rebased onto **e3e0b76** (`git rebase --onto e3e0b76 7ed39b1`), pushed with
+  `--force-with-lease`.
+* Measured so far on that integrated tree: **tooling + guards 15/15 pass**;
+  **list 14 passed / 6 failed** (triage below, not yet judged).
+* Detail and OCR suites are still to be run on this checkpoint. Nothing is
+  declared accepted until all three suites are triaged.
 
 ## What changed
 
@@ -97,31 +102,41 @@ $ bash scripts/eu_browser_run.sh eu-acceptance-tooling-guards.spec.ts eu-accepta
     T4 injected 500 reaches the page · T5 PDF capability reported · T6 artifacts
 ```
 
-### Product acceptance specs against the *current* tree (pre-D+L, expected red)
+### Product acceptance specs against the integrated checkpoint a040e9f
+
+Environment: `.venv/bin/python scripts/eu_browser_stack.py start` → throwaway
+database `casevault_euv_…`, Unix-socket Redis, real `uvicorn`, real RQ worker,
+real `next dev` bound to `0.0.0.0`. Raw output (outside Git):
+`/home/user/eu-v-runs/list.log` (JUnit/traces also in the git-ignored
+`data/diagnostics/eu-browser/`).
 
 ```
-$ bash scripts/eu_browser_run.sh eu-acceptance-list.spec.ts      →  N passed / M failed
-$ bash scripts/eu_browser_run.sh eu-acceptance-detail.spec.ts    →  1 passed / 20 failed
-$ bash scripts/eu_browser_run.sh eu-acceptance-ocr.spec.ts       →  11 passed / 2 failed
+$ bash scripts/eu_browser_run.sh eu-acceptance-tooling-guards.spec.ts eu-acceptance-tooling.spec.ts
+  15 passed (42.9s)                      # G1-G9 + T1-T6 on the integrated tree
+
+$ bash scripts/eu_browser_run.sh eu-acceptance-list.spec.ts
+  14 passed / 6 failed (7.0m)
 ```
 
-* **OCR (11/13 green)**: D5.1 (202 = accepted, never "complete"), D5.2, D5.4,
-  D5.5, D5.6 (120 s timeout stops polling, unconfirmed + manual refresh), D5.8,
-  D5.9, D5.13 and **all three REAL_WORKER cases** pass on the baseline. Two fail,
-  both genuine pre-EU-D gaps: **D5.3** (no ~2 s polling exists) and **D5.7**
-  (nothing to cancel on navigation).
-* **Detail (1/20)**: the baseline has no per-type download control, no opt-in
-  PDF preview, no distinct source/pages/matters error states and no pending
-  protection — exactly the EU-D scope.
-* **List**: per-row failure surfacing, pending protection, stale labelling,
-  keyboard-operable upload and badge-failure feedback are missing — the EU-L
-  scope. Two failures found in the first full run were **spec-side** and were
-  fixed (a race in L5.1's refetch count; Next dev-server `ChunkLoadError`/RSC
-  noise in L4.8, now separated from product console errors and annotated).
-* Two spec-side issues found and fixed in OCR: the 202 assertion raced React's
-  render (now auto-retrying), and `pages > 0` was required for PDF/image where
-  the contract's known engine stubs legitimately end in `skipped` without page
-  rows.
+List failures on the integrated tree — **triage pending, none judged yet**:
+
+| Case | Mode | Observed |
+|---|---|---|
+| L1.2 empty state (fresh workspace) | REAL_API | Empty-state copy/params under review |
+| L1.5 retained stale rows labelled | INJECTED_FAULT | No stale label observed after a failed refetch |
+| L2.5 retry preserves query/filters | INJECTED_FAULT | Filters not preserved as expected after a row-action failure |
+| L3.2/L3.3/L3.4 row badge failure | INJECTED_FAULT | Row-level badge failure feedback not matched |
+| L4.7 duplicate warnings retained | REAL_API | Duplicate banner locator not matched |
+| L4.8 original navigation preserved | REAL_API | `toHaveURL(/\/evidence\/<id>/)` did not match |
+
+Each of these is either a genuine EU-L product finding or a spec-side
+selector/copy mismatch against the integrated UI; I reconcile the label/role
+first (never weakening the assertion) and report whatever remains as a finding
+through the integrator.
+
+Earlier, **pre-merge baseline** measurements (product 7ed39b1, no D+L) are kept
+only as history: list 10 passed / 10 failed, detail 1 passed / 20 failed, OCR
+11 passed / 2 failed. They are **not** acceptance evidence.
 
 ### Real-worker proof shape (contract §Proof and safety)
 
