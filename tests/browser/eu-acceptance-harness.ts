@@ -13,7 +13,8 @@
  *  4. Product bugs are reported to owners — the harness never works around
  *     them, and no assertion is weakened to make a page pass.
  */
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
+import { promisify } from 'node:util';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -276,44 +277,50 @@ export function queryDatabase<T = Record<string, unknown>>(sql: string): T[] {
   return queryDatabaseUrl<T>(url, sql);
 }
 
-/**
- * Read an RQ job's stored result payload from the isolated Redis. Real-worker
- * proof requires the job result AND the committed state — never a 202 alone.
- */
-export function redisJob(jobId: string): { status?: string; result?: string } | null {
+export interface RqJobResult {
+  status: string;
+  result: Record<string, unknown> | null;
+}
+
+const execFileAsync = promisify(execFile);
+
+/** Wait through RQ's supported result API without blocking the Node event loop. */
+export async function waitForJobResult(jobId: string, timeoutMs = 120_000): Promise<RqJobResult> {
   const url = process.env.EU_V_REDIS_URL;
   if (!url) throw new Error('EU_V_REDIS_URL is not set (start the isolated stack)');
   const script = `
-import json, sys
+import json, sys, time
 import redis
+from rq.job import Job
 client = redis.Redis.from_url(sys.argv[1], socket_timeout=5)
-key = f"rq:job:{sys.argv[2]}"
-if not client.exists(key):
-    print("null")
-else:
-    raw = client.hgetall(key)
-    data = {k.decode(): v.decode('utf-8', 'replace') for k, v in raw.items()}
-    print(json.dumps({"status": data.get("status"), "result": data.get("result")}))
+job_id, timeout = sys.argv[2], float(sys.argv[3]) / 1000
+end = time.monotonic() + timeout
+last = {"status": "missing", "result": None}
+while time.monotonic() < end:
+    try:
+        job = Job.fetch(job_id, connection=client)
+        status = str(job.get_status(refresh=True))
+        result = job.return_value()
+        if result is None:
+            latest = job.latest_result()
+            if latest is not None:
+                result = latest.return_value
+        last = {"status": status, "result": result}
+        if status in ("JobStatus.FINISHED", "finished", "JobStatus.FAILED", "failed"):
+            print(json.dumps(last, default=str))
+            raise SystemExit(0)
+    except Exception as exc:
+        last = {"status": "read-error", "result": None, "error": type(exc).__name__}
+    time.sleep(0.5)
+print(json.dumps(last, default=str))
+raise SystemExit(2)
 `;
-  const out = execFileSync(PYTHON, ['-c', script, url, jobId], {
+  const { stdout } = await execFileAsync(PYTHON, ['-c', script, url, jobId, String(timeoutMs)], {
     cwd: REPO_ROOT,
     encoding: 'utf8',
+    timeout: timeoutMs + 10_000,
   });
-  return out.trim() === 'null' ? null : (JSON.parse(out) as { status?: string; result?: string });
-}
-
-export function waitForJobResult(jobId: string, timeoutMs = 120_000): { status?: string; result?: string } {
-  const deadline = Date.now() + timeoutMs;
-  let last: { status?: string; result?: string } | null = null;
-  while (Date.now() < deadline) {
-    last = redisJob(jobId);
-    if (last?.status === 'finished' || last?.status === 'failed') return last;
-    const until = Date.now() + 1_000;
-    while (Date.now() < until) {
-      /* poll without adding a dependency */
-    }
-  }
-  throw new Error(`job ${jobId} did not reach a terminal state within ${timeoutMs}ms (last=${JSON.stringify(last)})`);
+  return JSON.parse(stdout) as RqJobResult;
 }
 
 /** Committed state of a source, read independently of the UI. */
@@ -322,15 +329,18 @@ export function sourceState(sourceId: string): {
   ocr_status?: string;
   page_count?: number;
   pages?: number;
+  page_texts?: string[];
 } {
   const rows = queryDatabase<{
     source_status: string;
     ocr_status: string;
     page_count: number | null;
     pages: number;
+    page_texts: string[];
   }>(
     `SELECT s.source_status, s.ocr_status, s.page_count,
-            (SELECT count(*) FROM source_pages p WHERE p.source_id = s.id) AS pages
+            (SELECT count(*) FROM source_pages p WHERE p.source_id = s.id) AS pages,
+            ARRAY(SELECT p.ocr_text FROM source_pages p WHERE p.source_id = s.id ORDER BY p.page_number) AS page_texts
        FROM sources s WHERE s.id = '${sourceId}'`,
   );
   return rows[0] ?? {};

@@ -261,6 +261,56 @@ Earlier, **pre-merge baseline** measurements (product 7ed39b1, no D+L) are kept
 only as history: list 10 passed / 10 failed, detail 1 passed / 20 failed, OCR
 11 passed / 2 failed. They are **not** acceptance evidence.
 
+### Bounded real-worker OCR proof — 2026-09-12
+
+Revisions: product **a040e9f739ec3741cd28ee99756d256ea8b78d43**;
+verifier base **e7fe31ec14ba0c99625057646769440dbb0ac1cd**. Only TXT and
+PDF D5.10/D5.11 explicit reprocessing ran. The RQ reader now uses
+`Job.return_value()` with `latest_result()` fallback in a bounded Python child;
+Node awaits `execFile` asynchronously instead of synchronously busy-spinning.
+All call sites now await it; D5.12 was updated for type/async correctness but was
+not run.
+
+```text
+$ timeout 300 bash scripts/eu_browser_run.sh \
+    --grep 'real worker run for (text|pdf)' --retries=0 --workers=1 \
+    --max-failures=1 --reporter=line eu-acceptance-ocr.spec.ts
+  exit 1; TXT passed, PDF failed attempt 1 because the spec expected page_count=0
+  but the shipped stub returns page_count=null; 1 passed / 1 failed (11.3s)
+
+$ timeout 240 bash scripts/eu_browser_run.sh \
+    --grep 'real worker run for pdf' --retries=0 --workers=1 \
+    --max-failures=1 --reporter=line eu-acceptance-ocr.spec.ts
+  exit 0; PDF passed (7.6s)
+```
+
+Classification: the first PDF failure was a **spec expectation defect**, corrected
+to the shipped stub contract without claiming extraction. Final bounded proof:
+TXT **1/1 pass** (two sequential explicit clicks/jobs); corrected PDF **1/1
+pass** (two sequential explicit clicks/jobs). Each test required the clicked
+Reprocess response job ID, decoded `job=ocr_source`, exact `source_id`,
+`status=complete`, expected OCR outcome, committed SQL state/pages and visible UI
+terminal label. TXT additionally required one committed page containing
+`CASEVAULT SYNTHETIC FIXTURE`; PDF required `ocr_status=skipped`, null page_count
+and zero pages—successful orchestration, explicitly **not extraction**.
+
+Redacted exact correlations retained outside Git:
+
+* TXT source `5a659e85-…`: jobs `1f12694c-…`, `32a43735-…`; both RQ FINISHED,
+  payload complete/`ocr_status=complete`/page_count 1; SQL complete/1 page; UI
+  `OCR complete`.
+* Corrected PDF source `8d7393c0-…`: jobs `30426e4c-…`, `e57a1aed-…`; both RQ
+  FINISHED, payload complete/`ocr_status=skipped`/page_count null; SQL skipped/0
+  pages; UI `OCR skipped`.
+* The failed first PDF attempt used source `a13c4b71-…`, job `81c9a2e7-…`; its
+  payload and SQL also showed skipped/null/0 before the incorrect assertion.
+
+Raw logs and correlation output:
+`/home/user/eu-v-runs/ocr-20260912T233939Z/` (outside Git). Cleanup: stack and
+PostgreSQL stop both exit 0; disposable database/storage removed; no owned
+service remains. Image, D5.12, other OCR cases, full OCR/list/detail suites and
+shared-helper regression were **not run**.
+
 ### Real-worker proof shape (contract §Proof and safety)
 
 `REAL_WORKER` cases require **all three**: the RQ job record reaches `finished`

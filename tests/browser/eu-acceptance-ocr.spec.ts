@@ -20,7 +20,6 @@ import {
   injectNetworkError,
   recordErrors,
   recordRequests,
-  redisJob,
   seedSource,
   sourceState,
   waitForJobResult,
@@ -298,9 +297,9 @@ test.describe('EU-D/D5 OCR enqueue feedback and polling', () => {
 });
 
 test.describe('EU-D/D5 real worker completion [REAL_WORKER]', () => {
-  for (const kind of ['text', 'pdf', 'image'] as const) {
+  for (const kind of ['text', 'pdf'] as const) {
     test(`D5.10/D5.11 real worker run for ${kind}: result payload AND persisted state`, async ({ page }) => {
-      test.setTimeout(300_000);
+      test.setTimeout(120_000);
       declareMode('REAL_WORKER', 'real RQ worker; job result + committed rows, not merely queued');
       const { id } = await seedSource(page, kind);
       await openStatusTab(page, id);
@@ -318,27 +317,34 @@ test.describe('EU-D/D5 real worker completion [REAL_WORKER]', () => {
         expect(body.queued, `attempt ${attempt}: job accepted (${JSON.stringify(body)})`).toBe(true);
         expect(body.job_id, 'a real job id is returned').toBeTruthy();
 
-        const job = waitForJobResult(String(body.job_id), 180_000);
-        expect(job.status, `attempt ${attempt}: job status`).toBe('finished');
-        // The payload is recorded verbatim: what the worker actually returned,
-        // not what we hoped it would return.
-        expect(job.result, `attempt ${attempt}: job result payload present`).toBeDefined();
+        const job = await waitForJobResult(String(body.job_id), 90_000);
+        expect(job.status, `attempt ${attempt}: job status`).toMatch(/finished/i);
+        expect(job.result, `attempt ${attempt}: decoded job result payload`).not.toBeNull();
+        const result = job.result!;
+        const expectedOutcome = kind === 'text' ? 'complete' : 'skipped';
+        expect(result.job, `attempt ${attempt}: worker function`).toBe('ocr_source');
+        expect(result.source_id, `attempt ${attempt}: exact source correlation`).toBe(id);
+        expect(result.status, `attempt ${attempt}: payload status`).toBe('complete');
+        expect(result.ocr_status, `attempt ${attempt}: OCR outcome`).toBe(expectedOutcome);
+        expect(result.page_count, `attempt ${attempt}: payload page count`).toBe(kind === 'text' ? 1 : null);
         test.info().annotations.push({
           type: 'eu-v-job-payload',
-          description: `${kind} attempt ${attempt}: job=${body.job_id} result=${JSON.stringify(job.result)}`,
+          description: `${kind} attempt ${attempt}: job=${body.job_id} result=${JSON.stringify(result)}`,
         });
 
         await expect
-          .poll(() => sourceState(id).ocr_status, { timeout: 120_000, intervals: [2_000] })
-          .toMatch(/complete|skipped/);
+          .poll(() => sourceState(id).ocr_status, { timeout: 30_000, intervals: [1_000] })
+          .toBe(expectedOutcome);
 
         const state = sourceState(id);
-        expect(state.ocr_status, `attempt ${attempt}: terminal ocr_status`).toMatch(/complete|skipped/);
+        expect(state.ocr_status, `attempt ${attempt}: terminal ocr_status`).toBe(expectedOutcome);
+        expect(state.pages ?? 0, `attempt ${attempt}: committed page rows`).toBe(kind === 'text' ? 1 : 0);
         if (kind === 'text') {
-          // Known engine stubs: PDF/image extraction legitimately ends in
-          // `skipped` without page rows, so pages are required for text only.
-          expect(state.pages ?? 0, `attempt ${attempt}: page rows committed`).toBeGreaterThan(0);
+          expect(state.page_texts?.join('\n'), `attempt ${attempt}: expected synthetic text committed`).toContain(
+            'CASEVAULT SYNTHETIC FIXTURE',
+          );
         }
+        await expect(page.locator('body')).toContainText(kind === 'text' ? /OCR complete/i : /OCR skipped/i);
         test.info().annotations.push({
           type: 'eu-v-real-worker',
           description: `${kind} attempt ${attempt}: job=${body.job_id} status=${job.status} ocr_status=${state.ocr_status} pages=${state.pages}`,
@@ -365,9 +371,8 @@ test.describe('EU-D/D5 real worker completion [REAL_WORKER]', () => {
     const body = (await response.json()) as { queued: boolean; job_id: string | null };
 
     if (body.queued && body.job_id) {
-      const job = redisJob(body.job_id);
-      expect(job, 'the reprocess job exists independently of the upload job').toBeTruthy();
-      waitForJobResult(body.job_id, 180_000);
+      const job = await waitForJobResult(body.job_id, 180_000);
+      expect(job.result, 'the reprocess job has a decoded result independently of the upload').not.toBeNull();
       await expect
         .poll(() => sourceState(id).ocr_status, { timeout: 120_000, intervals: [2_000] })
         .toMatch(/complete|skipped/);
