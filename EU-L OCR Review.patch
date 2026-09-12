@@ -1,0 +1,2881 @@
+diff --git a/apps/web/app/evidence/page.tsx b/apps/web/app/evidence/page.tsx
+index 0278512..e851365 100644
+--- a/apps/web/app/evidence/page.tsx
++++ b/apps/web/app/evidence/page.tsx
+@@ -1,22 +1,37 @@
+ "use client";
+ 
+ import Link from "next/link";
+-import { useState, useCallback, useRef } from "react";
+-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
++import { useState } from "react";
++import { useQuery } from "@tanstack/react-query";
+ import { api } from "@/lib/api";
+-import {
+-  SOURCE_TYPES,
+-  SOURCE_STATUSES,
+-  EVIDENCE_REVIEW_STATUSES,
+-  OCR_STATUSES,
+-  type Source,
+-} from "@/lib/types";
++import { type Source } from "@/lib/types";
+ import { Badge } from "@/components/badge";
+ import { SourceReviewBadge, SourceStatusBadge } from "@/components/source-badge";
+-import { Field, inputClass, buttonClass, secondaryButtonClass } from "@/components/field";
++import {
++  EMPTY_FILTERS,
++  EvidenceFilters,
++  hasActiveFilters,
++  type EvidenceFilterValues,
++} from "@/components/evidence-list-filters";
++import { EvidenceUpload } from "@/components/evidence-list-upload";
++import { EvidenceMatterBadge, EvidenceRowActions } from "@/components/evidence-list-row";
++import { ListStateRow, describeError } from "@/components/evidence-list-states";
++
++// -----------------------------------------------------------------------------
++// Evidence list page — EU-L. Contract: docs/contracts/evidence_ui_closure.md
++// v1.0 §EU-L. Row actions, upload and filters live in components/evidence-list-*.
++//
++// Loading, empty, filtered-empty and request-failure are four distinct states
++// (§EU-L 1). A failed list request shows an actionable retry and, when earlier
++// results are still cached, keeps them visible but explicitly labelled as
++// saved-and-possibly-out-of-date — never as an empty list. The sources client
++// stays a bare array with the shipped server filters; source_status / ocr /
++// include-exclude remain client-side (§EU-L 4).
++// -----------------------------------------------------------------------------
++
++const COLUMN_COUNT = 9;
+ 
+ export default function EvidenceIndex() {
+-  const qc = useQueryClient();
+   const [q, setQ] = useState("");
+   const [matterId, setMatterId] = useState("");
+   const [sourceType, setSourceType] = useState("");
+@@ -25,10 +40,18 @@ export default function EvidenceIndex() {
+   const [ocrStatus, setOcrStatus] = useState("");
+   const [includedOnly, setIncludedOnly] = useState(false);
+   const [excludedOnly, setExcludedOnly] = useState(false);
+-  const [dragOver, setDragOver] = useState(false);
+-  const inputRef = useRef<HTMLInputElement>(null);
+ 
+-  const matters = useQuery({ queryKey: ["matters"], queryFn: () => api.listMatters() });
++  const filters: EvidenceFilterValues = {
++    q,
++    matterId,
++    sourceType,
++    sourceStatus,
++    reviewStatus,
++    ocrStatus,
++    includedOnly,
++    excludedOnly,
++  };
++
+   // Shipped GET /sources supports q, matter_id, source_type and
+   // evidence_review_status only (as-shipped delta). The remaining filters are
+   // applied client-side over the full list until filter parity lands (BACKLOG).
+@@ -41,47 +64,20 @@ export default function EvidenceIndex() {
+         source_type: sourceType || undefined,
+         evidence_review_status: reviewStatus || undefined,
+       }),
++    // Fail visibly and immediately; the UI owns the retry affordance.
++    retry: false,
+   });
+ 
+-  const upload = useMutation({
+-    mutationFn: (file: File) => api.uploadSource(file, { title: file.name.replace(/\.[^.]+$/, "") }),
+-    onSuccess: () => qc.invalidateQueries({ queryKey: ["sources"] }),
+-  });
+-
+-  const update = useMutation({
+-    mutationFn: (p: { id: string; payload: Partial<Source> }) => api.updateSource(p.id, p.payload),
+-    onSuccess: () => qc.invalidateQueries({ queryKey: ["sources"] }),
+-  });
+-
+-  const handleFile = useCallback(
+-    (file: File) => {
+-      if (file.size > 100 * 1024 * 1024) {
+-        alert("File too large (max 100 MB).");
+-        return;
+-      }
+-      upload.mutate(file);
+-    },
+-    [upload],
+-  );
+-
+-  const onDrop = useCallback(
+-    (e: React.DragEvent) => {
+-      e.preventDefault();
+-      setDragOver(false);
+-      const file = e.dataTransfer.files?.[0];
+-      if (file) handleFile(file);
+-    },
+-    [handleFile],
+-  );
+-
+-  const onInput = useCallback(
+-    (e: React.ChangeEvent<HTMLInputElement>) => {
+-      const file = e.target.files?.[0];
+-      if (file) handleFile(file);
+-      e.target.value = "";
+-    },
+-    [handleFile],
+-  );
++  const setFilters = (next: EvidenceFilterValues) => {
++    setQ(next.q);
++    setMatterId(next.matterId);
++    setSourceType(next.sourceType);
++    setSourceStatus(next.sourceStatus);
++    setReviewStatus(next.reviewStatus);
++    setOcrStatus(next.ocrStatus);
++    setIncludedOnly(next.includedOnly);
++    setExcludedOnly(next.excludedOnly);
++  };
+ 
+   const fetched = sources.data ?? [];
+   const items = fetched.filter(
+@@ -92,99 +88,25 @@ export default function EvidenceIndex() {
+       (!excludedOnly || s.excluded_flag),
+   );
+ 
++  const filtersActive = hasActiveFilters(filters);
++  const showStaleData = sources.isError && fetched.length > 0;
++  const staleAsOf = sources.errorUpdatedAt
++    ? new Date(sources.errorUpdatedAt).toLocaleTimeString()
++    : null;
++
+   return (
+     <div className="mx-auto max-w-6xl">
+       <div className="mb-6 flex items-center justify-between">
+         <h1 className="text-xl font-semibold text-slate-900">Evidence</h1>
+-        <span className="text-xs text-slate-400">{items.length} results</span>
++        <span className="text-xs text-slate-400">
++          {sources.isError && !showStaleData
++            ? "Unavailable"
++            : `${items.length} results${showStaleData ? " (saved)" : ""}`}
++        </span>
+       </div>
+ 
+-      {/* Filters */}
+-      <div className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
+-        <Field label="Search title / filename">
+-          <input
+-            className={inputClass}
+-            value={q}
+-            onChange={(e) => setQ(e.target.value)}
+-            placeholder="Keyword"
+-          />
+-        </Field>
+-        <Field label="Matter">
+-          <select className={inputClass} value={matterId} onChange={(e) => setMatterId(e.target.value)}>
+-            <option value="">All matters</option>
+-            {(matters.data ?? []).map((m) => (
+-              <option key={m.id} value={m.id}>
+-                {m.name}
+-              </option>
+-            ))}
+-          </select>
+-        </Field>
+-        <Field label="Source type">
+-          <select className={inputClass} value={sourceType} onChange={(e) => setSourceType(e.target.value)}>
+-            <option value="">All</option>
+-            {SOURCE_TYPES.map((t) => (
+-              <option key={t} value={t}>
+-                {t}
+-              </option>
+-            ))}
+-          </select>
+-        </Field>
+-        <Field label="Source status">
+-          <select className={inputClass} value={sourceStatus} onChange={(e) => setSourceStatus(e.target.value)}>
+-            <option value="">All</option>
+-            {SOURCE_STATUSES.map((s) => (
+-              <option key={s} value={s}>
+-                {s}
+-              </option>
+-            ))}
+-          </select>
+-        </Field>
+-        <Field label="Review status">
+-          <select className={inputClass} value={reviewStatus} onChange={(e) => setReviewStatus(e.target.value)}>
+-            <option value="">All</option>
+-            {EVIDENCE_REVIEW_STATUSES.map((s) => (
+-              <option key={s} value={s}>
+-                {s}
+-              </option>
+-            ))}
+-          </select>
+-        </Field>
+-        <Field label="OCR status">
+-          <select className={inputClass} value={ocrStatus} onChange={(e) => setOcrStatus(e.target.value)}>
+-            <option value="">All</option>
+-            {OCR_STATUSES.map((s) => (
+-              <option key={s} value={s}>
+-                {s}
+-              </option>
+-            ))}
+-          </select>
+-        </Field>
+-        <Field label="Included / Excluded">
+-          <div className="flex gap-3">
+-            <label className="flex items-center gap-1.5 text-sm text-slate-700">
+-              <input type="checkbox" checked={includedOnly} onChange={() => { setIncludedOnly((v) => !v); setExcludedOnly(false); }} /> Included
+-            </label>
+-            <label className="flex items-center gap-1.5 text-sm text-slate-700">
+-              <input type="checkbox" checked={excludedOnly} onChange={() => { setExcludedOnly((v) => !v); setIncludedOnly(false); }} /> Excluded
+-            </label>
+-          </div>
+-        </Field>
+-      </div>
+-
+-      {/* Upload */}
+-      <div
+-        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+-        onDragLeave={() => setDragOver(false)}
+-        onDrop={onDrop}
+-        onClick={() => inputRef.current?.click()}
+-        className={`mb-6 cursor-pointer rounded-lg border-2 border-dashed p-6 text-center transition ${dragOver ? "border-blue-500 bg-blue-50" : "border-slate-300 bg-slate-50 hover:bg-slate-100"}`}
+-      >
+-        <input ref={inputRef} type="file" className="hidden" onChange={onInput} />
+-        <p className="text-sm font-medium text-slate-700">Drag & drop a file here, or click to upload</p>
+-        <p className="text-xs text-slate-400">PDF, image, text, email, spreadsheet — max 100 MB (server limit)</p>
+-        {upload.isPending && <p className="mt-2 text-sm text-blue-600">Uploading…</p>}
+-        {upload.isError && <p className="mt-2 text-sm text-red-600">Upload failed.</p>}
+-      </div>
++      <EvidenceFilters value={filters} onChange={setFilters} />
++      <EvidenceUpload />
+ 
+       {/* Table */}
+       <div className="rounded-lg border border-slate-200 bg-white overflow-x-auto">
+@@ -203,53 +125,38 @@ export default function EvidenceIndex() {
+             </tr>
+           </thead>
+           <tbody>
+-            {sources.isLoading ? (
+-              <tr><td colSpan={9} className="px-4 py-6 text-sm text-slate-500">Loading…</td></tr>
++            {sources.isPending ? (
++              <ListStateRow kind="loading" colSpan={COLUMN_COUNT} />
++            ) : sources.isError ? (
++              <>
++                <ListStateRow
++                  kind="error"
++                  colSpan={COLUMN_COUNT}
++                  detail={describeError(sources.error)}
++                  onRetry={() => sources.refetch()}
++                  staleNote={
++                    showStaleData
++                      ? `Showing ${items.length} saved result${items.length === 1 ? "" : "s"}${
++                          staleAsOf ? ` from ${staleAsOf}` : ""
++                        }; they may be out of date.`
++                      : undefined
++                  }
++                />
++                {showStaleData &&
++                  items.map((s) => <EvidenceRow key={s.id} source={s} stale />)}
++              </>
+             ) : items.length === 0 ? (
+-              <tr><td colSpan={9} className="px-4 py-6 text-sm text-slate-500">No evidence matches.</td></tr>
++              filtersActive ? (
++                <ListStateRow
++                  kind="filtered-empty"
++                  colSpan={COLUMN_COUNT}
++                  onClearFilters={() => setFilters({ ...EMPTY_FILTERS })}
++                />
++              ) : (
++                <ListStateRow kind="empty" colSpan={COLUMN_COUNT} />
++              )
+             ) : (
+-              items.map((s) => (
+-                <tr key={s.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+-                  <td className="px-4 py-2">
+-                    <Link href={`/evidence/${s.id}`} className="font-medium text-blue-700 hover:underline block">
+-                      {s.title || s.original_filename || "Untitled"}
+-                    </Link>
+-                    <span className="text-xs text-slate-400">{s.original_filename}</span>
+-                    {s.duplicate_of && (
+-                      <div className="mt-1 inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
+-                        Duplicate of {s.duplicate_of.title}
+-                      </div>
+-                    )}
+-                  </td>
+-                  <td className="px-4 py-2">
+-                    <MattersBadge sourceId={s.id} />
+-                  </td>
+-                  <td className="px-4 py-2"><Badge label={s.source_type} color="blue" /></td>
+-                  <td className="px-4 py-2"><SourceStatusBadge status={s.source_status} /></td>
+-                  <td className="px-4 py-2"><SourceReviewBadge status={s.evidence_review_status} /></td>
+-                  <td className="px-4 py-2 text-xs text-slate-600">{s.page_count ?? "—"}</td>
+-                  <td className="px-4 py-2"><Badge label={s.ocr_status} color={s.ocr_status === "complete" ? "green" : s.ocr_status === "skipped" ? "slate" : "amber"} /></td>
+-                  <td className="px-4 py-2 text-xs text-slate-500">{new Date(s.updated_at).toLocaleString()}</td>
+-                  <td className="px-4 py-2">
+-                    <div className="flex gap-1">
+-                      <button
+-                        onClick={() => update.mutate({ id: s.id, payload: { included_flag: true, excluded_flag: false } })}
+-                        disabled={s.included_flag}
+-                        className={`${secondaryButtonClass} text-xs px-2 py-0.5`}
+-                      >
+-                        Include
+-                      </button>
+-                      <button
+-                        onClick={() => update.mutate({ id: s.id, payload: { excluded_flag: true, included_flag: false } })}
+-                        disabled={s.excluded_flag}
+-                        className={`${secondaryButtonClass} text-xs px-2 py-0.5`}
+-                      >
+-                        Exclude
+-                      </button>
+-                    </div>
+-                  </td>
+-                </tr>
+-              ))
++              items.map((s) => <EvidenceRow key={s.id} source={s} />)
+             )}
+           </tbody>
+         </table>
+@@ -258,23 +165,47 @@ export default function EvidenceIndex() {
+   );
+ }
+ 
+-function MattersBadge({ sourceId }: { sourceId: string }) {
+-  const links = useQuery({
+-    queryKey: ["source-matters", sourceId],
+-    queryFn: () => api.listSourceMatters(sourceId),
+-    enabled: !!sourceId,
+-  });
+-  if (links.isLoading) return <span className="text-xs text-slate-400">…</span>;
+-  const arr = links.data ?? [];
+-  if (arr.length === 0) return <span className="text-xs text-slate-400">—</span>;
++/** One table row. `stale` dims the row and labels it as saved data that may
++ *  be out of date (rendered only while the refresh attempt is failing). */
++function EvidenceRow({ source: s, stale = false }: { source: Source; stale?: boolean }) {
++  const name = s.title || s.original_filename || "Untitled";
+   return (
+-    <div className="flex flex-wrap gap-1">
+-      {arr.slice(0, 3).map((l) => (
+-        <Link key={l.id} href={`/matters/${l.matter_id}`} className="rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700 hover:underline">
+-          {l.matter_name}
++    <tr
++      className={`border-b border-slate-100 last:border-0 hover:bg-slate-50 ${
++        stale ? "opacity-60" : ""
++      }`}
++    >
++      <td className="px-4 py-2">
++        <Link href={`/evidence/${s.id}`} className="font-medium text-blue-700 hover:underline block">
++          {name}
+         </Link>
+-      ))}
+-      {arr.length > 3 && <span className="text-xs text-slate-400">+{arr.length - 3}</span>}
+-    </div>
++        <span className="text-xs text-slate-400">{s.original_filename}</span>
++        {stale && (
++          <div
++            data-testid="stale-chip"
++            className="mt-1 inline-flex items-center gap-1 rounded bg-slate-200 px-1.5 py-0.5 text-xs font-medium text-slate-700"
++          >
++            Saved result — may be out of date
++          </div>
++        )}
++        {s.duplicate_of && (
++          <div className="mt-1 inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
++            Duplicate of {s.duplicate_of.title}
++          </div>
++        )}
++      </td>
++      <td className="px-4 py-2">
++        <EvidenceMatterBadge sourceId={s.id} source={s} />
++      </td>
++      <td className="px-4 py-2"><Badge label={s.source_type} color="blue" /></td>
++      <td className="px-4 py-2"><SourceStatusBadge status={s.source_status} /></td>
++      <td className="px-4 py-2"><SourceReviewBadge status={s.evidence_review_status} /></td>
++      <td className="px-4 py-2 text-xs text-slate-600">{s.page_count ?? "—"}</td>
++      <td className="px-4 py-2"><Badge label={s.ocr_status} color={s.ocr_status === "complete" ? "green" : s.ocr_status === "skipped" ? "slate" : "amber"} /></td>
++      <td className="px-4 py-2 text-xs text-slate-500">{new Date(s.updated_at).toLocaleString()}</td>
++      <td className="px-4 py-2">
++        <EvidenceRowActions source={s} />
++      </td>
++    </tr>
+   );
+ }
+diff --git a/apps/web/components/evidence-list-filters.tsx b/apps/web/components/evidence-list-filters.tsx
+new file mode 100644
+index 0000000..ce24d94
+--- /dev/null
++++ b/apps/web/components/evidence-list-filters.tsx
+@@ -0,0 +1,240 @@
++"use client";
++
++import { useQuery } from "@tanstack/react-query";
++import { api } from "@/lib/api";
++import {
++  EVIDENCE_REVIEW_STATUSES,
++  OCR_STATUSES,
++  SOURCE_STATUSES,
++  SOURCE_TYPES,
++} from "@/lib/types";
++import { Field, inputClass, secondaryButtonClass } from "@/components/field";
++import { Notice, RetryButton, describeError } from "./evidence-list-states";
++
++// -----------------------------------------------------------------------------
++// EU-L evidence filters (list page). Contract §EU-L (3)–(4).
++//
++// - The server-supported filters (q, matter_id, source_type,
++//   evidence_review_status) and the client-side filters (source_status,
++//   ocr_status, included/excluded) keep full parity with the shipped list.
++// - A matter-filter load failure is announced and retryable — the select must
++//   never silently look like an ordinary empty “All matters” list.
++// - Filter values live in the page and are preserved through failures/retries.
++// - Included/Excluded are exclusive: turning one on explicitly clears the
++//   opposite flag.
++// -----------------------------------------------------------------------------
++
++export interface EvidenceFilterValues {
++  q: string;
++  matterId: string;
++  sourceType: string;
++  sourceStatus: string;
++  reviewStatus: string;
++  ocrStatus: string;
++  includedOnly: boolean;
++  excludedOnly: boolean;
++}
++
++export const EMPTY_FILTERS: EvidenceFilterValues = {
++  q: "",
++  matterId: "",
++  sourceType: "",
++  sourceStatus: "",
++  reviewStatus: "",
++  ocrStatus: "",
++  includedOnly: false,
++  excludedOnly: false,
++};
++
++export function hasActiveFilters(f: EvidenceFilterValues): boolean {
++  return Boolean(
++    f.q ||
++      f.matterId ||
++      f.sourceType ||
++      f.sourceStatus ||
++      f.reviewStatus ||
++      f.ocrStatus ||
++      f.includedOnly ||
++      f.excludedOnly,
++  );
++}
++
++export function EvidenceFilters({
++  value,
++  onChange,
++}: {
++  value: EvidenceFilterValues;
++  onChange: (next: EvidenceFilterValues) => void;
++}) {
++  const matters = useQuery({
++    queryKey: ["matters"],
++    queryFn: () => api.listMatters(),
++    // Surface filter failures immediately; the retry button refetches.
++    retry: false,
++  });
++  const set = (patch: Partial<EvidenceFilterValues>) => onChange({ ...value, ...patch });
++
++  return (
++    <div className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
++      <Field label="Search titles" hint="Searches source titles only (not filenames)">
++        <input
++          className={inputClass}
++          value={value.q}
++          onChange={(e) => set({ q: e.target.value })}
++          placeholder="Keyword"
++          aria-label="Search titles"
++        />
++      </Field>
++
++      <Field label="Matter">
++        {matters.isError ? (
++          <div data-testid="matter-filter-error">
++            <Notice
++              tone="error"
++              action={
++                <RetryButton
++                  label="Retry loading the matter filter options"
++                  onRetry={() => matters.refetch()}
++                  pending={matters.isFetching}
++                  small
++                />
++              }
++            >
++              <span className="font-medium">Couldn’t load the matter list.</span>{" "}
++              <span className="block sm:inline">
++                Filtering by matter is unavailable right now
++                {describeError(matters.error) ? ` — ${describeError(matters.error)}` : ""}. Other
++                filters still work.
++              </span>
++            </Notice>
++          </div>
++        ) : (
++          <select
++            className={inputClass}
++            value={value.matterId}
++            onChange={(e) => set({ matterId: e.target.value })}
++            aria-label="Filter by matter"
++          >
++            <option value="">All matters</option>
++            {(matters.data ?? []).map((m) => (
++              <option key={m.id} value={m.id}>
++                {m.name}
++              </option>
++            ))}
++          </select>
++        )}
++      </Field>
++
++      <Field label="Source type">
++        <select
++          className={inputClass}
++          value={value.sourceType}
++          onChange={(e) => set({ sourceType: e.target.value })}
++          aria-label="Filter by source type"
++        >
++          <option value="">All</option>
++          {SOURCE_TYPES.map((t) => (
++            <option key={t} value={t}>
++              {t}
++            </option>
++          ))}
++        </select>
++      </Field>
++
++      <Field label="Source status">
++        <select
++          className={inputClass}
++          value={value.sourceStatus}
++          onChange={(e) => set({ sourceStatus: e.target.value })}
++          aria-label="Filter by source status"
++        >
++          <option value="">All</option>
++          {SOURCE_STATUSES.map((s) => (
++            <option key={s} value={s}>
++              {s}
++            </option>
++          ))}
++        </select>
++      </Field>
++
++      <Field label="Review status">
++        <select
++          className={inputClass}
++          value={value.reviewStatus}
++          onChange={(e) => set({ reviewStatus: e.target.value })}
++          aria-label="Filter by review status"
++        >
++          <option value="">All</option>
++          {EVIDENCE_REVIEW_STATUSES.map((s) => (
++            <option key={s} value={s}>
++              {s}
++            </option>
++          ))}
++        </select>
++      </Field>
++
++      <Field label="OCR status">
++        <select
++          className={inputClass}
++          value={value.ocrStatus}
++          onChange={(e) => set({ ocrStatus: e.target.value })}
++          aria-label="Filter by OCR status"
++        >
++          <option value="">All</option>
++          {OCR_STATUSES.map((s) => (
++            <option key={s} value={s}>
++              {s}
++            </option>
++          ))}
++        </select>
++      </Field>
++
++      <Field label="Included / Excluded">
++        <div className="flex gap-3">
++          <label className="flex items-center gap-1.5 text-sm text-slate-700">
++            <input
++              type="checkbox"
++              checked={value.includedOnly}
++              onChange={(e) =>
++                // Exclusive pair: enabling one explicitly clears the other.
++                set({
++                  includedOnly: e.target.checked,
++                  excludedOnly: e.target.checked ? false : value.excludedOnly,
++                })
++              }
++              aria-label="Show included only"
++            />
++            Included
++          </label>
++          <label className="flex items-center gap-1.5 text-sm text-slate-700">
++            <input
++              type="checkbox"
++              checked={value.excludedOnly}
++              onChange={(e) =>
++                set({
++                  excludedOnly: e.target.checked,
++                  includedOnly: e.target.checked ? false : value.includedOnly,
++                })
++              }
++              aria-label="Show excluded only"
++            />
++            Excluded
++          </label>
++        </div>
++      </Field>
++
++      {hasActiveFilters(value) && (
++        <div className="flex items-end">
++          <button
++            type="button"
++            onClick={() => onChange({ ...EMPTY_FILTERS })}
++            className={`${secondaryButtonClass} text-xs`}
++            aria-label="Clear all evidence filters"
++          >
++            Clear filters
++          </button>
++        </div>
++      )}
++    </div>
++  );
++}
+diff --git a/apps/web/components/evidence-list-row.tsx b/apps/web/components/evidence-list-row.tsx
+new file mode 100644
+index 0000000..7cdb496
+--- /dev/null
++++ b/apps/web/components/evidence-list-row.tsx
+@@ -0,0 +1,225 @@
++"use client";
++
++import Link from "next/link";
++import { useRef } from "react";
++import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
++import { api } from "@/lib/api";
++import type { Source } from "@/lib/types";
++import { RetryButton, describeError, outcomeKnown } from "./evidence-list-states";
++
++// -----------------------------------------------------------------------------
++// EU-L per-row controls: include/exclude actions and the linked-matters badge.
++// Contract §EU-L (2)–(5) + 2026-09-11 integration review.
++//
++// - Include/Exclude send BOTH flags: include explicitly clears excluded_flag
++//   and vice versa (exclusive transition; §EU-L 2).
++// - Each row owns ONE guarded submission path (submit()): the Include and
++//   Exclude buttons AND the retry all go through it; a synchronous in-flight
++//   ref blocks same-tick re-activation, and while it is pending both of that
++//   row's buttons are disabled, so a slow request cannot be submitted twice
++//   (§EU-L 2 + 2026-09-12 review follow-up).
++// - A failed row mutation renders an attributable inline alert (which row,
++//   which operation, why) plus actions — never rendered as success (§EU-L 2).
++//   A 4xx rejection PROVES the row is unchanged; a network failure or 5xx
++//   does not (the server may have committed before the response was lost), so
++//   the copy reports honest uncertainty and offers "Refresh list first"
++//   before retry (2026-09-11 review finding 3).
++// - The matter badge distinguishes loading, confirmed-empty and FAILED: a
++//   failed links query shows an actionable alert, never a dash that reads as
++//   “no linked matters” (§EU-L 3).
++// - Success refreshes only the source-list queries (§EU-L 5).
++// -----------------------------------------------------------------------------
++
++function rowName(source: Source): string {
++  return source.title || source.original_filename || "Untitled source";
++}
++
++export function EvidenceRowActions({ source }: { source: Source }) {
++  const qc = useQueryClient();
++  // Synchronous single-flight lock for this row's mutation — closes the
++  // same-tick window where a second activation (button double-click, retry +
++  // button in one batch) would both observe stale idle state and submit twice
++  // (2026-09-12 review follow-up: retry shares this guarded path).
++  const inFlightRef = useRef(false);
++  const update = useMutation({
++    mutationFn: (payload: { include: boolean }) =>
++      api.updateSource(source.id, {
++        // Both flags are always sent so the transition is exclusive even if
++        // the row state changed since render.
++        included_flag: payload.include,
++        excluded_flag: !payload.include,
++      }),
++    onSuccess: () => {
++      // Refresh the affected source-list queries only (§EU-L 5). The row
++      // matter-badge and matter-filter caches are unaffected by flag changes.
++      qc.invalidateQueries({ queryKey: ["sources"] });
++    },
++    onSettled: () => {
++      // Reliable release: fires on success AND failure, before a retry or
++      // next action can be attempted by a user reacting to the outcome.
++      inFlightRef.current = false;
++    },
++  });
++
++  const pending = update.isPending;
++  const failed = update.isError;
++  const name = rowName(source);
++  // Which operation was last attempted (in flight or failed). react-query
++  // keeps `variables` after a failure, which is also what retry resubmits.
++  const lastOperation: "include" | "exclude" | null =
++    update.variables == null ? null : update.variables.include ? "include" : "exclude";
++  // A 4xx answer proves the row is unchanged; response loss / 5xx does not.
++  const outcomeKnownFlag = failed ? outcomeKnown(update.error) : true;
++
++  // THE guarded submission path for this row — used by the Include/Exclude
++  // buttons AND the retry alike; nothing may call update.mutate() directly.
++  const submit = (include: boolean) => {
++    if (inFlightRef.current || update.isPending) return;
++    inFlightRef.current = true;
++    update.mutate({ include });
++  };
++
++  return (
++    <div className="flex flex-col items-start gap-1">
++      <div className="flex gap-1" aria-busy={pending || undefined}>
++        <button
++          type="button"
++          onClick={() => submit(true)}
++          disabled={pending || source.included_flag}
++          data-testid={`include-${source.id}`}
++          className={`rounded border border-slate-300 bg-white px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 ${
++            source.included_flag ? "border-green-300 bg-green-50 text-green-800" : ""
++          }`}
++        >
++          {pending && lastOperation === "include" ? "Including…" : source.included_flag ? "Included" : "Include"}
++        </button>
++        <button
++          type="button"
++          onClick={() => submit(false)}
++          disabled={pending || source.excluded_flag}
++          data-testid={`exclude-${source.id}`}
++          className={`rounded border border-slate-300 bg-white px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 ${
++            source.excluded_flag ? "border-red-300 bg-red-50 text-red-800" : ""
++          }`}
++        >
++          {pending && lastOperation === "exclude" ? "Excluding…" : source.excluded_flag ? "Excluded" : "Exclude"}
++        </button>
++      </div>
++      {failed && (
++        <div
++          role="alert"
++          data-testid={`row-error-${source.id}`}
++          className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-800"
++        >
++          <span className="font-medium">
++            Couldn’t {lastOperation} “{name}”.
++          </span>{" "}
++          {outcomeKnownFlag ? (
++            <span>
++              {describeError(update.error)} The row is unchanged.{" "}
++              <RetryButton
++                small
++                label={`Retry ${lastOperation} for ${name}`}
++                onRetry={() => {
++                  if (lastOperation !== null) submit(lastOperation === "include");
++                }}
++                pending={pending}
++              />
++            </span>
++          ) : (
++            <span>
++              {describeError(update.error)} The connection failed before the server’s answer
++              arrived, so it is not known whether the change was saved — the server may have
++              applied it. Refresh the list first to check this row’s current state before
++              retrying.{" "}
++              <button
++                type="button"
++                data-testid={`row-refresh-${source.id}`}
++                onClick={() => qc.invalidateQueries({ queryKey: ["sources"] })}
++                className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
++              >
++                Refresh list first
++              </button>{" "}
++              <RetryButton
++                small
++                label={`Retry ${lastOperation} for ${name}`}
++                onRetry={() => {
++                  if (lastOperation !== null) submit(lastOperation === "include");
++                }}
++                pending={pending}
++              />
++            </span>
++          )}
++        </div>
++      )}
++    </div>
++  );
++}
++
++/** Per-row linked-matters badge. Failure is distinct from empty. */
++export function EvidenceMatterBadge({
++  sourceId,
++  source,
++}: {
++  sourceId: string;
++  source: Source;
++}) {
++  const links = useQuery({
++    queryKey: ["source-matters", sourceId],
++    queryFn: () => api.listSourceMatters(sourceId),
++    enabled: !!sourceId,
++    // Row badges fail loudly (and cheaply) instead of after react-query's
++    // default retry storm — the badge offers an explicit retry.
++    retry: false,
++  });
++
++  if (links.isPending) {
++    return (
++      <span className="text-xs text-slate-400" role="status" aria-label={`Loading linked matters for ${rowName(source)}`}>
++        …
++      </span>
++    );
++  }
++
++  if (links.isError) {
++    return (
++      <span className="flex flex-col items-start gap-1" data-testid={`badge-error-${sourceId}`}>
++        <span role="alert" className="text-xs font-medium text-red-700">
++          Couldn’t load linked matters
++        </span>
++        <span className="text-xs text-red-600">{describeError(links.error)}</span>
++        <RetryButton
++          small
++          label={`Retry loading linked matters for ${rowName(source)}`}
++          onRetry={() => links.refetch()}
++          pending={links.isFetching}
++        />
++      </span>
++    );
++  }
++
++  const arr = links.data ?? [];
++  if (arr.length === 0) {
++    // Confirmed empty — only reachable after a successful query.
++    return (
++      <span className="text-xs text-slate-400" aria-label={`No linked matters for ${rowName(source)}`}>
++        —
++      </span>
++    );
++  }
++
++  return (
++    <div className="flex flex-wrap gap-1">
++      {arr.slice(0, 3).map((l) => (
++        <Link
++          key={l.id}
++          href={`/matters/${l.matter_id}`}
++          className="rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700 hover:underline"
++        >
++          {l.matter_name}
++        </Link>
++      ))}
++      {arr.length > 3 && <span className="text-xs text-slate-400">+{arr.length - 3}</span>}
++    </div>
++  );
++}
+diff --git a/apps/web/components/evidence-list-states.tsx b/apps/web/components/evidence-list-states.tsx
+new file mode 100644
+index 0000000..818aa02
+--- /dev/null
++++ b/apps/web/components/evidence-list-states.tsx
+@@ -0,0 +1,181 @@
++"use client";
++
++import { secondaryButtonClass } from "@/components/field";
++import { ApiError } from "@/lib/api";
++
++// -----------------------------------------------------------------------------
++// EU-L shared list primitives — loading/empty/error states, alerts and retry.
++// Contract: docs/contracts/evidence_ui_closure.md v1.0 §EU-L (1)–(3), plus the
++// 2026-09-11 integration amendment notes on honest uncertainty copy.
++//
++// Failure states must never render like an empty list, and every failure gets
++// an explicit, labelled retry. Error text comes from the API's curated
++// `detail` string (ApiError.message); describeError() never renders anything
++// else, so raw server traces can never reach the UI.
++// -----------------------------------------------------------------------------
++
++/** HTTP status if the error came from a real server response, else null.
++ *  Read-only use of the shared ApiError class (no client changes). */
++export function errorStatus(error: unknown): number | null {
++  return error instanceof ApiError ? error.status : null;
++}
++
++/** True when the server's answer PROVES the mutation outcome (a 4xx
++ *  rejection). Network failures and 5xx leave the outcome unknown: the server
++ *  may have committed the change before the connection/response failed, so
++ *  the UI must not claim "not added"/"unchanged" (2026-09-11 review). */
++export function outcomeKnown(error: unknown): boolean {
++  const status = errorStatus(error);
++  return status !== null && status < 500;
++}
++
++/** User-safe message for a thrown value (API `detail` or generic fallback). */
++export function describeError(error: unknown): string {
++  if (error instanceof Error && error.message) return error.message;
++  return "Something went wrong. Please try again.";
++}
++
++/** Small labelled retry control. `label` names WHAT is being retried so
++ *  screen-reader users hear “Retry loading the evidence list”, not “Retry”. */
++export function RetryButton({
++  label,
++  onRetry,
++  pending = false,
++  small = false,
++}: {
++  label: string;
++  onRetry: () => void;
++  pending?: boolean;
++  small?: boolean;
++}) {
++  return (
++    <button
++      type="button"
++      onClick={onRetry}
++      disabled={pending}
++      aria-label={label}
++      className={`${secondaryButtonClass} ${
++        small ? "text-xs px-2 py-0.5" : "text-sm"
++      } border-red-300 text-red-700 hover:bg-red-50 focus:border-red-500`}
++    >
++      {pending ? "Retrying…" : "Retry"}
++    </button>
++  );
++}
++
++const TONES = {
++  error: "border-red-200 bg-red-50 text-red-800",
++  info: "border-slate-200 bg-slate-50 text-slate-700",
++} as const;
++
++/** Inline notice block. Pass tone="error" for failures (announced eagerly via
++ *  role="alert"); tone="info" renders a neutral role="status" live region. */
++export function Notice({
++  tone,
++  children,
++  action,
++  testId,
++}: {
++  tone: keyof typeof TONES;
++  children: React.ReactNode;
++  action?: React.ReactNode;
++  testId?: string;
++}) {
++  const isError = tone === "error";
++  return (
++    <div
++      role={isError ? "alert" : "status"}
++      data-testid={testId}
++      className={`flex flex-wrap items-center justify-between gap-2 rounded border px-3 py-2 text-sm ${TONES[tone]}`}
++    >
++      <div className="min-w-0">{children}</div>
++      {action ? <div className="flex shrink-0 items-center gap-2">{action}</div> : null}
++    </div>
++  );
++}
++
++export type ListStateKind =
++  | "loading"
++  | "empty"
++  | "filtered-empty"
++  | "error";
++
++/** Full-width <tr> for the evidence table body states. The four states are
++ *  deliberately distinct (contract §EU-L 1): a failed request never renders
++ *  the “no evidence matches” empty state. */
++export function ListStateRow({
++  kind,
++  colSpan,
++  detail,
++  onRetry,
++  onClearFilters,
++  staleNote,
++}: {
++  kind: ListStateKind;
++  colSpan: number;
++  detail?: string;
++  onRetry?: () => void;
++  onClearFilters?: () => void;
++  staleNote?: string;
++}) {
++  return (
++    <tr aria-busy={kind === "loading" || undefined}>
++      <td colSpan={colSpan} className="px-4 py-6">
++        {kind === "loading" && (
++          <div role="status" className="text-sm text-slate-500">
++            Loading evidence…
++          </div>
++        )}
++        {kind === "empty" && (
++          <div role="status" className="text-sm text-slate-500" data-testid="list-empty">
++            No evidence yet. Upload a file above to add the first source.
++          </div>
++        )}
++        {kind === "filtered-empty" && (
++          <div className="flex flex-wrap items-center justify-between gap-2" data-testid="list-filtered-empty">
++            <div role="status" className="text-sm text-slate-500">
++              No evidence matches the current filters. The list itself loaded fine —
++              try widening or clearing the filters.
++            </div>
++            {onClearFilters && (
++              <button
++                type="button"
++                onClick={onClearFilters}
++                className={`${secondaryButtonClass} text-xs px-2 py-0.5`}
++                aria-label="Clear all evidence filters"
++              >
++                Clear filters
++              </button>
++            )}
++          </div>
++        )}
++        {kind === "error" && (
++          <Notice
++            tone="error"
++            testId="list-error"
++            action={
++              onRetry && (
++                <RetryButton
++                  label="Retry loading the evidence list"
++                  onRetry={onRetry}
++                  pending={false}
++                />
++              )
++            }
++          >
++            <span className="font-medium">Couldn’t load the evidence list.</span>{" "}
++            {detail ? <span className="block sm:inline">Reason: {detail}.</span> : null}
++            {staleNote ? (
++              <span className="block text-red-700">{staleNote}</span>
++            ) : (
++              <span className="block">
++                Nothing is being shown because the request failed — this is not an
++                empty list.
++              </span>
++            )}
++          </Notice>
++        )}
++      </td>
++    </tr>
++  );
++}
+diff --git a/apps/web/components/evidence-list-upload.tsx b/apps/web/components/evidence-list-upload.tsx
+new file mode 100644
+index 0000000..16a8c2a
+--- /dev/null
++++ b/apps/web/components/evidence-list-upload.tsx
+@@ -0,0 +1,265 @@
++"use client";
++
++import { useCallback, useRef, useState } from "react";
++import { useMutation, useQueryClient } from "@tanstack/react-query";
++import { api } from "@/lib/api";
++import { Notice, RetryButton, describeError, outcomeKnown } from "./evidence-list-states";
++
++// -----------------------------------------------------------------------------
++// EU-L evidence upload (list page). Contract §EU-L (2)–(3) + 2026-09-11
++// integration review: pending protection must cover EVERY entry path (button,
++// drop zone, direct picker selection, same-tick rapid events) — not only the
++// disabled button — and must release reliably on completion AND failure.
++//
++// Implementation: a synchronous in-flight ref guards handleFile/openPicker.
++// react-query's isPending alone flips state after a render tick, so two events
++// in the same tick could both observe "idle" — the ref closes that window.
++// onSettled fires on success AND error, so the lock cannot get stuck.
++//
++// RETRY USES THE SAME GUARDED PATH: the retry button calls handleFile() (the
++// single entry point for submissions), never upload.mutate() directly, so a
++// retry observes the same single-flight lock, size guard and state resets as
++// any first attempt (2026-09-12 review follow-up).
++//
++// Failure copy distinguishes PROVEN outcomes (4xx server rejection: "the file
++// was not added") from RESPONSE-LOSS outcomes (network failure / 5xx: the
++// server may have committed before the connection dropped — "not known
++// whether"), with a safe refresh/reconciliation action offered before retry.
++// -----------------------------------------------------------------------------
++
++// Mirrors the server guard (app config max_upload_bytes = 100 MB).
++const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
++
++type BlockedAttempt =
++  | { kind: "file"; name: string }
++  | { kind: "picker" }
++  | null;
++
++export function EvidenceUpload() {
++  const qc = useQueryClient();
++  const inputRef = useRef<HTMLInputElement>(null);
++  const inFlightRef = useRef(false);
++  const [dragOver, setDragOver] = useState(false);
++  const [tooLargeName, setTooLargeName] = useState<string | null>(null);
++  const [uploadedName, setUploadedName] = useState<string | null>(null);
++  const [blocked, setBlocked] = useState<BlockedAttempt>(null);
++
++  const refreshLists = useCallback(() => {
++    // Safe reconciliation: re-read the list so the user can see whether an
++    // outcome-unknown upload actually landed before deciding to retry.
++    qc.invalidateQueries({ queryKey: ["sources"] });
++  }, [qc]);
++
++  const upload = useMutation({
++    mutationFn: (file: File) =>
++      api.uploadSource(file, { title: file.name.replace(/\.[^.]+$/, "") }),
++    onSuccess: (_source, file) => {
++      // Refresh ONLY the affected source-list queries (§EU-L 5).
++      qc.invalidateQueries({ queryKey: ["sources"] });
++      setTooLargeName(null);
++      setUploadedName(file.name);
++    },
++    onSettled: () => {
++      // Reliable release: runs on success AND failure, before any retry can
++      // be attempted by a user reacting to the outcome.
++      inFlightRef.current = false;
++      setBlocked(null);
++    },
++  });
++
++  const handleFile = useCallback(
++    (file: File) => {
++      setUploadedName(null);
++      // Same-tick-safe single-flight guard across ALL entry paths.
++      if (inFlightRef.current || upload.isPending) {
++        setBlocked({ kind: "file", name: file.name });
++        return;
++      }
++      if (file.size > MAX_UPLOAD_BYTES) {
++        // Client-side guard: retrying cannot succeed, so no retry is offered —
++        // the message says what to do instead. Filters elsewhere are untouched.
++        setTooLargeName(file.name);
++        upload.reset();
++        return;
++      }
++      setTooLargeName(null);
++      setBlocked(null);
++      inFlightRef.current = true;
++      upload.mutate(file);
++    },
++    [upload],
++  );
++
++  const openPicker = useCallback(() => {
++    // Zone/button activation is also guarded: no second picker-driven
++    // submission can start while one is in flight.
++    if (inFlightRef.current || upload.isPending) {
++      setBlocked({ kind: "picker" });
++      return;
++    }
++    setBlocked(null);
++    inputRef.current?.click();
++  }, [upload.isPending]);
++
++  const onDrop = useCallback(
++    (e: React.DragEvent) => {
++      e.preventDefault();
++      setDragOver(false);
++      const file = e.dataTransfer.files?.[0];
++      if (file) handleFile(file);
++    },
++    [handleFile],
++  );
++
++  const onInput = useCallback(
++    (e: React.ChangeEvent<HTMLInputElement>) => {
++      const file = e.target.files?.[0];
++      if (file) handleFile(file);
++      e.target.value = "";
++    },
++    [handleFile],
++  );
++
++  // Last attempted file (in flight or failed) — react-query keeps `variables`
++  // after a failure, which is what the retry button resubmits.
++  const attemptedFile = upload.variables ?? null;
++  const uploadOutcomeKnown = upload.isError ? outcomeKnown(upload.error) : true;
++
++  return (
++    <div>
++      <div
++        onDragOver={(e) => {
++          e.preventDefault();
++          setDragOver(true);
++        }}
++        onDragLeave={() => setDragOver(false)}
++        onDrop={onDrop}
++        onClick={openPicker}
++        aria-busy={upload.isPending || undefined}
++        data-testid="upload-zone"
++        className={`mb-2 cursor-pointer rounded-lg border-2 border-dashed p-6 text-center transition ${
++          dragOver ? "border-blue-500 bg-blue-50" : "border-slate-300 bg-slate-50 hover:bg-slate-100"
++        }`}
++      >
++        {/* Hidden from view and tab order; the button below is the keyboard
++            and screen-reader affordance and opens the same picker. */}
++        <input
++          ref={inputRef}
++          type="file"
++          className="sr-only"
++          tabIndex={-1}
++          aria-hidden="true"
++          onChange={onInput}
++        />
++        <p className="text-sm font-medium text-slate-700">
++          Drag &amp; drop a file here, or choose a file to upload
++        </p>
++        <p className="mb-3 text-xs text-slate-400">
++          PDF, image, text, email, spreadsheet — max 100 MB (server limit)
++        </p>
++        <button
++          type="button"
++          onClick={(e) => {
++            e.stopPropagation(); // the surrounding zone opens the picker too
++            openPicker();
++          }}
++          disabled={upload.isPending}
++          aria-busy={upload.isPending}
++          data-testid="upload-button"
++          className="rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
++        >
++          {upload.isPending ? "Uploading…" : "Choose a file to upload"}
++        </button>
++        {upload.isPending && attemptedFile && (
++          <p role="status" className="mt-2 text-sm text-blue-600" data-testid="upload-pending">
++            Uploading “{attemptedFile.name}”…
++          </p>
++        )}
++      </div>
++
++      {/* A second attempt during an in-flight upload is visibly refused, not
++          silently queued or duplicated (2026-09-11 review finding 1). */}
++      {blocked && (
++        <div className="mb-2" data-testid="upload-blocked">
++          <Notice tone="info">
++            <span className="font-medium">An upload is already in progress.</span>{" "}
++            {blocked.kind === "file" ? (
++              <span className="block sm:inline">
++                “{blocked.name}” was not submitted — wait for the current upload to finish, then
++                choose or drop it again.
++              </span>
++            ) : (
++              <span className="block sm:inline">
++                Wait for the current upload to finish before choosing another file.
++              </span>
++            )}
++          </Notice>
++        </div>
++      )}
++
++      {/* Failure is announced and attributable to the attempted file. When the
++          outcome is provably known (4xx) the copy says so; on response loss it
++          honestly reports uncertainty and offers refresh-before-retry. */}
++      {upload.isError && attemptedFile && (
++        <div className="mb-2" data-testid="upload-error">
++          <Notice
++            tone="error"
++            action={
++              <>
++                <button
++                  type="button"
++                  onClick={refreshLists}
++                  data-testid="upload-refresh"
++                  className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
++                >
++                  Refresh list first
++                </button>
++                <RetryButton
++                  label={`Retry upload of ${attemptedFile.name}`}
++                  // Same guarded submission path as any first attempt: the
++                  // single-flight lock, size guard and state resets all apply.
++                  onRetry={() => handleFile(attemptedFile)}
++                  pending={upload.isPending}
++                />
++              </>
++            }
++          >
++            <span className="font-medium">
++              Upload failed for “{attemptedFile.name}”.
++            </span>{" "}
++            {uploadOutcomeKnown ? (
++              <span className="block sm:inline">
++                Reason: {describeError(upload.error)}. The server rejected the upload — the file
++                was not added to the evidence list.
++              </span>
++            ) : (
++              <span className="block sm:inline">
++                Reason: {describeError(upload.error)}. The connection failed before the server’s
++                answer arrived, so it is not known whether the file was added — the server may have
++                accepted it before the failure. Refresh the list first to check before retrying:
++                retrying an upload that did go through will create a duplicate copy.
++              </span>
++            )}
++          </Notice>
++        </div>
++      )}
++
++      {tooLargeName && (
++        <div className="mb-2" data-testid="upload-too-large">
++          <Notice tone="error">
++            <span className="font-medium">“{tooLargeName}” is too large.</span>{" "}
++            <span className="block sm:inline">
++              The limit is 100 MB — choose a smaller file. Nothing was uploaded.
++            </span>
++          </Notice>
++        </div>
++      )}
++
++      {uploadedName && !upload.isPending && (
++        <p role="status" className="mb-2 text-sm text-green-700" data-testid="upload-success">
++          Uploaded “{uploadedName}” — it now appears in the list below.
++        </p>
++      )}
++    </div>
++  );
++}
+diff --git a/docs/contracts/evidence_ui_closure.md b/docs/contracts/evidence_ui_closure.md
+index 59caff2..dbc7b43 100644
+--- a/docs/contracts/evidence_ui_closure.md
++++ b/docs/contracts/evidence_ui_closure.md
+@@ -114,3 +114,13 @@ exact commands/results, blockers, and next-owner notes. Closed/merged PRs are no
+ containers for new work: open a new PR. Freeze branch after handoff until review.
+ Hub/API changes require integrator approval. No new chronology/proof-graph/OCR
+ engine work until this closure wave is signed off.
++
++## Authorized integration amendment — 2026-09-11
++EU-D may additionally change **only** the `getSource` method in shared
++`apps/web/lib/api.ts` to accept an optional AbortSignal and forward it through
++existing apiFetch. Existing callers/default behavior must remain compatible.
++This is to implement genuine OCR request cancellation/bounds; no other shared
++client/types changes approved. Other agents keep that file read-only.
++EU-V's isolated pinned Playwright install approach is approved in principle,
++subject to safe cleanup/platform/credential corrections recorded in
++handoff/EVIDENCE_UI_REVIEW.md; no manifest or CI changes authorized.
+diff --git a/handoff/EVIDENCE_UI_REVIEW.md b/handoff/EVIDENCE_UI_REVIEW.md
+new file mode 100644
+index 0000000..214f6fb
+--- /dev/null
++++ b/handoff/EVIDENCE_UI_REVIEW.md
+@@ -0,0 +1,89 @@
++# Evidence UI closure — integration review (2026-09-11)
++
++Base: `ab0ee23`. Reviewed EU-L `ab9164b` (PR 17), EU-D `5e7036c`
++(PR 18), EU-V `a434ae1` (PR 19). **Changes requested; none integrated.**
++
++Local checkout metadata was stale at 631b85a while restored files matched
++remote ab0ee23 byte-for-byte (temporary-index comparison). Backed up restored
++tracked/untracked content outside the repo, reconciled metadata without dropping
++files. Candidate merges were aborted after testing; product tree unchanged.
++
++## EU-L — PR 17
++
++Independent strict candidate gate: **119 passed**, migration round-trip, ruff,
++web lint/typecheck/build. Browser reproduction (Chromium 152, actual built UI,
++injected transport responses; no actual API/data):
++1. Hold POST /sources response; drop synthetic-first.txt.
++2. Choose-file button becomes disabled.
++3. Drop synthetic-second.txt while first is pending.
++4. Observe **two concurrent POST /sources requests**.
++
++Blocking: `handleFile`, `onDrop`, and surrounding `openPicker` lack pending
++protection; disabling only the button does not protect other entry paths. Add
++same-tick-safe in-flight guard across all entry paths plus regression coverage.
++Also fix response-loss uncertainty copy (network errors do not prove upload was
++not committed or row unchanged), title-only search label, and investigate first
++keyboard activation instead of hiding it behind three attempts in acceptance.
++
++## EU-D — PR 18
++
++Independent strict candidate gate: **119 passed**, migrations, ruff, web checks.
++Two targeted real-browser/app reproductions using injected slow Response stream:
++- Headers resolve immediately but body never ends. After advancing browser clock
++  31 seconds, preview remains Loading; fetch AbortSignal is not aborted.
++  `fetchSourceFileResponse` clears timeout before callers await `resp.blob()`.
++- Start preview, navigate Back to evidence, then finish the body: **one object URL
++  created, zero revoked** after viewer unmount. Cleanup revokes only existing URL;
++  it neither invalidates generation nor aborts a pending preview.
++
++Fix timeout/cancellation through body consumption, invalidate/abort on unmount,
++source change, dismiss, and revoke every late blob URL. Add browser regressions.
++Source review also shows OCR Promise timeout never aborts its underlying request,
++then next poll may start while prior fetch is still pending. This violates the
++one-request/cancellation acceptance rule. Bound by remaining total budget and
++use real abort. A narrow additive optional AbortSignal on `api.getSource` is
++approved (EU-D only); all other shared-client edits still require approval.
++Delayed save/reprocess responses must be covered across source navigation.
++
++First browser harness attempt hit the sandbox Chromium single-process close
++limitation; repeated with ordinary headless launch flags and both findings
++reproduced successfully. No native PDF renderer proof claimed: PDF capability
++was injected solely to exercise app fetch/object-URL lifecycle without rendering.
++
++## EU-V — PR 19
++
++This deliverable is checklist/tooling preparation, not final acceptance specs.
++Pinned isolated Playwright approach approved in principle; no manifest/CI changes.
++Blocking findings:
++1. Existing managed-browser path reproducibly throws ReferenceError from bare
++   `require()` with top-level await in generated .mjs. Resolver only knows Linux
++   paths and cannot support advertised Mac instructions. Use platform-aware
++   managed executable lookup or explicit override, clear unavailable error,
++   and actual managed install for playwright-download; Linux fallback only Linux.
++2. Injected migration failure in stack startup gives created DB count=1, dropped
++   count=0, no state file. Startup has no rollback; stop cannot recover. Failure
++   paths need transactional/incremental owned-resource cleanup. Stop must preserve
++   actionable state and fail on incomplete cleanup, not claim success.
++3. Unconditional `rm -rf tests/browser/node_modules` may delete another owner's
++   install. Remove only an owned managed symlink or refuse; preserve directories.
++4. Full DSNs printed on startup/errors; redact. Credential-bearing state requires
++   restricted permissions; machine-readable env output must be opt-in and quoted.
++5. Bind browser-facing servers to 0.0.0.0 for Arena previews; maintain relative
++   browser API/proxy contract; fix printed Python script invocation.
++
++Injected startup probe used stubs only (no database/process created). Existing
++browser-path repro used a dummy managed-browser tree (no executable launched).
++No claim the full EU-V stack was independently verified in this turn.
++
++## Next steps / coordination
++
++Comments with fix requests posted on PRs 17/18/19. Agents remain on their assigned
++branches; push revisions to same PRs. D/L stay disjoint except EU-D's explicitly
++approved optional getSource signal addition. EU-V final behavior specs/run wait
++for corrected D+L integration; preparation completion is not acceptance closure.
++Local Mac/native PDF rendering remains EU-M's separate responsibility.
++
++Diagnostics and scratch tools live outside tracked repo. Temporary review web
++servers/browser processes stopped; no persistent product services left running.
++No new dependency manifests, lockfiles, feature changes, or skipped-assertion
++workarounds added to integration.
+diff --git a/handoff/WORKLOG.md b/handoff/WORKLOG.md
+index 5f77cc2..36ea5d4 100644
+--- a/handoff/WORKLOG.md
++++ b/handoff/WORKLOG.md
+@@ -845,3 +845,17 @@ bounded OCR polling, native Mac exact reproduction, synthetic-only proof, toolin
+ approval and strict hub ownership. No dependency/CI/product edits in this planning
+ change. Suggested agent reuse recorded; owner confirmation of actual sessions
+ still needed. Wave 3/OCR engine remains unauthorized.
++
++## 2026-09-11 — EU-D/L/V integration review, revisions required
++
++Fetched all three PR heads; reconciled stale restored Git metadata safely.
++EU-L and EU-D candidate full strict gates independently passed 119 tests plus
++migrations/ruff/web. Targeted actual-browser fault-injection probes nevertheless
++found pending-drop duplicate upload (L), unbounded file-body wait and late preview
++object-URL leak after unmount (D). D OCR timeout also lacks real fetch abort.
++EU-V preparation has reproduced managed-browser ESM resolver failure and startup
++DB-leak path, plus unsafe node_modules removal and DSN output/platform issues.
++All candidate merges aborted, no product code integrated. Fix requests posted to
++PRs 17/18/19. Detailed proof and scope approvals: EVIDENCE_UI_REVIEW.md. EU-V final
++acceptance tests remain future work after corrected D+L merge; local native PDF
++proof remains separate. Preview servers stopped; scratch dependencies only.
+diff --git a/handoff/kickoff/README.md b/handoff/kickoff/README.md
+index 3ee8393..b03b20e 100644
+--- a/handoff/kickoff/README.md
++++ b/handoff/kickoff/README.md
+@@ -6,12 +6,13 @@
+ 
+ | Brief | Assignment | Suggested agent | Start/status |
+ |---|---|---|---|
+-| EU-D | Detail: Status, downloads/PDF, errors, OCR refresh | Former W2-I/J or new UI session | Ready for owner relay; one detail owner |
+-| EU-L | List/upload/row/matter error handling | Former W2-F or available UI session | Ready in parallel with D |
+-| EU-V | Independent browser acceptance | Former WS-D verifier | Plan/tooling now; final run after D+L |
++| EU-D | Detail: Status, downloads/PDF, errors, OCR refresh | `01a08cdf` / PR #18 `5e7036c` | Changes requested: body timeout, late-preview cleanup, abortable OCR polling |
++| EU-L | List/upload/row/matter error handling | `01a08ce1` / PR #17 `ab9164b` | Changes requested: pending-drop upload bypass, uncertainty copy and keyboard proof |
++| EU-V | Independent browser acceptance | `01a08ce3` / PR #19 `a434ae1` | Preparation delivered; tooling fixes requested; final acceptance not done |
+ | EU-M | Native Mac Reprocess + local browser proof | Existing local tester | Exact worker reproduction now; new UI proof after D+L |
+ 
+-No sessions are assumed started until owner confirms. Three Arena assignments
++Owner reports all three deliverables complete; integration review found blockers.
++See `handoff/EVIDENCE_UI_REVIEW.md` (2026-09-11). Three Arena assignments
+ plus the existing local tester; integrator remains coordinator. Other agents
+ stand by. No Wave 3 or OCR-engine work is authorized.
+ 
+diff --git a/handoff/notes/EU-L-OCR-REVIEW.md b/handoff/notes/EU-L-OCR-REVIEW.md
+new file mode 100644
+index 0000000..46e64f1
+--- /dev/null
++++ b/handoff/notes/EU-L-OCR-REVIEW.md
+@@ -0,0 +1,134 @@
++# EU-L — OCR proof review and minimum verification definition
++
++Assignment: independent review of EU-V's OCR harness/fixtures at verifier
++checkpoint `0212370` against integrated product checkpoint
++`a040e9f739ec3741cd28ee99756d256ea8b78d43`; review + verification-plan only.
++Authorized file: this note. No harness/product/tooling files were read-modified
++beyond read-only inspection of the local baseline tree.
++
++## Revisions under review (recorded separately)
++
++| What | Revision | Inspectable this session? |
++|---|---|---|
++| Integrated product checkpoint (reported) | `a040e9f739ec3741cd28ee99756d256ea8b78d43` | **NO** — object absent from local store; origin unreachable |
++| EU-V verifier checkpoint (reported) | `0212370` (full SHA unknown here) | **NO** — object absent from local store; origin unreachable |
++| Local baseline actually inspected | `ab0ee23` working tree (restored files preserved untouched) | YES |
++
++## Evidence-access limitation (reported, not guessed)
++
++This Arena session is closed (implementation PR merged); remote git/`gh`
++operations are blocked at platform level. Local object store inspection:
++
++- `git cat-file -e a040e9f739ec3741cd28ee99756d256ea8b78d43` → absent
++- `git cat-file -e 0212370` → absent
++- Branch metadata had rolled back to base `ab0ee23`; even this session's own
++  pushed commits (`6bd3cdf`, `14f4491`) are absent from the local object
++  store. Restored working-tree files were preserved untouched.
++
++**Consequence:** no claim below is based on the two checkpoints themselves.
++Everything harness-specific is classified SUSPECTED / REPORTED-NOT-VERIFIED.
++Stable shipped surfaces (enums, worker code, dependency pins, prior handoff
++evidence) were confirmed against the `ab0ee23` baseline tree and are labeled
++CONFIRMED-AT-BASELINE; the closure-wave freeze kept backend/worker read-only
++for D/L/V, so they are expected unchanged at `a040e9f`, but that expectation
++is itself unverified here.
++
++## Findings
++
++1. **Injected `ocr_status:"processing"` / `source_status:"processed"` vs
++   shipped enums — value/enum mismatch CONFIRMED-AT-BASELINE.**
++   Shipped `SourceStatus` = `primary|derived|testimony|working_note|
++   public_record` (`apps/api/app/models/enums.py::SourceStatus`): there is no
++   `"processed"`. Shipped OCR vocabulary (`apps/web/lib/types.ts::OcrStatus`,
++   `OCR_STATUSES`) = `not_started|queued|running|complete|failed|skipped`:
++   there is no `"processing"` (that value belongs to the separate
++   `ProcessingStatus` vocabulary). `"processed"` appears in *neither*
++   vocabulary. `sources.ocr_status`/`processing_status` are free string
++   columns (`apps/api/app/models/source.py`), so injected wrong-vocabulary
++   values persist silently and the list UI renders them as badge labels
++   verbatim — an injected-invalid state looks "alive" while proving nothing.
++   Which fixture injects them: SUSPECTED (harness at `0212370` inaccessible).
++2. **Raw Redis job-hash result reading vs installed RQ API — mechanism
++   CONFIRMED-AT-BASELINE; harness code SUSPECTED.** `workers/requirements.txt`
++   pins `rq>=2.2,<3`. RQ 2.x persists successful results under dedicated
++   result keys and exposes them via `Job.fetch(id).return_value()`; the legacy
++   `rq:job:<id>` hash's result field is not where RQ 2.x results live. A
++   harness that reads the raw job hash for a result would legitimately see
++   nothing on a successful run — consistent with a saved "worker returned
++   `None`" assertion even when the worker succeeded.
++3. **Saved "worker returns `None`" assertion vs implementation and prior
++   evidence — implementation CONFIRMED-AT-BASELINE; assertion
++   REPORTED-NOT-VERIFIED.** `workers/pipeline/jobs.py::process_source` returns
++   a structured dict: `{"source_id", "status": "complete"|"already_complete",
++   "ocr_status", "page_count"}` (and raises on failure). Prior wave evidence
++   (`handoff/notes/W2-G.md` `result.return_value`; `handoff/notes/W2-J.md`
++   read-back of real RQ job results from the worker registry) shows structured
++   results were retrievable via the RQ API before this wave. A `None` result
++   assertion is inconsistent with both; given (2), the `None` is most
++   plausibly a harness read-path artifact, not worker behaviour.
++4. **Synchronous subprocess polling + busy-wait loop — REVIEW-BLOCKED.** The
++   harness is inaccessible; no classification offered. When inspectable,
++   check: does the busy-wait sleep (CPU starvation can slow the worker under
++   test), does it block the test event loop, is there a bounded timeout, and
++   does a poll miss mutate state.
++5. **Fixture identity (following the actually-uploaded source) —
++   REVIEW-BLOCKED.** The integrated DB after this wave's merges contains
++   prior synthetic rows (e.g. `eu-l-*` uploads), so any title/filename-prefix
++   lookup can match an older row. Required pattern for the harness: anchor on
++   the `id` returned by the upload response and assert every downstream read
++   (job payload, SQL row, UI row) against that exact id.
++
++## What integrated OCR evidence is established / missing
++
++- **Established: nothing.** No accessible artifact in this session shows a
++  post-merge, real-worker OCR run against `a040e9f`. Pre-merge strict-gate
++  counts (119-test floor etc.) are explicitly NOT integrated proof; prior
++  W2-J result read-backs are pre-checkpoint and intake-pipeline, not OCR.
++- **Missing:** job-id ↔ result-payload ↔ persisted-state ↔ UI correlation on
++  the merged tree, for both a real TXT `complete`-path and a PDF `skipped`
++  (stub) path.
++
++## Minimum bounded verification (plan; confirm against `0212370` before running)
++
++- **Prerequisites:** fresh checkout of the merged tree (≥ `a040e9f`);
++  disposable DB (fresh `casevault_test` via `scripts/agent_pg.py` or compose —
++  never the user's DB) + scratch `LOCAL_STORAGE_ROOT`; real `redis-server`
++  binary; worker launched via the repo's normal path
++  (`workers/run_worker.py`, ingest queue); RQ 2.x client for result read-back;
++  real browser per the committed `tests/browser/eu-list-README.md` setup.
++- **Case A — real TXT `complete`:** upload one synthetic `.txt` (UI keyboard
++  path or `POST /sources`); capture the returned `source_id` (identity anchor).
++  Expect exactly one ingest job; fetch its result via `Job.fetch(...).
++  return_value()` with a bounded wait; assert payload fields
++  `source_id == <uploaded id>`, `status == "complete"`, `ocr_status` in the
++  shipped vocabulary, integer `page_count`. Committed SQL: `sources` row with
++  that id has `processing_status='complete'`, matching `ocr_status`,
++  `page_count=1`, and one `source_pages` row containing the synthetic text.
++  UI: the `/evidence` row with that id shows the persisted pages/OCR values.
++- **Case B — real PDF `skipped` (known engine stub):** upload one minimal
++  synthetic PDF; same job path; payload `status=="complete"`,
++  `ocr_status=="skipped"`; SQL: `ocr_status='skipped'`, no pages row expected
++  from OCR; UI OCR badge reads `skipped`.
++- **Maximum runtime:** ≤120 s wall clock for both cases including worker
++  startup; each job itself should finish in seconds. At 120 s: stop, record
++  INCONCLUSIVE (not "failed") per contract timeout semantics.
++- **Stopping criteria:** stop on the first identity/payload/state mismatch
++  (do not retry-loop); a second enqueue for the same source is a failure, not
++  a recovery step; no DB writes beyond the two synthetic uploads; stop
++  immediately if any prerequisite is unmet and report rather than improvise.
++- **Scope separation (explicit):** a green probe establishes ONLY that the
++  integrated worker processes one TXT and one PDF with correct result
++  payload, persisted state, and UI reflection. It does NOT establish OCR
++  timeout/polling-cancellation behaviour, `202 accepted ≠ completed`
++  semantics, failed-job/error handling, multi-page OCR, or native PDF
++  rendering (EU-M/local tester + full EU-V acceptance remain separate).
++
++## Session/PR record
++
++- Review note committed on session branch `arena/01a08ce1-casevault`
++  (SHA in the commit line below / `git log -1`).
++- The review-only PR into `arena/01a0899f-casevault` could NOT be opened from
++  this closed session (platform-blocked). Next session: push this branch and
++  open the focused PR containing only `handoff/notes/EU-L-OCR-REVIEW.md`, then
++  re-run this review against the actual checkpoints before anyone executes
++  the plan above.
+diff --git a/handoff/notes/EU-L.md b/handoff/notes/EU-L.md
+new file mode 100644
+index 0000000..5a0c668
+--- /dev/null
++++ b/handoff/notes/EU-L.md
+@@ -0,0 +1,230 @@
++# EU-L — evidence list resilience and accessible upload
++
++Contract: `docs/contracts/evidence_ui_closure.md` v1.0 (§EU-L, including the
++2026-09-11 authorized integration amendment)
++Branch: `arena/01a08ce1-casevault` (session branch; PR #17 — same PR, no
++replacement, not self-merged)
++Base SHA: `ab0ee23e8859e0a8a031e065c2537f10db005957`
++Revision history:
++- `6dc932c` + `ab9164b` — original EU-L delivery (reviewed as `ab9164b`)
++- `73418b9` — merge of integration commit `7ed39b1` (preserves `ab9164b`;
++  see "Branch reconciliation" below)
++- Fix SHA: `ea9c8f1965d4340e8eae136f423d9eaed822a52f` (on top of `73418b9`)
++- 2026-09-12 follow-up — retry through the guarded submission path:
++  `35a9f6ed9d3fa6007ba94519b5820d32f7909c68` (on top of `6bd3cdf`)
++
++## What changed — 2026-09-12 follow-up (retry uses the guarded path)
++
++Review follow-up: retries previously called `upload.mutate()` /
++`update.mutate()` directly, bypassing the single-flight guards introduced in
++`ea9c8f1`.
++
++- `apps/web/components/evidence-list-upload.tsx` — the upload retry button now
++  calls `handleFile(attemptedFile)` (the same entry point as button change /
++  drop / picker selection), so a retry observes the same single-flight lock,
++  size guard and state resets as any first attempt.
++- `apps/web/components/evidence-list-row.tsx` — one guarded submission path
++  `submit(include)` per row: the Include/Exclude buttons AND the retry all go
++  through it; a synchronous `inFlightRef` (set before `mutate`, released in
++  the mutation's `onSettled` on success AND failure) blocks same-tick
++  re-activation. Nothing in the component calls `update.mutate` directly.
++- Regression tests (`tests/browser/eu-list-failures.spec.ts`, labelled
++  GUARDED-RETRY; interception is a counter/hold only — every counted request
++  is answered by the REAL API):
++  1. Same-tick double activation of the upload RETRY (two clicks before any
++     re-render), first response held: exactly ONE POST, blocked feedback
++     naming the file, button disabled + `aria-busy`; after release the retried
++     upload completes and the API holds exactly one source record.
++  2. Same-tick double activation of a row Include: exactly ONE PATCH; the
++     lock releases after settle and the opposite transition still works
++     (second PATCH, final state verified via the API).
++  Red/green proof: with the guarded path both tests pass; with a throwaway
++  revert to direct `mutate()` wiring both FAIL with "Expected: 1, Received:
++  2" — they catch the old bypass.
++
++## What changed (this revision)
++
++Addresses every blocking finding from `handoff/EVIDENCE_UI_REVIEW.md`
++(2026-09-11) and the PR #17 review comment. Still EU-L write set only —
++detail page, shared clients/types, shared components, backend/worker,
++manifests, lockfiles, CI untouched.
++
++1. **Upload single-flight guard on every entry path** (was: button-only).
++   `apps/web/components/evidence-list-upload.tsx` now guards `handleFile`
++   (button change, drop, direct picker selection) AND `openPicker` (zone
++   click / button activation) with a synchronous `inFlightRef` lock plus the
++   `isPending` check — the ref closes the same-tick window where two rapid
++   events would both observe stale idle state; the integrator's reproduced
++   bypass (drop + held response → two POSTs) cannot recur. The lock releases
++   in the mutation's `onSettled` (fires on success AND failure), so it cannot
++   get stuck. A refused second attempt gets visible feedback ("An upload is
++   already in progress — “<file>” was not submitted…", `data-testid=
++   upload-blocked`); the zone carries `aria-busy` while pending; the blocked
++   feedback clears when the in-flight upload settles.
++2. **Browser regression for the bypass** —
++   `eu-list-failures.spec.ts`: "INJECTED held upload response: drops and
++   picker activation while pending cannot start a second upload" holds the
++   first POST response open, then (a) drops a second file on the zone and
++   (b) clicks the zone while pending, asserting the blocked feedback names
++   the file, the button is disabled, `aria-busy` is set, exactly ONE POST was
++   made; after release the first upload completes, the lock is reusable, and
++   the second file uploads as a second POST (verified in the real API).
++   The former latency-based pending test was superseded by this stronger
++   held-response version (same protection, stricter proof).
++3. **Honest outcome-uncertainty copy + refresh-first reconciliation**
++   (`evidence-list-states.tsx`, `evidence-list-upload.tsx`,
++   `evidence-list-row.tsx`): new `outcomeKnown(error)` — a 4xx ApiError
++   proves the outcome; network failure or 5xx does not. Upload response loss
++   now reads "…the connection failed before the server's answer arrived, so
++   it is not known whether the file was added — the server may have accepted
++   it… Refresh the list first… retrying… will create a duplicate copy";
++   row mutation response loss reads "…not known whether the change was
++   saved — the server may have applied it. Refresh the list first…". Both
++   notices offer "Refresh list first" (invalidates `["sources"]`) BEFORE the
++   retry. 4xx branches keep the definite wording ("the server rejected the
++   upload — the file was not added" / "The row is unchanged"). Read-only use
++   of the shared `ApiError` class — no client changes.
++4. **Search label** now matches shipped server behaviour:
++   "Search titles" with hint "Searches source titles only (not filenames)".
++   (`GET /sources?q=` matches `title` only — backend unchanged; parity
++   remains a BACKLOG item.)
++5. **Keyboard activation: repeated-Enter allowance removed and diagnosed.**
++   The helpers in both specs now use ONE activation: focus → 500 ms settle →
++   single Enter → assert the picker opened (in-page click listener on the
++   input) → hand the synthetic file over at the DOM boundary
++   (`input.files` + change). A miss fails the test loudly. Diagnosis
++   (measured, see below): the product's keyboard affordance is correct —
++   a genuine Enter always activated the button and always invoked
++   `input.click()` (20/20, all variants); the earlier misses were Playwright's
++   filechooser interception not surfacing the dialog (14–19/20) and, at zero
++   settle, the injected focus/keypress ordering racing (2–4/8, with and
++   without route interception — routes are NOT the cause). Test-harness
++   artefact, not product behaviour; documented in the spec headers and
++   `tests/browser/eu-list-README.md`.
++
++Preserved unchanged: filter bar + client/server filter parity, explicit
++both-flags include/exclude, row-attributable mutation feedback, matter
++filter/badge failure states, stale-data labelling, bare-array client,
++duplicate warnings, `["sources"]`-only cache refresh.
++
++## Branch reconciliation
++
++Local checkout metadata had rolled back to base `ab0ee23` between sessions
++while the working tree matched remote `ab9164b` byte-for-byte (verified per
++file with `git show ab9164b:<path> | diff -`). Reconciled without losing
++work: reset HEAD to `ab9164b` (remote tip, PR #17 head), then merged
++integration `7ed39b1` as a true merge commit `73418b9` (parents `ab9164b` +
++`7ed39b1`; disjoint files, no conflicts). No force-push, no work discarded.
++
++## What changed (original delivery, for reference)
++
++- `apps/web/app/evidence/page.tsx` — four distinct body states
++  (loading/error/filtered-empty/empty), stale rows dimmed + labelled
++  ("Saved result — may be out of date"), filters preserved through
++  failure/retry, `["sources"]`-only invalidation.
++- `apps/web/components/evidence-list-states.tsx` — describeError,
++  outcomeKnown/errorStatus, labelled RetryButton, Notice (role=alert/status),
++  ListStateRow.
++- `apps/web/components/evidence-list-upload.tsx` — keyboard-operable upload
++  with entry-path-complete single-flight guard (see above).
++- `apps/web/components/evidence-list-filters.tsx` — filter bar with
++  title-search label fix; matter-filter failure announced + retryable;
++  Included/Excluded exclusive pair.
++- `apps/web/components/evidence-list-row.tsx` — per-row include/exclude
++  (both flags, row-scoped pending protection, honest failure alerts),
++  matter badge with distinct failed state.
++- `tests/browser/eu-list.spec.ts` (5), `tests/browser/eu-list-failures.spec.ts`
++  (11), `tests/browser/eu-list-README.md` — browser suites + versioned setup.
++- `handoff/notes/EU-L.md` — this note.
++
++## Proof
++
++Environment (rebuilt this session): sandbox without Docker — embedded
++Postgres 16 via `python scripts/agent_pg.py`, API via uvicorn :8100 with
++`LOCAL_STORAGE_ROOT=/tmp/...` (never `data/`), web via `next dev` :3000
++proxying `/api/v1`. Browser: real Chromium (Chrome for Testing, npm-distributed
++build per README sandbox note) driven by Playwright 1.63.0. All fixtures
++synthetic in-memory TXT.
++
++1. Web gate:
++   ```
++   npm run lint --workspace=web        # pass (only pre-existing detail-page warning)
++   npm run typecheck --workspace=web   # pass
++   npm run build --workspace=web       # pass (inside verify_all.sh)
++   ```
++2. Full strict gate:
++   ```
++   bash scripts/verify_all.sh
++   ==> Database ... ==> Migrations (upgrade head -> downgrade base -> upgrade head)
++   ==> pytest (real Postgres): 118 passed, 1 skipped, 3 warnings
++   ==> ruff: All checks passed!
++   ==> web: lint / typecheck / build: pass
++   GATE GREEN — python, migrations, lint and web all pass.
++   ```
++3. Browser regressions (review findings 1–5):
++   ```
++   npx playwright test --config=playwright.config.ts   # 5 consecutive full runs
++   16 passed (19.5s) / 16 passed (20.8s) / 16 passed (23.4s)
++   16 passed (25.4s) / 16 passed (27.7s)               # + 3× positive suite alone: 5 passed
++   ```
++   = eu-list-failures.spec.ts (11) + eu-list.spec.ts (5); 80+ single
++   keyboard activations across runs, zero misses.
++
++Coverage honesty (real vs injected):
++
++- **Real browser + real API** (positive suite, no mocks): keyboard-opened
++  picker → real POST /sources → row + bare-array `GET /sources` read-back;
++  include/exclude exclusive transitions verified through the API; duplicate
++  badge; filtered-empty vs empty; `matter_id` asserted on the outgoing
++  request.
++- **Injected transport failures** (negative suite, labelled INJECTED per
++  test): real app code/browser with route-level abort / 422 / 400 / 500 /
++  latency / held-response. Each test's positive half (retry after unrouting
++  or releasing the hold) hits the real API — e.g. the held-upload regression
++  verifies the first upload really completes and the second really uploads
++  (two real POSTs total, in the real DB). The single-flight bypass scenario
++  itself (review finding 1/2) is injected-timing reproduction; the fix is
++  product code exercised by the real drop/keyboard events.
++- Keyboard diagnosis numbers (finding 5) come from scratch harness probes
++  outside the repo: button-activation/product-path proof 20/20 in every
++  variant; chooser-event surfacing 14–19/20; immediate-press loss 2–4/8 with
++  and without routes; ≥50 ms settle 8/8–12/12. Committed tests use the
++  resulting single-activation protocol.
++- No real-worker OCR path is exercised (the list page does not poll OCR);
++  upload enqueue degradation without Redis remains the server's existing
++  best-effort behaviour, unmodified.
++
++## Contract gaps
++
++- Unchanged from the original delivery: `GET /sources?q=` matches title only
++  while the UI previously advertised filename search — resolved on the UI
++  side this revision (label now says "Search titles"); server-side filename
++  matching remains a BACKLOG parity item.
++- §EU-L 2 "send both flags" is implemented literally (both flags always in
++  the PATCH body); noted so reviewers know the payload is intentional.
++
++## Risks / follow-ups
++
++- `tests/browser/` still needs the runner decision from EU-V/integrator;
++  Playwright remains an isolated tool (nothing added to package.json/CI).
++- Row actions disable only the mutating row; per-row parallel actions remain
++  safe (each row owns its mutation).
++- The blocked-upload feedback is info-tone; if the product later wants a
++  queue ("upload next after current"), it is a small change on top of the
++  guard — out of scope here.
++- Stale-labelling relies on react-query's per-key cache; a hard reload during
++  an API outage shows the full-error state (correct distinct behaviour).
++
++## What the next agent must know
++
++- EU-V: suites are ready for integrated acceptance; `EU_WEB_BASE`/`EU_API_BASE`
++  env vars, serial execution (`workers:1`), disposable DB (no source-deletion
++  endpoint — use a scratch DB). The held-response test intentionally holds a
++  real request open for a few seconds.
++- EU-D: list success paths invalidate only the `["sources"]` prefix; the
++  detail page's `["source", id]` cache is untouched by list mutations.
++- If `next build` runs while `next dev` serves the same `.next`, the dev
++  server 404s its own chunks — restart the dev server after any production
++  build (hit again this session).
++- The in-page click-listener technique (asserting the picker opened) is
++  reusable for any future keyboard-operability proof in this repo.
+diff --git a/tests/browser/eu-list-README.md b/tests/browser/eu-list-README.md
+new file mode 100644
+index 0000000..341eec2
+--- /dev/null
++++ b/tests/browser/eu-list-README.md
+@@ -0,0 +1,107 @@
++# EU-L browser regression suites — evidence list page
++
++Contract: `docs/contracts/evidence_ui_closure.md` v1.0 (including the
++2026-09-11 authorized integration amendment).
++
++| File | What it proves | Network |
++|---|---|---|
++| `eu-list.spec.ts` (5 tests) | Keyboard-operable upload (single activation) adds a source and refreshes the list; include/exclude are exclusive real-API transitions; duplicate warnings stay visible; empty vs filtered-empty are distinct; matter filter sends `matter_id` to `GET /sources` and filtered-empty shows for a fresh matter | **Real** — real Chromium → real Next dev server → real FastAPI + Postgres. Nothing mocked. |
++| `eu-list-failures.spec.ts` (11 tests) | Failed list request never renders as empty; retry works; stale rows are labelled "saved"; search input survives failure/retry; upload response loss names the file, reports the outcome as unknown, offers refresh-before-retry, retry succeeds; 4xx upload rejection states the proven outcome; **held first upload response + second drop/picker activation cannot start a second upload (single-flight guard, 2026-09-11 review)**; row mutation response loss is honestly uncertain with refresh-first reconciliation; 4xx row rejection says "row unchanged"; slow row PATCH disables that row's buttons (one PATCH); matter-filter and row-badge failures are announced with retry | **INJECTED** — Playwright route interception aborts/stubs/delays/holds specific calls (labelled per test). App code and browser are real; only the network outcome is forced. |
++
++All fixtures are synthetic in-memory TXT content (constructed as in-page
++`File` objects) — no real evidence, no identifying filenames or hashes.
++
++## Keyboard-upload proof — single activation (2026-09-11 review finding 5)
++
++The suites open the file picker with the keyboard **once** — no repeated
++presses, no silent fallbacks. Diagnosis behind the earlier three-attempt
++helper (measured in this sandbox, Chromium via CDP, 2026-09-12):
++
++- A genuine (CDP) Enter press **always** activated the upload button and
++  **always** invoked the product's `input.click()` — 20/20 in every measured
++  variant. The product's keyboard affordance is correct.
++- An Enter pressed *immediately* after Playwright's injected `locator.focus()`
++  loses the activation (2–4 of 8 single-activation successes, **with and
++  without route interception** — routes are not the cause); ≥50 ms of settle
++  between focus and press makes it reliable (8/8 at 50 ms, 12/12 at 250 ms
++  with routes). Residual misses were always the CDP `filechooser` event not
++  surfacing (14–19 of 20 at 500 ms) while the in-page `click` on the input
++  still fired 20/20 — i.e. a test-harness interception artefact, not product
++  behaviour.
++- The committed helpers therefore: focus → 500 ms settle → **one** Enter →
++  assert the picker opened via an in-page click listener on the file input
++  (deterministic product proof) → hand the synthetic file to the input at the
++  DOM boundary (`input.files` + `change` event), which drives the same
++  downstream React flow as the native dialog (Playwright's `setFiles()`
++  bypasses the OS dialog in exactly the same way).
++- If the single activation ever fails to open the picker, the test **fails
++  loudly** (see the `message:` on the `expect.poll`). Reliability across this
++  revision's runs: 16/16 tests × 5 consecutive full-suite runs plus 3
++  positive-suite runs — 80+ single keyboard activations, zero misses.
++
++## Reproducible setup (versioned)
++
++Verified with `@playwright/test` **1.63.0** and its matching Chromium on
++Node 22 / Debian 12. Any Playwright ≥1.49 should behave the same; if you use a
++different major, re-run `npx playwright install chromium` to keep the browser
++matched to the library version.
++
++1. **Disposable stack** (never point these tests at real case data or the
++   user's shared Postgres/Redis):
++   ```bash
++   # Either docker compose:
++   make infra-up && make test-db
++   # or, on machines without Docker, the embedded Postgres harness:
++   python scripts/agent_pg.py start
++   eval "$(python scripts/agent_pg.py env)"      # exports DATABASE_URL
++   .venv/bin/python -m alembic -c apps/api/alembic.ini upgrade head
++   ```
++2. **API** (scratch storage root — never the user's `data/`):
++   ```bash
++   LOCAL_STORAGE_ROOT=/tmp/cv-eu-l-storage DATABASE_URL="$DATABASE_URL" \
++     .venv/bin/python -m uvicorn app.main:app --app-dir apps/api --host 0.0.0.0 --port 8100
++   ```
++3. **Web** (dev server proxies `/api/v1/*` to the API):
++   ```bash
++   API_BASE_URL=http://localhost:8100 npm run dev --workspace=web
++   ```
++4. **Playwright** — installed as an *isolated tool* (per contract, no
++   mandatory dependency/CI change; EU-V owns the runner-tooling proposal):
++   ```bash
++   mkdir -p ../eu-l-pw-harness && cd ../eu-l-pw-harness
++   npm init -y && npm i -D @playwright/test@1.63.0
++   npx playwright install chromium
++   ```
++   with a `playwright.config.ts` in that scratch dir pointing
++   `testDir` at `<repo>/tests/browser`, `use.baseURL` at the web server
++   (default `http://localhost:3000`), `workers: 1`, `retries: 0`.
++5. **Run**:
++   ```bash
++   cd ../eu-l-pw-harness
++   EU_WEB_BASE=http://localhost:3000 EU_API_BASE=http://localhost:8100/api/v1 \
++     npx playwright test --config=playwright.config.ts
++   ```
++
++Env vars: `EU_WEB_BASE` (default `http://localhost:3000`), `EU_API_BASE`
++(default `http://localhost:8100/api/v1`) — the API base is only used by the
++Node-side seeding/assertion fetches; the browser always talks to the web
++origin.
++
++## Sandbox note (uncommitted isolated tooling)
++
++The proof run for this wave ran inside a network-restricted sandbox where the
++Playwright CDN and apt are blocked but the npm registry is reachable. The
++browser was obtained **entirely from npm** with
++`npm i -D @sparticuz/chromium` (its bundled Chromium + Amazon-Linux-2023
++library tar, extracted manually) and launched by Playwright via
++`executablePath` + `LD_LIBRARY_PATH` pointing at the extracted libs
++(`libnspr4/libnss3/libnssutil3` etc.). No repo file depends on that path; on
++an unblocked machine the standard `npx playwright install chromium` from step
++4 is equivalent.
++
++## Not covered here (owned elsewhere / later)
++
++- Detail page (EU-D), real-worker OCR behaviour, and integrated positive-path
++  acceptance on the merged tree (EU-V, §Proof and safety).
++- The suite does not assert the exact server-side filter semantics beyond
++  `q`/`matter_id` reaching `GET /sources` — filter parity is a BACKLOG item.
+diff --git a/tests/browser/eu-list-failures.spec.ts b/tests/browser/eu-list-failures.spec.ts
+new file mode 100644
+index 0000000..9b8574b
+--- /dev/null
++++ b/tests/browser/eu-list-failures.spec.ts
+@@ -0,0 +1,632 @@
++// -----------------------------------------------------------------------------
++// EU-L negative-path browser proof — REAL browser, REAL app code, INJECTED
++// transport failures/status sequences. Contract §EU-L (1)–(3) + 2026-09-11
++// integration review findings.
++//
++// Honesty label: every test below that says "INJECTED" uses Playwright route
++// interception to abort, stub, delay, or hold specific HTTP calls (labelled
++// per test). The application code, its queries, and the browser are real;
++// only the network outcome is forced. Positive-path (real API, no injection)
++// proof lives in eu-list.spec.ts.
++//
++// Keyboard-upload proof uses a SINGLE activation — see keyboardUpload() and
++// the diagnosis comment in eu-list.spec.ts / handoff/notes/EU-L.md (the
++// earlier three-attempt allowance was a harness artefact and is gone).
++// Fixtures are synthetic in-memory TXT content; nothing touches real evidence.
++// Setup: see tests/browser/eu-list-README.md.
++// -----------------------------------------------------------------------------
++
++import { expect, test, type Page } from "@playwright/test";
++
++const API = process.env.EU_API_BASE ?? "http://localhost:8100/api/v1";
++const STAMP = `eu-l-neg-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
++
++test.setTimeout(90_000);
++
++interface SourceRow {
++  id: string;
++  title: string;
++  original_filename: string | null;
++  included_flag: boolean;
++  excluded_flag: boolean;
++}
++
++/** The server's `q` filter matches title only; uploads derive the title from
++ *  the filename minus extension, so UI searches must use the title form. */
++function titleOf(name: string): string {
++  return name.replace(/\.[^.]+$/, "");
++}
++
++async function apiUpload(name: string, content: string): Promise<SourceRow> {
++  const form = new FormData();
++  form.append("file", new Blob([content], { type: "text/plain" }), name);
++  form.append("title", name.replace(/\.[^.]+$/, ""));
++  const resp = await fetch(`${API}/sources`, { method: "POST", body: form });
++  if (!resp.ok) throw new Error(`POST /sources -> ${resp.status}`);
++  return (await resp.json()) as SourceRow;
++}
++
++/**
++ * Keyboard upload with a SINGLE activation (no retries allowed): focuses the
++ * upload button, lets the injected focus settle, presses Enter once, asserts
++ * the product opened the picker (in-page click listener), then hands the
++ * synthetic file to the input at the DOM boundary — the same downstream flow
++ * the native dialog drives. Full diagnosis: eu-list.spec.ts keyboardUpload()
++ * and handoff/notes/EU-L.md.
++ */
++async function keyboardUpload(page: Page, fileName: string, content: string) {
++  const button = page.getByTestId("upload-button");
++  await expect(button).toBeEnabled();
++  await page.evaluate(() => {
++    (globalThis as { __pickerOpenedByKeyboard?: boolean }).__pickerOpenedByKeyboard = false;
++    const input = document.querySelector<HTMLInputElement>('input[type="file"]');
++    if (!input) throw new Error("file input not found");
++    input.addEventListener("click", () => {
++      (globalThis as { __pickerOpenedByKeyboard?: boolean }).__pickerOpenedByKeyboard = true;
++    });
++  });
++  await button.focus();
++  await page.waitForTimeout(500); // let the injected focus() settle (CDP ordering)
++  await page.keyboard.press("Enter"); // THE single activation — no retries
++  await expect
++    .poll(
++      () =>
++        page.evaluate(
++          () => (globalThis as { __pickerOpenedByKeyboard?: boolean }).__pickerOpenedByKeyboard,
++        ),
++      { timeout: 5_000, message: "single Enter activation did not open the file picker" },
++    )
++    .toBe(true);
++  await page.evaluate(
++    ([name, text]) => {
++      const input = document.querySelector<HTMLInputElement>('input[type="file"]');
++      if (!input) throw new Error("file input not found");
++      const dt = new DataTransfer();
++      dt.items.add(new File([text as string], name as string, { type: "text/plain" }));
++      input.files = dt.files;
++      input.dispatchEvent(new Event("change", { bubbles: true }));
++    },
++    [fileName, content],
++  );
++}
++
++/** Dispatches a real drop event carrying a synthetic File on the upload zone. */
++async function dropFileOnZone(page: Page, fileName: string, content: string) {
++  await page.evaluate(
++    ([name, text]) => {
++      const dt = new DataTransfer();
++      dt.items.add(new File([text as string], name as string, { type: "text/plain" }));
++      const zone = document.querySelector<HTMLElement>('[data-testid="upload-zone"]');
++      if (!zone) throw new Error("upload zone not found");
++      zone.dispatchEvent(
++        new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt }),
++      );
++    },
++    [fileName, content],
++  );
++}
++
++async function gotoEvidence(page: Page) {
++  await page.goto("/evidence", { waitUntil: "domcontentloaded" });
++  await expect(page.getByTestId("upload-button")).toBeVisible({ timeout: 60_000 });
++  // Wait for hydration + the initial query to settle (rows, true-empty or the
++  // error state replace the SSR loading row). Keyboard events before this
++  // point race React hydration.
++  await page.waitForFunction(
++    () => !document.querySelector("tbody [role=\"status\"]")?.textContent?.includes("Loading evidence"),
++    undefined,
++    { timeout: 60_000 },
++  );
++}
++
++// ---------------------------------------------------------------------------
++// §EU-L 1 — a failed list request is NOT displayed as an empty list.
++// ---------------------------------------------------------------------------
++
++test("INJECTED list failure shows an error state with retry, never an empty list", async ({
++  page,
++}) => {
++  await page.route("**/api/v1/sources**", (route) => route.abort("connectionrefused"));
++  await gotoEvidence(page);
++
++  const errorBox = page.getByTestId("list-error");
++  await expect(errorBox).toBeVisible({ timeout: 30_000 });
++  await expect(errorBox).toContainText("Couldn’t load the evidence list");
++  await expect(errorBox).toContainText("Retry");
++  // The core regression: failure must not render the empty/filtered messages.
++  await expect(page.getByTestId("list-empty")).toHaveCount(0);
++  await expect(page.getByTestId("list-filtered-empty")).toHaveCount(0);
++  await expect(page.getByText("No evidence matches")).toHaveCount(0);
++  await expect(page.getByText("No evidence yet")).toHaveCount(0);
++});
++
++test("INJECTED failure then REAL retry loads the list once the API responds", async ({
++  page,
++}) => {
++  await page.route("**/api/v1/sources**", (route) => route.abort("connectionrefused"));
++  await gotoEvidence(page);
++  await expect(page.getByTestId("list-error")).toBeVisible({ timeout: 30_000 });
++
++  // INJECTED phase over — the real API answers from here on.
++  await page.unroute("**/api/v1/sources**");
++  await page
++    .getByRole("button", { name: "Retry loading the evidence list" })
++    .click();
++  await expect(page.getByTestId("list-error")).toBeHidden({ timeout: 30_000 });
++  await expect(page.getByTestId("list-error")).toHaveCount(0);
++  // Real state renders: the body settles into data rows or the empty state —
++  // never the error row.
++  const firstRow = page.locator("tbody tr").first();
++  await expect(firstRow).toBeAttached({ timeout: 30_000 });
++  await expect(firstRow).not.toContainText("Couldn’t load the evidence list");
++});
++
++// ---------------------------------------------------------------------------
++// §EU-L 1/2 — stale data is labelled; filter input survives failure + retry.
++// ---------------------------------------------------------------------------
++
++test("INJECTED refetch failure labels retained rows as saved data and preserves the search term", async ({
++  page,
++}) => {
++  const name = `${STAMP}-stale.txt`;
++  await apiUpload(name, `Synthetic stale-fixture ${STAMP}\n`);
++
++  await gotoEvidence(page);
++  const search = page.getByLabel("Search titles");
++  await search.fill(titleOf(name));
++  await expect(page.locator("tr", { hasText: name })).toBeVisible({ timeout: 30_000 });
++
++  // INJECTED: every subsequent sources fetch fails.
++  await page.route("**/api/v1/sources**", (route) => route.abort("connectionrefused"));
++
++  // Move to a fresh key, then back to the cached one: the cached rows must
++  // stay visible, explicitly labelled, with the error banner on top.
++  await search.fill(`${titleOf(name)}-zzz`);
++  await expect(page.getByTestId("list-error")).toBeVisible({ timeout: 30_000 });
++  await expect(search).toHaveValue(`${titleOf(name)}-zzz`); // input preserved in error state
++
++  await search.fill(titleOf(name));
++  const errorBox = page.getByTestId("list-error");
++  await expect(errorBox).toBeVisible({ timeout: 30_000 });
++  await expect(errorBox).toContainText("saved result");
++  await expect(errorBox).toContainText("may be out of date");
++  // Exactly the retained data rows carry the label (the error banner itself
++  // also mentions saved results, so count the chips, not the text).
++  await expect(page.getByTestId("stale-chip")).toHaveCount(1);
++  await expect(search).toHaveValue(titleOf(name)); // filter value survived both failures
++
++  // INJECTED phase over: retry with the SAME filter brings fresh data.
++  await page.unroute("**/api/v1/sources**");
++  await page.getByRole("button", { name: "Retry loading the evidence list" }).click();
++  await expect(page.getByTestId("list-error")).toHaveCount(0, { timeout: 30_000 });
++  await expect(page.getByTestId("stale-chip")).toHaveCount(0);
++  await expect(page.locator("tr", { hasText: name })).toBeVisible({ timeout: 30_000 });
++  await expect(search).toHaveValue(titleOf(name));
++});
++
++// ---------------------------------------------------------------------------
++// §EU-L 2/3 — upload failure is visible, attributable, honest about outcome
++// uncertainty, retryable; the picker is keyboard-operable (single activation)
++// on the failure path too.
++// ---------------------------------------------------------------------------
++
++test("INJECTED upload response loss names the file, reports unknown outcome, refresh helps, retry succeeds", async ({
++  page,
++}) => {
++  const name = `${STAMP}-upload-fail.txt`;
++  const content = `Synthetic upload-failure fixture ${STAMP}\n`;
++
++  let failUpload = true;
++  await page.route("**/api/v1/sources", async (route) => {
++    if (route.request().method() !== "POST") return route.fallback();
++    if (failUpload) return route.abort("connectionrefused");
++    return route.fallback();
++  });
++
++  await gotoEvidence(page);
++  await keyboardUpload(page, name, content);
++
++  const errorBox = page.getByTestId("upload-error");
++  await expect(errorBox).toBeVisible({ timeout: 30_000 });
++  await expect(errorBox).toContainText(`Upload failed for “${name}”`);
++  // Response-loss honesty (2026-09-11 review finding 3): no false certainty.
++  await expect(errorBox).toContainText("not known whether the file was added");
++  await expect(errorBox).toContainText("duplicate copy");
++  await expect(page.getByTestId("upload-success")).toHaveCount(0);
++
++  // Safe reconciliation BEFORE retry: refreshing the list shows whether the
++  // upload landed (here the INJECTED abort prevented the request, so no row).
++  const listReq = page.waitForRequest((r) => r.url().includes("/api/v1/sources") && r.method() === "GET", { timeout: 15_000 });
++  await errorBox.getByTestId("upload-refresh").click();
++  await listReq;
++
++  // INJECTED phase over — retry resubmits the SAME file through the real API.
++  failUpload = false;
++  await errorBox.getByRole("button", { name: `Retry upload of ${name}` }).click();
++  await expect(page.getByTestId("upload-success")).toContainText(name, { timeout: 30_000 });
++  await expect(page.getByTestId("upload-error")).toHaveCount(0);
++
++  const list = (await (await fetch(`${API}/sources`)).json()) as SourceRow[];
++  expect(list.some((s) => s.original_filename === name)).toBe(true);
++});
++
++test("INJECTED 4xx upload rejection states the proven outcome plainly", async ({ page }) => {
++  const name = `${STAMP}-upload-422.txt`;
++  const content = `Synthetic 422 fixture ${STAMP}\n`;
++
++  await page.route("**/api/v1/sources", async (route) => {
++    if (route.request().method() !== "POST") return route.fallback();
++    // INJECTED: definite server rejection — outcome is provably known.
++    return route.fulfill({
++      status: 422,
++      contentType: "application/json",
++      body: JSON.stringify({ detail: "synthetic injected rejection" }),
++    });
++  });
++
++  await gotoEvidence(page);
++  await keyboardUpload(page, name, content);
++
++  const errorBox = page.getByTestId("upload-error");
++  await expect(errorBox).toBeVisible({ timeout: 30_000 });
++  await expect(errorBox).toContainText(`Upload failed for “${name}”`);
++  await expect(errorBox).toContainText("synthetic injected rejection");
++  // Known outcome: the copy MAY say "was not added" and must NOT hedge.
++  await expect(errorBox).toContainText("was not added to the evidence list");
++  expect(await errorBox.textContent()).not.toContain("not known whether");
++});
++
++test("INJECTED held upload response: drops and picker activation while pending cannot start a second upload", async ({
++  page,
++}) => {
++  const first = `${STAMP}-hold-first.txt`;
++  const second = `${STAMP}-hold-second.txt`;
++
++  // INJECTED: hold the FIRST upload response in flight; count every POST.
++  let posts = 0;
++  let releaseFirst: (() => void) | null = null;
++  const firstHeld = new Promise<void>((resolve) => { releaseFirst = resolve; });
++  await page.route("**/api/v1/sources", async (route) => {
++    if (route.request().method() !== "POST") return route.fallback();
++    posts += 1;
++    if (posts === 1) {
++      await firstHeld; // hold the first response
++      return route.fallback();
++    }
++    return route.fallback();
++  });
++
++  await gotoEvidence(page);
++  await keyboardUpload(page, first, `Synthetic held-upload fixture one ${STAMP}\n`);
++  await expect(page.getByTestId("upload-pending")).toContainText(first, { timeout: 30_000 });
++  expect(posts).toBe(1);
++
++  // Attempt 1: drop a second file while the first is in flight.
++  await dropFileOnZone(page, second, `Synthetic held-upload fixture two ${STAMP}\n`);
++  const blocked = page.getByTestId("upload-blocked");
++  await expect(blocked).toContainText("already in progress", { timeout: 15_000 });
++  await expect(blocked).toContainText(second);
++  await expect(blocked).toContainText("was not submitted");
++
++  // Attempt 2: zone/button picker activation while pending is also refused.
++  await page.getByTestId("upload-zone").click();
++  await expect(blocked).toContainText("already in progress");
++  expect(posts).toBe(1); // no second request from either attempt
++
++  // The Choose button stays disabled and the zone announces busy.
++  await expect(page.getByTestId("upload-button")).toBeDisabled();
++  await expect(page.getByTestId("upload-zone")).toHaveAttribute("aria-busy", "true");
++
++  // Release the held response: the first upload completes for real.
++  releaseFirst?.();
++  await expect(page.getByTestId("upload-success")).toContainText(first, { timeout: 30_000 });
++  await expect(blocked).toHaveCount(0); // guard released, feedback cleared
++  expect(posts).toBe(1); // still exactly one POST ever
++
++  // The lock is reusable after completion: the second file uploads now.
++  await keyboardUpload(page, second, `Synthetic held-upload fixture two ${STAMP}\n`);
++  await expect(page.getByTestId("upload-success")).toContainText(second, { timeout: 30_000 });
++  expect(posts).toBe(2);
++
++  const list = (await (await fetch(`${API}/sources`)).json()) as SourceRow[];
++  expect(list.some((s) => s.original_filename === first)).toBe(true);
++  expect(list.some((s) => s.original_filename === second)).toBe(true);
++});
++
++// ---------------------------------------------------------------------------
++// §EU-L 2 — row include/exclude failures are visible, attributable, honest
++// about uncertainty, retryable; pending protection blocks double submission.
++// ---------------------------------------------------------------------------
++
++test("INJECTED row mutation response loss shows an honest uncertain alert; retry succeeds", async ({
++  page,
++}) => {
++  const name = `${STAMP}-row-fail.txt`;
++  const created = await apiUpload(name, `Synthetic row-failure fixture ${STAMP}\n`);
++
++  let failPatch = true;
++  const patches: string[] = [];
++  await page.route("**/api/v1/sources/*", async (route) => {
++    if (route.request().method() !== "PATCH") return route.fallback();
++    patches.push(route.request().url());
++    if (failPatch) {
++      // INJECTED 500: status code alone does not prove whether the server
++      // applied the change — the copy must reflect that uncertainty.
++      return route.fulfill({
++        status: 500,
++        contentType: "application/json",
++        body: JSON.stringify({ detail: "synthetic injected row-update failure" }),
++      });
++    }
++    return route.fallback();
++  });
++
++  await gotoEvidence(page);
++  await page.getByLabel("Search titles").fill(titleOf(name));
++  const row = page.locator("tr", { hasText: name });
++  await expect(row).toBeVisible({ timeout: 30_000 });
++
++  await row.getByTestId(`include-${created.id}`).click();
++  const rowError = page.getByTestId(`row-error-${created.id}`);
++  await expect(rowError).toBeVisible({ timeout: 30_000 });
++  await expect(rowError).toContainText(`Couldn’t include “${titleOf(name)}”`);
++  await expect(rowError).toContainText("synthetic injected row-update failure");
++  // Response-loss honesty: no false "row is unchanged" claim.
++  await expect(rowError).toContainText("not known whether the change was saved");
++  await expect(rowError).toContainText("Refresh the list first");
++
++  // Safe reconciliation BEFORE retry: refresh shows the row's true state.
++  const listReq = page.waitForRequest((r) => r.url().includes("/api/v1/sources") && r.method() === "GET", { timeout: 15_000 });
++  await rowError.getByTestId(`row-refresh-${created.id}`).click();
++  await listReq;
++
++  // A failed mutation must not render as success while unresolved: the row
++  // button still shows the unapplied state.
++  await expect(row.getByTestId(`include-${created.id}`)).not.toHaveText("Included");
++
++  // INJECTED phase over: the row-level retry resubmits the same operation.
++  failPatch = false;
++  await rowError.getByRole("button", { name: `Retry include for ${titleOf(name)}` }).click();
++  await expect(rowError).toBeHidden({ timeout: 30_000 });
++  await expect(row.getByTestId(`include-${created.id}`)).toHaveText("Included", {
++    timeout: 30_000,
++  });
++  const final = (await (await fetch(`${API}/sources`)).json()) as SourceRow[];
++  expect(final.find((s) => s.id === created.id)?.included_flag).toBe(true);
++});
++
++test("INJECTED 4xx row rejection states the proven outcome plainly (row unchanged)", async ({
++  page,
++}) => {
++  const name = `${STAMP}-row-400.txt`;
++  const created = await apiUpload(name, `Synthetic row-400 fixture ${STAMP}\n`);
++
++  await page.route("**/api/v1/sources/*", async (route) => {
++    if (route.request().method() !== "PATCH") return route.fallback();
++    // INJECTED definite rejection — outcome provably known.
++    return route.fulfill({
++      status: 400,
++      contentType: "application/json",
++      body: JSON.stringify({ detail: "synthetic injected rejection" }),
++    });
++  });
++
++  await gotoEvidence(page);
++  await page.getByLabel("Search titles").fill(titleOf(name));
++  const row = page.locator("tr", { hasText: name });
++  await expect(row).toBeVisible({ timeout: 30_000 });
++
++  await row.getByTestId(`include-${created.id}`).click();
++  const rowError = page.getByTestId(`row-error-${created.id}`);
++  await expect(rowError).toBeVisible({ timeout: 30_000 });
++  await expect(rowError).toContainText("synthetic injected rejection");
++  await expect(rowError).toContainText("The row is unchanged");
++  expect(await rowError.textContent()).not.toContain("not known whether");
++
++  // The row really is unchanged (real API read-back).
++  const viaApi = (await (await fetch(`${API}/sources`)).json()) as SourceRow[];
++  expect(viaApi.find((s) => s.id === created.id)?.included_flag).toBe(false);
++});
++
++test("INJECTED slow row mutation disables that row's buttons — no double submission", async ({
++  page,
++}) => {
++  const name = `${STAMP}-row-pending.txt`;
++  const created = await apiUpload(name, `Synthetic row-pending fixture ${STAMP}\n`);
++
++  let patches = 0;
++  await page.route("**/api/v1/sources/*", async (route) => {
++    if (route.request().method() !== "PATCH") return route.fallback();
++    patches += 1;
++    await new Promise((r) => setTimeout(r, 1500)); // INJECTED latency
++    return route.fallback();
++  });
++
++  await gotoEvidence(page);
++  await page.getByLabel("Search titles").fill(titleOf(name));
++  const row = page.locator("tr", { hasText: name });
++  await expect(row).toBeVisible({ timeout: 30_000 });
++
++  const includeBtn = row.getByTestId(`include-${created.id}`);
++  const excludeBtn = row.getByTestId(`exclude-${created.id}`);
++  await includeBtn.click();
++  await expect(includeBtn).toBeDisabled({ timeout: 10_000 });
++  await expect(excludeBtn).toBeDisabled();
++  await expect(includeBtn).toHaveText("Including…");
++
++  await expect(includeBtn).toHaveText("Included", { timeout: 30_000 });
++  await expect(includeBtn).toBeDisabled(); // already included
++  await expect(excludeBtn).toBeEnabled();
++  expect(patches).toBe(1); // exactly one PATCH despite the slow round-trip
++});
++
++// ---------------------------------------------------------------------------
++// §EU-L 3 — matter filter and row badge failures must not read as
++// “no linked matters”.
++// ---------------------------------------------------------------------------
++
++test("INJECTED matter-filter failure is announced with retry, not an empty select", async ({
++  page,
++}) => {
++  await page.route("**/api/v1/matters**", (route) => route.abort("connectionrefused"));
++  await gotoEvidence(page);
++
++  const err = page.getByTestId("matter-filter-error");
++  await expect(err).toBeVisible({ timeout: 30_000 });
++  await expect(err).toContainText("Couldn’t load the matter list");
++  await expect(page.getByLabel("Filter by matter")).toHaveCount(0); // no fake "All matters"
++
++  await page.unroute("**/api/v1/matters**");
++  await err.getByRole("button", { name: "Retry loading the matter filter options" }).click();
++  await expect(page.getByTestId("matter-filter-error")).toHaveCount(0, { timeout: 30_000 });
++  const select = page.getByLabel("Filter by matter");
++  await expect(select.locator("option").first()).toHaveText("All matters");
++});
++
++test("INJECTED row badge failure is distinct from “no linked matters” and retry shows the link", async ({
++  page,
++}) => {
++  const name = `${STAMP}-badge.txt`;
++  const created = await apiUpload(name, `Synthetic badge fixture ${STAMP}\n`);
++  const matterResp = await fetch(`${API}/matters`, {
++    method: "POST",
++    headers: { "Content-Type": "application/json" },
++    body: JSON.stringify({ name: `${STAMP} Badge Matter`, matter_type: "other" }),
++  });
++  if (!matterResp.ok) throw new Error(`POST /matters -> ${matterResp.status}`);
++  const matter = (await matterResp.json()) as { id: string };
++  const linkResp = await fetch(`${API}/matters/${matter.id}/sources`, {
++    method: "POST",
++    headers: { "Content-Type": "application/json" },
++    body: JSON.stringify({ source_id: created.id }),
++  });
++  if (!linkResp.ok) throw new Error(`POST /matters/{id}/sources -> ${linkResp.status}`);
++
++  await page.route("**/api/v1/sources/*/matters", (route) => route.abort("connectionrefused"));
++  await gotoEvidence(page);
++  await page.getByLabel("Search titles").fill(titleOf(name));
++  const row = page.locator("tr", { hasText: name });
++  await expect(row).toBeVisible({ timeout: 30_000 });
++
++  const badgeError = page.getByTestId(`badge-error-${created.id}`);
++  await expect(badgeError).toBeVisible({ timeout: 30_000 });
++  await expect(badgeError).toContainText("Couldn’t load linked matters");
++
++  await page.unroute("**/api/v1/sources/*/matters");
++  await badgeError
++    .getByRole("button", { name: `Retry loading linked matters for ${titleOf(name)}` })
++    .click();
++  await expect(badgeError).toBeHidden({ timeout: 30_000 });
++  await expect(row.locator("a", { hasText: `${STAMP} Badge Matter` })).toBeVisible({
++    timeout: 30_000,
++  });
++});
++
++// ---------------------------------------------------------------------------
++// 2026-09-12 review follow-up — retry shares the guarded submission path.
++// The retry buttons call the SAME guarded entry function as first attempts
++// (upload: handleFile; row: submit), so a retry can never bypass the
++// single-flight lock. Interception below is used only to COUNT passthrough
++// requests and to hold a response; every request that is counted/released is
++// handled by the REAL API — outcomes are real.
++// ---------------------------------------------------------------------------
++
++test("GUARDED-RETRY same-tick double activation of upload retry starts exactly one upload", async ({
++  page,
++}) => {
++  const name = `${STAMP}-guarded-retry.txt`;
++
++  // Phase 1 (INJECTED): make the first upload fail so the retry exists.
++  await page.route("**/api/v1/sources", async (route) => {
++    if (route.request().method() !== "POST") return route.fallback();
++    return route.abort("connectionrefused");
++  });
++  await gotoEvidence(page);
++  await keyboardUpload(page, name, `Synthetic guarded-retry fixture ${STAMP}\n`);
++  await expect(page.getByTestId("upload-error")).toBeVisible({ timeout: 30_000 });
++
++  // Phase 2: counting passthrough that HOLDS the first POST response; the
++  // real API handles every request once released.
++  let posts = 0;
++  let release: (() => void) | null = null;
++  const held = new Promise<void>((resolve) => { release = resolve; });
++  await page.unroute("**/api/v1/sources");
++  await page.route("**/api/v1/sources", async (route) => {
++    if (route.request().method() !== "POST") return route.fallback();
++    posts += 1;
++    if (posts === 1) {
++      await held;
++      return route.fallback();
++    }
++    return route.fallback();
++  });
++
++  // Same-tick double activation of the RETRY button (two clicks dispatched
++  // before any re-render can interleave). The retry must go through the same
++  // single-flight guard as first attempts: exactly ONE request, the second
++  // attempt visibly refused.
++  const retryButton = page.getByRole("button", { name: `Retry upload of ${name}` });
++  await expect(retryButton).toBeVisible();
++  await retryButton.evaluate((el) => {
++    el.click();
++    el.click();
++  });
++
++  await expect(page.getByTestId("upload-pending")).toContainText(name, { timeout: 30_000 });
++  expect(posts).toBe(1);
++  await expect(page.getByTestId("upload-blocked")).toContainText("already in progress");
++  await expect(page.getByTestId("upload-blocked")).toContainText(name);
++  await expect(page.getByTestId("upload-button")).toBeDisabled();
++
++  // Release: the retried upload completes through the real API.
++  release?.();
++  await expect(page.getByTestId("upload-success")).toContainText(name, { timeout: 30_000 });
++  await expect(page.getByTestId("upload-blocked")).toHaveCount(0);
++  expect(posts).toBe(1);
++
++  const list = (await (await fetch(`${API}/sources`)).json()) as SourceRow[];
++  expect(list.filter((s) => s.original_filename === name)).toHaveLength(1);
++});
++
++test("GUARDED-RETRY row same-tick double activation sends exactly one PATCH; lock releases", async ({
++  page,
++}) => {
++  const name = `${STAMP}-row-guarded.txt`;
++  const created = await apiUpload(name, `Synthetic row-guarded fixture ${STAMP}\n`);
++
++  // Counting passthrough: the real API answers every PATCH (interception is
++  // only a counter).
++  let patches = 0;
++  await page.route("**/api/v1/sources/*", async (route) => {
++    if (route.request().method() !== "PATCH") return route.fallback();
++    patches += 1;
++    return route.fallback();
++  });
++
++  await gotoEvidence(page);
++  await page.getByLabel("Search titles").fill(titleOf(name));
++  const row = page.locator("tr", { hasText: name });
++  await expect(row).toBeVisible({ timeout: 30_000 });
++
++  // Same-tick double activation of the row's Include action (the retry and
++  // the buttons share one guarded submission path — submit()).
++  const includeBtn = row.getByTestId(`include-${created.id}`);
++  await includeBtn.evaluate((el) => {
++    el.click();
++    el.click();
++  });
++
++  await expect(includeBtn).toHaveText("Included", { timeout: 30_000 });
++  expect(patches).toBe(1);
++
++  // The lock released after settle: the opposite transition still works.
++  const excludeBtn = row.getByTestId(`exclude-${created.id}`);
++  await excludeBtn.click();
++  await expect(excludeBtn).toHaveText("Excluded", { timeout: 30_000 });
++  expect(patches).toBe(2);
++
++  const list = (await (await fetch(`${API}/sources`)).json()) as SourceRow[];
++  const final = list.find((s) => s.id === created.id);
++  expect(final?.excluded_flag).toBe(true);
++  expect(final?.included_flag).toBe(false);
++});
+diff --git a/tests/browser/eu-list.spec.ts b/tests/browser/eu-list.spec.ts
+new file mode 100644
+index 0000000..e6de595
+--- /dev/null
++++ b/tests/browser/eu-list.spec.ts
+@@ -0,0 +1,260 @@
++// -----------------------------------------------------------------------------
++// EU-L positive-path browser proof — REAL API, REAL browser.
++// Contract: docs/contracts/evidence_ui_closure.md v1.0 §EU-L.
++//
++// Coverage statement (honest): every interaction below happens in a real
++// Chromium against the real Next.js dev server, which proxies /api/v1 to the
++// real FastAPI + Postgres stack. No transport is mocked in this file. The
++// negative-path suite lives in eu-list-failures.spec.ts and uses INJECTED
++// route failures there (clearly labelled per test).
++//
++// Fixtures are synthetic TXT content generated at runtime in memory — no real
++// evidence, no identifying filenames/hashes.
++//
++// Keyboard-upload proof protocol (single activation — no retries): see the
++// keyboardUpload() helper below and handoff/notes/EU-L.md for the diagnosis.
++// Setup: see tests/browser/eu-list-README.md.
++// -----------------------------------------------------------------------------
++
++import { expect, test, type Page } from "@playwright/test";
++
++const API = process.env.EU_API_BASE ?? "http://localhost:8100/api/v1";
++const STAMP = `eu-l-synthetic-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
++
++test.setTimeout(90_000);
++
++interface SourceRow {
++  id: string;
++  title: string;
++  original_filename: string | null;
++  included_flag: boolean;
++  excluded_flag: boolean;
++  evidence_review_status: string;
++  duplicate_of: { source_id: string; title: string } | null;
++}
++
++async function apiList(): Promise<SourceRow[]> {
++  // The shipped client is a BARE ARRAY — this assertion is part of the proof.
++  const resp = await fetch(`${API}/sources`);
++  if (!resp.ok) throw new Error(`GET /sources -> ${resp.status}`);
++  const body = (await resp.json()) as SourceRow[];
++  expect(Array.isArray(body)).toBe(true);
++  return body;
++}
++
++/** The server's `q` filter matches title only; uploads derive the title from
++ *  the filename minus extension, so UI searches must use the title form. */
++function titleOf(name: string): string {
++  return name.replace(/\.[^.]+$/, "");
++}
++
++/**
++ * Upload a synthetic file through the REAL keyboard path — ONE activation.
++ *
++ * Diagnosis (handoff/notes/EU-L.md, measured 2026-09-12): a genuine (CDP)
++ * Enter press ALWAYS activates the button and ALWAYS invokes the product's
++ * input.click() (20/20 in every measured variant) — the product keyboard
++ * affordance is correct. Playwright's filechooser INTERCEPTION, however,
++ * surfaces the dialog unreliably in this sandbox Chromium (14–19 of 20, with
++ * and without route interception; an immediate press after the injected
++ * focus() loses the activation entirely, 2–4 of 8). That is a test-harness
++ * command-ordering artefact, not product behaviour, so this helper:
++ *  1. focuses the button, lets the injected focus settle (500 ms), presses
++ *     Enter exactly ONCE, and
++ *  2. asserts the picker opened via an in-page click listener on the file
++ *     input (deterministic product-behaviour proof — the listener fires from
++ *     the button's own onClick → input.click() chain), then
++ *  3. hands the synthetic file to the input at the DOM boundary
++ *     (input.files = DataTransfer + change event), which drives the exact
++ *     same downstream React onChange → upload flow as the native dialog —
++ *     Playwright's setFiles() bypasses the OS dialog in exactly the same way.
++ * If the single Enter did NOT open the picker, the test FAILS loudly.
++ */
++async function keyboardUpload(page: Page, fileName: string, content: string) {
++  const button = page.getByTestId("upload-button");
++  await expect(button).toBeEnabled();
++  await page.evaluate(() => {
++    (globalThis as { __pickerOpenedByKeyboard?: boolean }).__pickerOpenedByKeyboard = false;
++    const input = document.querySelector<HTMLInputElement>('input[type="file"]');
++    if (!input) throw new Error("file input not found");
++    input.addEventListener("click", () => {
++      (globalThis as { __pickerOpenedByKeyboard?: boolean }).__pickerOpenedByKeyboard = true;
++    });
++  });
++  await button.focus();
++  await page.waitForTimeout(500); // let the injected focus() settle (CDP ordering)
++  await page.keyboard.press("Enter"); // THE single activation — no retries
++  await expect
++    .poll(
++      () =>
++        page.evaluate(
++          () => (globalThis as { __pickerOpenedByKeyboard?: boolean }).__pickerOpenedByKeyboard,
++        ),
++      { timeout: 5_000, message: "single Enter activation did not open the file picker" },
++    )
++    .toBe(true);
++  await page.evaluate(
++    ([name, text]) => {
++      const input = document.querySelector<HTMLInputElement>('input[type="file"]');
++      if (!input) throw new Error("file input not found");
++      const dt = new DataTransfer();
++      dt.items.add(new File([text as string], name as string, { type: "text/plain" }));
++      input.files = dt.files;
++      input.dispatchEvent(new Event("change", { bubbles: true }));
++    },
++    [fileName, content],
++  );
++}
++
++async function gotoEvidence(page: Page) {
++  await page.goto("/evidence", { waitUntil: "domcontentloaded" });
++  // Wait until the list has settled into rows, empty, or filtered-empty —
++  // any of which means the query finished. A list-error here would be a real
++  // failure and the assertions below will catch it.
++  await expect(
++    page.getByTestId("upload-button"),
++    "upload button renders",
++  ).toBeVisible({ timeout: 60_000 });
++  await page.waitForFunction(
++    () => !document.querySelector('[role="status"]')?.textContent?.includes("Loading evidence"),
++    undefined,
++    { timeout: 60_000 },
++  );
++}
++
++test("keyboard-operable upload adds a source through the real API and refreshes the list", async ({
++  page,
++}) => {
++  const name = `${STAMP}-kb-upload.txt`;
++
++  await gotoEvidence(page);
++  await keyboardUpload(page, name, `Synthetic keyboard upload fixture ${STAMP}\n`);
++
++  // Success feedback plus the new row in the refreshed list.
++  await expect(page.getByTestId("upload-success")).toContainText(name, { timeout: 30_000 });
++  const row = page.locator("tr", { hasText: name });
++  await expect(row).toContainText(name, { timeout: 30_000 });
++
++  // The row is backed by a REAL source record (bare array, real API).
++  const list = await apiList();
++  const created = list.find((s) => s.original_filename === name);
++  expect(created, "uploaded source exists via GET /sources").toBeTruthy();
++});
++
++test("include and exclude row actions perform exclusive transitions in the real API", async ({
++  page,
++}) => {
++  const name = `${STAMP}-row-actions.txt`;
++  const created = await apiUpload(
++    name,
++    `Synthetic row-action fixture ${STAMP}\n`,
++  );
++
++  await gotoEvidence(page);
++  const search = page.getByLabel("Search titles");
++  await search.fill(titleOf(name));
++  const row = page.locator("tr", { hasText: name });
++  await expect(row).toBeVisible({ timeout: 30_000 });
++
++  const includeBtn = row.getByTestId(`include-${created.id}`);
++  const excludeBtn = row.getByTestId(`exclude-${created.id}`);
++
++  // Include → included_flag=true, excluded_flag explicitly cleared.
++  await includeBtn.click();
++  await expect(includeBtn).toHaveText("Included", { timeout: 30_000 });
++  await expect(includeBtn).toBeDisabled();
++  await expect(excludeBtn).toBeEnabled();
++  let after = (await apiList()).find((s) => s.id === created.id);
++  expect(after?.included_flag).toBe(true);
++  expect(after?.excluded_flag).toBe(false);
++
++  // Exclude → excluded_flag=true, included_flag explicitly cleared.
++  await excludeBtn.click();
++  await expect(excludeBtn).toHaveText("Excluded", { timeout: 30_000 });
++  await expect(excludeBtn).toBeDisabled();
++  await expect(includeBtn).toBeEnabled();
++  after = (await apiList()).find((s) => s.id === created.id);
++  expect(after?.included_flag).toBe(false);
++  expect(after?.excluded_flag).toBe(true);
++});
++
++test("duplicate uploads keep the visible duplicate warning", async ({ page }) => {
++  const name = `${STAMP}-duplicate.txt`;
++  const content = `Synthetic duplicate fixture ${STAMP}\n`;
++  await apiUpload(name, content);
++  await apiUpload(name, content); // same bytes → flagged duplicate
++
++  await gotoEvidence(page);
++  await page.getByLabel("Search titles").fill(titleOf(name));
++  const rows = page.locator("tr", { hasText: name });
++  await expect(rows.first()).toBeVisible({ timeout: 30_000 });
++  await expect(page.getByText(/Duplicate of /).first()).toBeVisible({ timeout: 30_000 });
++});
++
++test("empty and filtered-empty are distinct states; Clear filters restores the list", async ({
++  page,
++}) => {
++  const name = `${STAMP}-for-empty.txt`;
++  await apiUpload(name, `Synthetic empty-state fixture ${STAMP}\n`);
++
++  await gotoEvidence(page);
++
++  // A term that matches nothing → FILTERED-empty, not plain empty, not error.
++  await page.getByLabel("Search titles").fill(`${STAMP}-no-such-match`);
++  await expect(page.getByTestId("list-filtered-empty")).toBeVisible({ timeout: 30_000 });
++  await expect(page.getByTestId("list-error")).toHaveCount(0);
++
++  // Clear filters → the seeded row is visible again.
++  await page.getByTestId("list-filtered-empty").getByRole("button", { name: "Clear all evidence filters" }).click();
++  await expect(page.getByTestId("list-filtered-empty")).toHaveCount(0);
++  await expect(page.locator("tr", { hasText: name })).toBeVisible({ timeout: 30_000 });
++});
++
++test("matter filter lists real matters and sends the server-backed matter_id filter", async ({
++  page,
++}) => {
++  const matterName = `${STAMP} Matter`;
++  const matterResp = await fetch(`${API}/matters`, {
++    method: "POST",
++    headers: { "Content-Type": "application/json" },
++    body: JSON.stringify({ name: matterName, matter_type: "other" }),
++  });
++  if (!matterResp.ok) throw new Error(`POST /matters -> ${matterResp.status}`);
++  const matter = (await matterResp.json()) as { id: string };
++
++  await gotoEvidence(page);
++  const select = page.getByLabel("Filter by matter");
++  await expect(select).toBeVisible({ timeout: 30_000 });
++  const option = select.locator("option", { hasText: matterName });
++  await expect(option).toHaveCount(1, { timeout: 30_000 });
++
++  // The server-backed filter must actually reach GET /sources (matter_id is
++  // one of the four shipped server filters — §EU-L 4).
++  const filteredReq = page.waitForRequest(
++    (r) => r.url().includes("/api/v1/sources") && r.url().includes(`matter_id=${matter.id}`),
++    { timeout: 30_000 },
++  );
++  await select.selectOption(matter.id);
++  await filteredReq;
++
++  // A brand-new matter has no sources: this is a FILTERED empty state, not a
++  // load failure and not the plain empty state.
++  await expect(page.getByTestId("list-filtered-empty")).toBeVisible({ timeout: 30_000 });
++  await page
++    .getByTestId("list-filtered-empty")
++    .getByRole("button", { name: "Clear all evidence filters" })
++    .click();
++  await expect(page.getByTestId("list-filtered-empty")).toHaveCount(0);
++  expect(page.url()).toContain("/evidence");
++});
++
++// --- helpers shared by this file -------------------------------------------
++
++async function apiUpload(name: string, content: string): Promise<SourceRow> {
++  const form = new FormData();
++  form.append("file", new Blob([content], { type: "text/plain" }), name);
++  form.append("title", name.replace(/\.[^.]+$/, ""));
++  const resp = await fetch(`${API}/sources`, { method: "POST", body: form });
++  if (!resp.ok) throw new Error(`POST /sources -> ${resp.status}`);
++  return (await resp.json()) as SourceRow;
++}
