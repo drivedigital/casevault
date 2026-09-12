@@ -9,7 +9,7 @@ Revision history:
 - `6dc932c` + `ab9164b` — original EU-L delivery (reviewed as `ab9164b`)
 - `73418b9` — merge of integration commit `7ed39b1` (preserves `ab9164b`;
   see "Branch reconciliation" below)
-- Fix SHA: see "Proof" (final commit on top of `73418b9`)
+- Fix SHA: `ea9c8f1965d4340e8eae136f423d9eaed822a52f` (on top of `73418b9`)
 
 ## What changed (this revision)
 
