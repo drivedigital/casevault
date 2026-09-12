@@ -25,8 +25,9 @@ WORKLOG.md preserves historical merge/gate evidence. No new feature wave is auth
   pass counts across partial runs and no silent missing/skipped acceptance cases.
 - [~] Limited EU-M synthetic owner preview authorized at a040e9f after mandatory
   isolation preflight; OWNER_PREVIEW.md is exact checklist. Full acceptance held.
-- [ ] PV-GATE fresh-session independent preview verification (brief ready, not launched).
-- [ ] OCR-PLAN fresh-session engine design proposal (brief ready, not launched; no implementation).
+- [~] PV-GATE owner-reported ready; PR/commit artifact not yet visible to integrator.
+- [~] OCR-PLAN PR20/61da3b4 reviewed; note-only revisions requested for safety/
+  concurrency/state/CI gates. No engine implementation or dependency approval.
 - [ ] Fresh independent review sessions only if assigned with access confirmed.
   Retired D/L sessions must not be reused; fresh sessions own fresh assigned branches.
 

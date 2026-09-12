@@ -103,3 +103,12 @@ cases only; no full-suite rerun/product edit. After fix merge rerun original bad
 case plus shared-helper regressions. Final acceptance requires remaining list/detail
 cases and full impacted suites, not accumulated partial counts. Limited synthetic
 preview may continue, but record error-disclosure limitation and use no real data.
+
+## OCR-PLAN / PV-GATE review update
+
+OCR-PLAN PR20 head61da3b4 reviewed: design direction acceptable in principle,
+changes requested before implementation contract. Key gates: cross-entry concurrency,
+hard parser bounds/crash cleanup, retained-page consistency/mixed coverage, safe
+reasons and existing-test/CI compatibility. See OCR_PLAN_REVIEW.md; comment5649440419.
+No merge or package approval. PV-GATE is owner-reported ready but submission not
+visible in fetched refs/PRs/dev-logs; PR URL or commit SHA requested. No PV run claimed.

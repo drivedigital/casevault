@@ -38,3 +38,6 @@ Old reset/force-push setup instructions were removed in the documentation audit.
 Latest: EU-V bounded list batch1 pass/1 fail; next RQ reader/OCR proof batch.
 Third fresh slot EU-ERR.md prepared (not launched) for raw list error disclosure.
 OCR-PLAN submitted design PR20; PV-GATE evidence awaited. See STATUS.md latest entry.
+
+OCR-PLAN PR20/61da3b4 reviewed, changes requested (OCR_PLAN_REVIEW.md).
+PV-GATE owner reports ready; integrator needs visible PR URL/commit SHA to review.

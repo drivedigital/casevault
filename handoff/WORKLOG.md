@@ -984,3 +984,14 @@ fixture cases, not product fixes or full suite. OCR-PLAN PR20 head61da3b4 exists
 design review pending; PV-GATE report not yet observed. Limited synthetic owner
 preview remains allowed with warning; real-data/full acceptance remain held.
 Restored metadata reconciled to2b7381e after backup and temp-index exact comparison.
+
+## 2026-09-12 — OCR-PLAN reviewed; PV-GATE artifact requested
+
+Reviewed full design-only PR20/61da3b4. Direction native-text-first accepted in
+principle, but concurrency guard can be defeated by API requeue, parser limits
+not enforceable as described, retained-page/count and mixed-coverage semantics
+inconsistent, public exception reasons unsafe, and CI/test migration underspecified.
+Changes requested comment5649440419; note-only<=45min, no merge/engine approval.
+Details OCR_PLAN_REVIEW.md. Fetched all heads/open+recent PRs and dev-logs; PV-GATE
+submission not visible. Requested PR URL/commit SHA rather than inventing results.
+No runtime tests or product changes; limited synthetic preview remains unchanged.
