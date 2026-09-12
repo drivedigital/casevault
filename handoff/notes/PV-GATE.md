@@ -175,5 +175,11 @@ None in the closure contract. Two measured, non-blocking observations for the in
   and "downloaded bytes == uploaded bytes" is an exact per-run claim, not a shared-file
   coincidence.
 - Read-only reuse means the EU-D fixtures/EU-L specs were not edited; this branch adds
-  only `tests/browser/pv-gate-*` and this note. PR opened, **not** merged, no force-push,
-  no product fix.
+  only `tests/browser/pv-gate-*` and this note. **Not merged, no force-push, no product fix.**
+- Delivery state: the branch was pushed fast-forward (`2b6688a..319120e`, commit
+  `319120e`, no force-push). GitHub refuses a second pull request from the same head
+  branch into `arena/01a0899f-casevault`, and the session branch already has open
+  **PR #20** (opened for the parallel OCR-PLAN note). PV-GATE therefore rides in PR #20's
+  branch head (its Commits/Files tabs show this commit and the three PV-GATE files) with
+  an identifying comment added there; the integrator is asked to review commit `319120e`
+  separately from the OCR-PLAN note and **not** to merge on my behalf.
