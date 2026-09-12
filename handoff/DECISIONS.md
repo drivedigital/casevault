@@ -1,3 +1,21 @@
+# Current coordination decisions — 2026-09-12
+
+- STATUS.md is the current task/hold entry point; historical records remain provenance.
+- EU-M is ON HOLD pending renewed explicit exact-checkpoint/checklist release.
+- Closed D/L sessions are retired; exports are limitation notes, not acceptance.
+  Fresh reviewers use their own assigned branch and verify object access first.
+- EU-V PR19 remains diagnostic-first and unmerged. Missing raw logs, partial counts
+  and diff-check success are not final acceptance. Provider busy root cause unknown.
+- Local-ops0159466 remains a separate unmerged proposal. Respect approval blocks.
+  Current backup/gate hazards are documented, not fixed by this documentation pass.
+- Recovery is preserve/compare/checkpoint, not blanket reset/force-push. No dev-logs
+  merge, automatic diagnostic push, retired-branch takeover or whole-patch replay.
+- Five hosted push CI jobs passed0788ccc; no browser-CI/native acceptance inferred.
+
+---
+
+## Historical decision ledger
+
 # Decisions Log
 
 Short, durable records of architectural/product decisions so context

@@ -1,3 +1,31 @@
+# Current issues and verification gaps — 2026-09-12
+
+See STATUS.md for task ownership. Historical entries below retain earlier evidence,
+not current authorization or active blocker status.
+
+- **Acceptance blocker:** EU-V final integrated browser acceptance incomplete.
+  Saved list/detail/OCR failures include harness/setup concerns; do not label all
+  as product bugs. Save-pending candidate needs timing proof before classification.
+- **Recovery:** session metadata can regress and tooling/raw logs can disappear;
+  closed sessions cannot deliver remotely. Use RECOVERY.md; no branch takeover.
+- **Operational safety:** current backup tool exposes DSNs and can omit a dump;
+  current gate/fixtures allow application DB fallback. Local-ops0159466 fixes are
+  unmerged and need corrections/approval. Docs warnings do not enforce safety.
+- **Still limited:** PDF/image OCR stub; streaming uploads, server filter parity,
+  pagination and auth/multi-user hardening deferred. No exposed real-evidence
+  preview deployment is approved merely because a service binds0.0.0.0.
+- **Native proof pending:** Mac exact sequential Reprocess and native PDF; Python3.14
+  compatibility unverified. Earlier3.12+SpawnWorker upload report has narrower scope.
+  No GSS/Objective-C/TLS/PYTHONPATH workaround is accepted as closure proof.
+- **Resolved implementation gaps:** evidence routes, excerpt CRUD and per-source
+  reprocess exist; D/L closure fixes merged; W2-G/J and WS-D/W2-W integrated.
+- **CI:** all five push jobs succeeded on0788ccc, including secrets. Prior entries
+  saying latest scanner unknown are historical; no future/PR-event guarantee implied.
+
+---
+
+## Historical issue ledger (superseded where noted above)
+
 # Known Issues
 
 Current defects and limitations, newest first. Triage per Roadmap §9

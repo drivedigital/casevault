@@ -1,3 +1,6 @@
+> Historical implementation assignment: PR18 merged; original session closed. List-review note recovered as limitation only.
+> No new work authorized by this brief. See ../STATUS.md and ../RECOVERY.md.
+
 # EU-D — evidence detail-page completion
 
 **Recommended assignee:** former W2-I/J UI-capable agent, or a fresh UI session.

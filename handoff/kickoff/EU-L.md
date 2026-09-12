@@ -1,3 +1,6 @@
+> Historical implementation assignment: PR17 merged; original session closed. OCR-review note recovered as limitation only.
+> No new work authorized by this brief. See ../STATUS.md and ../RECOVERY.md.
+
 # EU-L — evidence list resilience and accessible upload
 
 **Recommended assignee:** former W2-F or available UI agent; independent of EU-D.

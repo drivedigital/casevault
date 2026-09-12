@@ -1,3 +1,7 @@
+> Current reconciliation: STATUS.md. D/L merged; EU-V PR19 and local-ops remain
+> unmerged. Closed-session note patches recovered selectively at0788ccc. The
+> tables and old CI/UI blockers below are historical, not an active task queue.
+
 # Branch reconciliation — 2026-09-10
 
 **Latest update:** WS-D PR #14 integrated as `57e5ae6`, strict full gate 119 tests.

@@ -1,6 +1,11 @@
 # Testing
 
-Concrete local test instructions. Updated every turn by the remote agent.
+**Current: EU-M/local integration ON HOLD.** No setup/test/backup run is requested.
+Read [STATUS.md](STATUS.md), [VERIFICATION_WORKFLOWS.md](VERIFICATION_WORKFLOWS.md)
+and [RECOVERY.md](RECOVERY.md). The phase checklists below are historical reference;
+old counts and Python versions are not current acceptance. Full gate and pytest
+can delete data; explicitly verify disposable targets before any authorized run.
+The unmerged local-ops guard is NOT protecting the integrated scripts.
 
 ## Prerequisites
 
@@ -24,22 +29,20 @@ make worker       # RQ worker (or: make ping-job — no redis needed)
 - [ ] `curl http://localhost:8100/health` returns `"status": "ok"`
 - [ ] `curl http://localhost:8100/api/v1/health` returns `"status": "ok"`
 - [ ] http://localhost:3000 shows the CaseVault nav shell
-- [ ] All 11 nav routes render their placeholder screens
+- [ ] Historical Phase0 check only: nav routes rendered placeholders (not the current UI)
 - [ ] `make ping-job` prints `{"job": "ping", "status": "ok", ...}`
 - [ ] `make worker` connects to redis and lists the 7 queues
 - [ ] `make test-db` once, then `make test` passes (API + worker smoke tests)
 - [ ] `make check-env` reports OK; `make lint` clean
 - [ ] `git check-ignore data/uploads .env.local` confirms both are ignored
 
-## Capturing failures
+## Capturing failures safely
 
-1. Reproduce the problem, capturing output:
-   `make api 2>&1 | tee data/logs/api.log`
-2. Run the collector:
-   `python scripts/collect_logs.py --feature feature/<topic> --note "what broke + steps"`
-3. Review the bundle path it prints (it is git-ignored).
-4. Send it via re-run with `--push` (creates the `<feature>-logs` branch)
-   or paste the path/manifest to the remote agent in chat.
+Preserve exact command, SHA, case IDs, timings, exit and redacted output. Use only
+synthetic fixtures; inspect logs/screenshots for private content. Keep raw artifacts
+outside Git and checkpoint compact redacted summaries. Do NOT use collector --push
+or force-add diagnostics: automatic branch creation and evidence publication violate
+current workflow. See RECOVERY.md for delivery when a session closes or logs vanish.
 
 ## Phase 1 test checklist
 
@@ -100,25 +103,17 @@ make web    # :3000
 - [ ] `make test` — 17 passing
 - [ ] `make lint` clean
 
-## Agent-side wave gate (added 2026-09-10)
+## Agent-side strict gate
 
-For agent/automation environments without Docker, the same checks run without
-compose:
-
-```bash
-bash scripts/setup_local.sh      # idempotent
-.venv/bin/pip install pgserver   # on-demand, agent sandboxes only
-python scripts/agent_pg.py start
-bash scripts/verify_all.sh       # migrations up/down/up + pytest + ruff + web
-```
-
-Nothing here changes the tester path below; it exists so parallel agents can
-prove a branch is green before opening a PR (`handoff/PARALLEL_PLAN.md`).
+Use the reviewed disposable-target procedure and strict flags in
+[VERIFICATION_WORKFLOWS.md](VERIFICATION_WORKFLOWS.md). Do not copy old unqualified
+`bash scripts/verify_all.sh` commands into a configured application environment.
+Tests/gate may use DATABASE_URL fallback; name alone does not establish ownership.
 
 ## macOS notes (from the 2026-09-09 local run)
 
-- Homebrew PostgreSQL occupies :5432 → stop it before `make infra-up`
-  (`brew services stop postgresql@18`) or repoint the compose port mapping.
+- Historical port conflict on5432: inspect ownership before planning isolated
+  ports. Do not stop existing Homebrew/system services to make a test run fit.
 - `make test-db` uses the container's own superuser — no manual
   `CREATE ROLE` needed any more (the 2026-09-09 run had to create role
   `casevault` by hand; fixed).

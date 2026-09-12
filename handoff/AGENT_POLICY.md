@@ -2,7 +2,7 @@
 
 **Owner:** integrator session (`arena/01a0899f-casevault`) · **Status:** in force
 from 2026-09-10 · **Applies to:** every agent session that touches this repo,
-plus the human local tester.
+plus the human local tester. Current assignments/holds: STATUS.md; recovery: RECOVERY.md.
 
 This is the rulebook. `handoff/PARALLEL_PLAN.md` is the *plan* (who builds what,
 this wave); `docs/contracts/*.md` are the *interfaces* (exact schema and API);
@@ -19,7 +19,7 @@ you, escalate (see §6) rather than improvise.
 | **Integrator** | this session (`arena/01a0899f-casevault`) | contracts, review, merges, gate runs, `handoff/WORKLOG.md` + `BACKLOG.md` + `KNOWN_ISSUES.md` + `TESTING.md` + `DECISIONS.md`, releases to the tester | writing feature code inside another workstream's write set |
 | **Implementer** | one agent session per workstream | the files listed in its workstream brief | touching files outside its write set |
 | **Verifier** | one agent session per wave (WS-*V/J) | integration tests, smoke scripts, CI job, a written deviation report | fixing product bugs itself (reports them instead) |
-| **Local tester** | the human (+ local agents on their machine) | running the stack with real evidence, reporting failures | — |
+| **Local tester** | the human (+ local agents on their machine) | authorized synthetic local checks and redacted reports | real-evidence operations or product edits without separate explicit approval |
 
 One workstream = one session = one branch = one PR. If a session is asked to do
 two workstreams, they must be in **different waves** (or the integrator splits
@@ -68,29 +68,28 @@ the write sets explicitly).
 
 1. **Read** `handoff/AGENT_POLICY.md`, your brief in `handoff/kickoff/`, and your
    contract in `docs/contracts/`. Do not start on a draft contract.
-2. **Base the branch on the integration tip** (mandatory — `origin/main` has
-   unrelated history and will not merge):
-   ```bash
-   git fetch origin arena/01a0899f-casevault
-   git reset --hard FETCH_HEAD          # your session branch = integration tip
-   git push --force-with-lease origin HEAD   # only if the branch was already pushed
-   ```
+2. **Confirm the assigned branch and checkpoint access before work.** Read
+   STATUS.md/RECOVERY.md, preserve local changes, fetch integration only if remote
+   access is available, and inspect ancestry/diffs. Incorporate it by an approved
+   normal merge/rebase on your assigned branch. No blanket hard reset or force-push;
+   metadata repair requires full comparison and explicit recovery approval.
 3. **Implement inside your write set.** Small commits; no drive-by refactors, no
    reformatting, no dependency changes without approval.
 4. **Self-verify** with the wave gate (§5) plus your brief's specific proof.
 5. **Write `handoff/notes/<WS>.md`** in the fixed format (§4.4).
 6. **Open a PR into `arena/01a0899f-casevault`** using
    `.github/pull_request_template.md`. If GitHub rejects the operation for
-   permissions (happens with this installation), push the branch and report
+   permissions while git push remains authorized, push the branch and report
    **branch name + commit sha + proof output** in your note and to the owner;
-   the integrator merges by sha. Do not treat a failed `gh` call as a reason to
-   hand work over unreviewed.
-7. **Stop work on merge order.** The integrator merges in the order in
-   `PARALLEL_PLAN.md` and re-runs the full gate after each merge. Do not merge
+   the integrator reviews by sha. If remote access is closed, export the authorized
+   note and report BLOCKED; do not attempt alternate access or branch takeover.
+7. **Stop work on merge order.** The integrator sequences current work per
+   `STATUS.md` and the active contract and re-runs the full gate after each merge. Do not merge
    your own branch; do not rebase someone else's.
 8. **Post-merge:** the integrator consolidates your note into `WORKLOG.md`,
    updates backlog/known-issues, and archives the note. Only then take the next
-   workstream.
+   workstream, only if the session remains active and checkpoint access is confirmed.
+   Closed merged sessions are retired; follow-up work requires a fresh session.
 
 ---
 
@@ -117,13 +116,12 @@ the write sets explicitly).
 
 - **Integration branch:** `arena/01a0899f-casevault`. PRs target it. **`main` is
   never touched by an agent session.**
-- **Branch names:** `feature/w2-<ws>-<topic>` for local agents; Arena sessions
-  use their own session branch.
-- **Force-push** is allowed only to your own session branch, only with
-  `--force-with-lease`, and only for the step-2 reset.
-- **Merge order** within a wave is fixed in `PARALLEL_PLAN.md` (Wave 2:
-  E → F → G → J, with H/I in parallel behind E). If you finish early, say so in
-  your note; do not jump the queue.
+- **Branch names:** Arena sessions use only their assigned branch. Local report
+  branches require explicit agreed workflow; no automatic feature/log branch creation.
+- **Force-push:** not authorized in current closure/recovery work. Never reset
+  or rewrite another session's branch.
+- **Merge order:** current sequencing is in STATUS.md and the active contract.
+  Historical Wave2 order is reference only. If ready early, report; do not self-merge.
 - **Conflict policy:** if a rebase conflicts inside your write set, resolve it.
   If it conflicts **outside** your write set, `git rebase --abort`, report the
   files and the branches involved to the integrator, and wait. Guesswork here
@@ -196,7 +194,8 @@ guaranteed conflict. The integrator consolidates per wave.
 ## 5. Hard rules (never)
 
 1. Never commit anything under `data/`, any real case material, or any secret.
-2. Never paste or store credentials in a branch, note, PR, or log.
+2. Never paste or store credentials in a branch, note, PR, or log. Never commit
+   .env* or case data. Never bypass an approval block using another tool.
 3. Never push to `main`; never force-push a shared branch; never rewrite another
    session's branch.
 4. Never add a migration outside your reservation, or edit a merged migration
@@ -208,24 +207,29 @@ guaranteed conflict. The integrator consolidates per wave.
 7. Never delete or rewrite evidence records as a side effect of another action
    (duplicates are flagged, not removed).
 8. Never edit another workstream's tests to make your change pass.
-9. Never leave a workstream branch un-pushed at the end of a session.
+9. Checkpoint and push authorized work when available. If access is closed or
+   approval-blocked, preserve/export notes and report delivery blocked; do not bypass.
 10. Never mark work "done" without gate output in the note.
 
 ---
 
 ## 6. Definition of done (per workstream)
 
-- [ ] Contract implemented; zero edits outside the write set
-- [ ] `bash scripts/verify_all.sh` (or `--no-web`) green on a fresh database
+- [ ] Assigned deliverable complete; zero edits outside the write set (review-only notes
+      explicitly distinguish blocked review from completed acceptance)
+- [ ] Applicable scoped proof recorded; implementation merge requires full strict gate
+      on a verified disposable database. `--no-web` is partial, not full merge proof.
+      Documentation-only reviews need content/link/diff checks, not destructive tests.
 - [ ] Workstream-specific proof from the brief, output pasted in the note/PR
-- [ ] At least one test in the workstream's own test file covers the new behavior
+- [ ] New behavior has regression coverage in owned tests; review/docs-only work
+      instead records sources, limitations and required next verification
 - [ ] `handoff/notes/<WS>.md` written in the fixed format
 - [ ] Branch pushed; PR opened (or branch + sha reported if permissions block it)
 - [ ] No `data/`, secrets, or evidence in the diff
 
 ---
 
-## 7. Wave roster (current)
+## 7. Historical Wave 2 roster (current roster: STATUS.md)
 
 See `handoff/PARALLEL_PLAN.md` §4a for the assignment table and merge order, and
 `handoff/kickoff/README.md` for the paste-ready prompt per workstream.

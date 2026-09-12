@@ -921,3 +921,25 @@ in REVIEW_PATCH_INTAKE.md. EU-V2c360a1 has further reported full/partial counts,
 not independently validated; diagnostic-first requirement stands. EU-M remains
 ON HOLD under latest owner instruction; prior release text is superseded.
 No product changes, full patch replay, dev-logs merge, or acceptance claim.
+
+## 2026-09-12 — documentation / task / workflow / recovery audit
+
+Audited integration0788ccc against actual files, PR19 head2c360a1 and hosted CI.
+Added STATUS.md single current-state entry point, RECOVERY.md interruption/stale
+metadata/closed-session/patch/data-safety runbook, VERIFICATION_WORKFLOWS.md exact
+coverage and destructive-target caveats. Updated README, policy, kickoff roster,
+backlog, testing, issues/decisions and PR template; historical records labelled.
+Removed active hard-reset/force-push and automatic diagnostic-push recipes. Corrected
+stale evidence404, excerpts/reprocess, ledger/inbox and0004/0005 planning claims.
+EU-M hold and diagnostic-first EU-V task preserved; no reactivation of closed D/L.
+Confirmed GitHub run34720445577 at0788ccc: all five jobs success (push event; no
+browser/native or future-commit assurance). Documented actual integrated backup
+DSN/missing-dump hazards and test DB fallback; no runtime safety code changed and
+local-ops proposal remains unmerged. Documentation completeness does not mean
+acceptance/recovery drill complete. Content/link/diff checks only; no test stack,
+real backup, destructive gate or local integration run requested/performed.
+
+Audit validation: all25 relative Markdown links checked in the initial changed-doc
+set resolved; final added STATUS.md link also verified. `git diff --check` clean.
+Scope check confirms documentation/PR template only; CI YAML, scripts, Makefile,
+product code and manifests untouched. Runtime risks remain open backlog items.

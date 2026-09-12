@@ -1,3 +1,8 @@
+> **Current plan:** see [STATUS.md](STATUS.md) and [kickoff/README.md](kickoff/README.md).
+> This document preserves the historical wave design, not current assignments.
+> Evidence and intake core (migration0004) are integrated; D/L merged; EU-V pending;
+> EU-M on hold. Old migration reservations/merge-order forecasts below are historical.
+
 # Parallel Build Plan — coordinating multiple agents
 
 **Status:** approved 2026-09-10 · **Wave 1 outcome:** Sprint 3 was delivered
@@ -20,7 +25,7 @@ consistent. Read this before starting any workstream.
 
 ---
 
-## 1. Where the project stands
+## 1. Historical starting point (not present-day product state)
 
 | Layer | State |
 |---|---|
@@ -52,7 +57,7 @@ Baseline proof on this branch (2026-09-10, embedded Postgres via
                                  WS-D  verification + CI            WS-H  verification
 ```
 
-**Wave 2 roster (current):** W2-E spine → W2-F ledger API ∥ W2-G intake API ∥
+**Wave 2 roster (historical):** W2-E spine → W2-F ledger API ∥ W2-G intake API ∥
 W2-H ledger UI ∥ W2-I inbox UI → W2-J verification, with W2-EV (evidence
 follow-ups) in parallel. Merge order E → F → G → J. Details: §4a.
 
