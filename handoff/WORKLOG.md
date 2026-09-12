@@ -896,3 +896,16 @@ Owned temporary API/web/DB/storage cleaned. EU-V final acceptance unblocked on
 pinned D+L SHA; EU-D inactive, EU-L complete. Owner started a new local EU-M:
 substantive integrated checkpoint and report-only checklist EU_M_CHECKPOINT.md
 now supersede timing hold. No feature/worker/dependency edits assigned to tester.
+
+## 2026-09-12 — EU-V interruption handling; local-ops proposal isolated
+
+Owner reports AI-service-busy interruptions; endorsed EU-M continuation guidance
+on PR19 (comment 5647767837). Verifier checkpoint3499164 is based on e3e0b76;
+final acceptance still pending, measured results only, preserve existing runs.
+Fetched local-ops proposal0159466 on codex/local-ops-safety, no merge/branch switch.
+Independent external-tree unit run13 passed (synthetic/mocked only). Confirmed
+new guard rejects embedded PG socket URL, breaking supported strict-gate path.
+Separate review/PR required for shared fixture/gate and operational tools; see
+LOCAL_OPS_REVIEW.md. No real backup, recovery, webhook or Mac-state proof claimed.
+EU-M evidence checkpoint remains a040e9f with e3e0b76 checklist; local-ops proposal
+must not be folded into verifier scope or treated as evidence acceptance.
