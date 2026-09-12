@@ -884,3 +884,15 @@ Details, exact commands/config/log references and synthetic job IDs in
 EVIDENCE_UI_REVIEW.md. Temporary review services stopped, browser DB/storage
 cleaned. EU-L retry-lock correction pending; EU-V still working and may base on
 merged D; EU-M remains explicitly held until substantive integrated checkpoint.
+
+
+## 2026-09-12 — EU-L merged; D+L checkpoint a040e9f released
+
+Accepted PR17 revision14f4491, merged a040e9f. Exact independent Retry+drop probe
+now single-flight. Pre/post strict gates119 pass/no skips, migrations/Ruff/web
+pass. Combined browser suites43 pass/2 worker-only skips (18L+25D); no combined
+worker or native PDF claim. Review artifacts and scope in EVIDENCE_UI_REVIEW.md.
+Owned temporary API/web/DB/storage cleaned. EU-V final acceptance unblocked on
+pinned D+L SHA; EU-D inactive, EU-L complete. Owner started a new local EU-M:
+substantive integrated checkpoint and report-only checklist EU_M_CHECKPOINT.md
+now supersede timing hold. No feature/worker/dependency edits assigned to tester.

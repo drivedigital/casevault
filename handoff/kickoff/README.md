@@ -130,3 +130,11 @@ integrated wave to the local tester.
 
 2026-09-12 owner update: **EU-M / local environment on hold** until integrator
 supplies a substantive corrected D+L integrated SHA and focused checklist.
+
+
+### Latest evidence closure checkpoint — 2026-09-12
+- EU-D #18 merged c8c7d27; inactive/waiting.
+- EU-L #17 revision14f4491 merged **a040e9f**; complete.
+- EU-V #19 pending; final integrated acceptance may now use a040e9f after tooling fixes.
+- New local EU-M assigned; substantive pinned checkpoint/checklist available in
+  `handoff/EU_M_CHECKPOINT.md`. This supersedes the earlier timing hold.

@@ -1,13 +1,14 @@
 # EU-M — local Mac/browser acceptance (report-only)
 
-**Assignee:** existing local tester/agent. Two phases; no product edits.
+**Assignee:** new local tester/agent (owner confirmed). Two phases; no product edits.
 
-## Current hold — 2026-09-12
+## Current checkpoint — 2026-09-12
 
-Owner has explicitly deferred EU-M and local environment startup until the
-integrator supplies a substantive integrated testing point, exact SHA and
-focused checklist. Do not start Phase A or B now. The checklist below is retained
-for that later run; this hold supersedes its previous “now” timing.
+A new local agent is assigned. Integrated D+L checkpoint is now available:
+`a040e9f739ec3741cd28ee99756d256ea8b78d43`. Follow
+`handoff/EU_M_CHECKPOINT.md` for the current pinned report-only assignment.
+This supersedes the earlier timing hold and older phase wording below.
+EU-V remains pending; no product/dependency changes authorized.
 
 ## Paste-ready assignment
 

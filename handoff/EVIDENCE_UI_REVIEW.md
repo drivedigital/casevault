@@ -1,3 +1,7 @@
+> Latest (2026-09-12): **D+L merged at a040e9f**. EU-V final acceptance
+> pending; new EU-M agent has a substantive pinned testing checkpoint in
+> `handoff/EU_M_CHECKPOINT.md`. Older holds/findings below are historical.
+
 # Evidence UI closure — integration review (2026-09-11)
 
 **Current status (2026-09-12): EU-D revision b041694 merged as `c8c7d27`.**
@@ -167,3 +171,32 @@ reconciled only after temporary-index equality with remote 0f9e498.
 
 EU-V can incorporate c8c7d27 now, but final integrated acceptance still waits for
 corrected EU-L. EU-M remains on hold; no request to start the local environment.
+
+
+## EU-L final revision accepted — 2026-09-12
+
+Reviewed 14f4491fa0a104e916a5b10cd29ac01a7cb743d3 against 32c6e0d.
+Merged as a040e9f739ec3741cd28ee99756d256ea8b78d43. Write set honored:
+retry now uses upload handleFile guard; row actions/retries share a synchronous
+per-row lock. Initial and retry submissions release lock on success/failure.
+
+Independent strict gates before AND after merge: 119 passed/no skips, migrations
+round-trip, Ruff, web lint/typecheck/build green. Combined D+L Playwright suites
+on actual production Next and isolated real API/Postgres: 43 passed/2 worker-only
+skipped (~3.4m): all 18 list tests and 25 detail tests pass. Two skipped worker
+paths were verified previously on D-only c8c7d27, NOT rerun on this combined tree.
+Positive cases use real API; negative/timing/capability cases explicitly injected.
+No native PDF rendering claim. Independently recreated exact prior Retry+drop
+same-task reproduction: ONE failed original + ONE held retry; extra drop blocked.
+
+Diagnostics outside Git: /home/user/l3-gate.log, l3-postmerge.log, l3-browser.log;
+scratch /home/user/eu-review-tools/l3.config.mjs and l3-retry.mjs. Playwright 1.63,
+Chromium 152. No product dependencies added. Restored Git metadata backed up and
+reconciled after temporary-index equality against remote 32c6e0d. Temporary
+review web/API stopped, owned DB casevault_eul3_review and external synthetic
+storage removed, embedded PG stopped after final gate.
+
+EU-D inactive/waiting, EU-L complete; both should stay available for scoped bug
+reports only. EU-V now has integrated D+L SHA for final acceptance once tooling
+corrections are ready. New local EU-M may test this substantive checkpoint using
+EU_M_CHECKPOINT.md; no need to wait for V to prove native browser/Mac behavior.
