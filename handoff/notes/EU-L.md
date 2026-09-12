@@ -10,8 +10,8 @@ Revision history:
 - `73418b9` — merge of integration commit `7ed39b1` (preserves `ab9164b`;
   see "Branch reconciliation" below)
 - Fix SHA: `ea9c8f1965d4340e8eae136f423d9eaed822a52f` (on top of `73418b9`)
-- 2026-09-12 follow-up — retry through the guarded submission path: SHA
-  recorded at commit (below)
+- 2026-09-12 follow-up — retry through the guarded submission path:
+  `35a9f6ed9d3fa6007ba94519b5820d32f7909c68` (on top of `6bd3cdf`)
 
 ## What changed — 2026-09-12 follow-up (retry uses the guarded path)
 
