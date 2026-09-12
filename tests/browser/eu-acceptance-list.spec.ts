@@ -27,6 +27,14 @@ function rows(page: Page) {
   return page.locator('table tbody tr');
 }
 
+function pathStem(filename: string): string {
+  return filename.replace(/\.[^.]+$/, '');
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 test.describe('EU-L/L1 distinct list states', () => {
   test('L1.1 loading state is distinct from empty and error [INJECTED_FAULT]', async ({ page }) => {
     declareMode('INJECTED_FAULT', 'delayed GET /sources to observe the loading state');
@@ -176,20 +184,40 @@ test.describe('EU-L/L2 row mutations, pending protection and preserved inputs', 
   });
 
   test('L2.5 retries preserve query and filter values [INJECTED_FAULT]', async ({ page }) => {
-    declareMode('INJECTED_FAULT', 'failing row action with filters applied');
-    await seedSource(page, 'text');
-    await page.goto('/evidence');
-    await page.getByPlaceholder(/keyword/i).fill('synthetic');
-    const select = page.locator('select').first();
-    await select.selectOption({ index: 1 }).catch(() => undefined);
+    test.setTimeout(60_000);
+    declareMode('INJECTED_FAULT', 'exact-source PATCH failure, fault removal, and explicit retry');
+    const { id, meta } = await seedSource(page, 'text');
+    const query = pathStem(meta.filename);
+    const search = page.getByRole('textbox', { name: /search titles/i });
+    const sourceType = page.getByRole('combobox', { name: /filter by source type/i });
+    await search.fill(query);
+    await sourceType.selectOption(meta.source_type);
 
-    const restore = await injectFailure(page, /\/api\/v1\/sources\/[^/?]+$/, { status: 500 });
-    const include = rows(page).first().getByRole('button', { name: /^include$/i }).first();
-    if (await include.count()) await include.click();
-    await page.waitForTimeout(1_000);
+    const row = page.locator('table tbody tr', { has: page.locator(`a[href="/evidence/${id}"]`) });
+    await expect(row, 'the exact uploaded source matches both filters').toBeVisible();
+    const requests = recordRequests(page);
+    const restore = await injectFailure(page, new RegExp(`/api/v1/sources/${id}(?:\\?|$)`), {
+      status: 500,
+      body: { detail: 'injected row update failure' },
+    });
+    await row.getByRole('button', { name: /^include$/i }).click();
+    await expect(row.getByRole('alert'), 'the exact row reports the PATCH failure').toBeVisible();
+    expect(
+      requests.matching(new RegExp(`/api/v1/sources/${id}(?:\\?|$)`)).filter((request) => request.method() === 'PATCH'),
+      'an actual PATCH was attempted for the uploaded source',
+    ).toHaveLength(1);
+    await expect(search, 'search text survived the failure').toHaveValue(query);
+    await expect(sourceType, 'source-type filter survived the failure').toHaveValue(meta.source_type);
 
-    await expect(page.getByPlaceholder(/keyword/i), 'search text survived the failure').toHaveValue('synthetic');
     await restore();
+    await row.getByRole('button', { name: /retry include/i }).click();
+    await expect(row.getByRole('button', { name: /^included$/i }), 'retry succeeded').toBeDisabled();
+    await expect(search, 'search text survived recovery').toHaveValue(query);
+    await expect(sourceType, 'source-type filter survived recovery').toHaveValue(meta.source_type);
+    expect(
+      requests.matching(new RegExp(`/api/v1/sources/${id}(?:\\?|$)`)).filter((request) => request.method() === 'PATCH'),
+      'retry sent one additional PATCH for the same source',
+    ).toHaveLength(2);
   });
 });
 
@@ -206,21 +234,35 @@ test.describe('EU-L/L3 matter filter and row badge failures', () => {
   });
 
   test('L3.2/L3.3/L3.4 row badge failure: per-row, no raw trace, accessible [INJECTED_FAULT]', async ({ page }) => {
-    declareMode('INJECTED_FAULT', 'fails per-row source-matters with a traceback body');
-    const { meta } = await seedSource(page, 'text');
-    const restore = await injectFailure(page, /\/api\/v1\/sources\/[^/]+\/matters/, {
+    test.setTimeout(60_000);
+    declareMode('INJECTED_FAULT', 'exact-source matter-badge failure followed by successful retry');
+    const { id, meta } = await seedSource(page, 'text');
+    const endpoint = new RegExp(`/api/v1/sources/${id}/matters(?:\\?|$)`);
+    const restore = await injectFailure(page, endpoint, {
       status: 500,
       body: { detail: 'Traceback (most recent call last): File "app.py", line 42, in boom; SELECT * FROM sources' },
     });
     await page.goto('/evidence');
-    const row = page.locator('table tbody tr', { hasText: meta.filename }).first();
-    const text = (await row.innerText()).toLowerCase();
-    expect(text, 'row shows feedback').toMatch(/(failed|error|unavailable|retry|!)/i);
-    expect(text, 'no raw server trace leaked').not.toMatch(/traceback|select \*|file "/i);
 
-    const alert = page.locator('[role=alert], [aria-live]').first();
-    expect(await alert.count(), 'feedback is announced').toBeGreaterThan(0);
+    const row = page.locator('table tbody tr', { has: page.locator(`a[href="/evidence/${id}"]`) });
+    await expect(row, 'the exact uploaded source row is visible').toContainText(meta.filename);
+    const badgeError = row.getByTestId(`badge-error-${id}`);
+    await expect(badgeError.getByRole('alert'), 'badge failure is announced in the exact row').toContainText(
+      /couldn.t load linked matters/i,
+    );
+    const retry = badgeError.getByRole('button', { name: /retry loading linked matters/i });
+    await expect(retry, 'badge exposes an accessible retry').toBeVisible();
+    await expect.soft(badgeError, 'raw traceback and SQL must not be exposed').not.toContainText(
+      /traceback|select \*|file ["']/i,
+    );
+
     await restore();
+    await retry.click();
+    await expect(
+      row.getByLabel(new RegExp(`^No linked matters for ${escapeRegex(pathStem(meta.filename))}$`, 'i')),
+      'retry recovers the correct source badge to its confirmed-empty association state',
+    ).toBeVisible();
+    await expect(row.getByTestId(`badge-error-${id}`)).toHaveCount(0);
   });
 });
 

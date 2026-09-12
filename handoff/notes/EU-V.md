@@ -185,15 +185,70 @@ visible, a list error with out-of-date feedback, and the row-local
 `Saved result — may be out of date` chip. Assertions were not weakened. Raw logs
 remain outside Git under `/home/user/eu-v-runs/`.
 
-List failures on the initial integrated-tree run — L1.5 is now corrected and
-passes its bounded rerun; the others remain pending:
+### Bounded L2.5 and L3.2–L3.4 batch — 2026-09-12
+
+Current coordination was read from integration `handoff/STATUS.md` at
+**2b7381e59ac187eda038c8bb1b458798f5a3f534**. Revisions were held at product
+**a040e9f739ec3741cd28ee99756d256ea8b78d43** and verifier base
+**3c405cf76ada6651cd0f4204bb5316aa32a77d76**. After another metadata/workspace
+reset, a temporary checkpoint index proved the working files byte-identical to
+`3c405cf`; the branch ref/index were reconstructed without checkout/reset. The
+isolated dependencies and stack were then rebuilt under a 900-second cap because
+no healthy process or prior raw output remained:
+
+```text
+$ timeout 900 bash -c 'set -euo pipefail; python3 -m venv .venv;
+  .venv/bin/pip install --quiet --upgrade pip;
+  .venv/bin/pip install --quiet -r requirements-dev.txt pgserver redislite;
+  npm ci --ignore-scripts --no-audit --no-fund;
+  .venv/bin/python scripts/agent_pg.py start; bash scripts/eu_browser_setup.sh;
+  .venv/bin/python scripts/eu_browser_stack.py start'
+  exit 0
+```
+
+Exact execution command (single 25-second batch, one worker, no retries, one
+maximum failure; each case also has `test.setTimeout(60_000)`):
+
+```text
+$ timeout 300 bash scripts/eu_browser_run.sh \
+    --grep 'L2.5|L3.2/L3.3/L3.4' --retries=0 --workers=1 \
+    --max-failures=1 --reporter=line eu-acceptance-list.spec.ts
+  exit 1; 1 passed / 1 failed (24.5s)
+```
+
+Raw synthetic log: `/home/user/eu-v-runs/v-list-20260912T232437Z/cases.log`.
+Setup and cleanup logs are alongside it; none are committed.
+
+* **L2.5 — PASS (fixture/spec defect corrected).** A uniquely named synthetic
+  TXT was correlated to the actual POST response ID. The exact ID-linked row
+  matched both title search and source-type filter. One injected PATCH failed and
+  produced row feedback; after removing the fault, explicit Retry sent exactly
+  one further PATCH, reached `Included`, and preserved both control values.
+* **L3.2/L3.3/L3.4 — FAIL (product candidate).** Exact-row error and accessible
+  Retry were present. Redacted excerpt: `Couldn’t load linked matters … Traceback
+  … File … SELECT * … Retry`; raw traceback/SQL was exposed, violating L3.3.
+  A soft security assertion allowed cleanup/recovery proof to continue: after
+  fault removal Retry recovered that exact ID's badge to the confirmed-empty `No
+  linked matters for …` state and removed its error node. The assertion remained
+  failed; no product edit or weakening was made.
+
+`seedSource()` now creates a unique synthetic filename and obtains the source ID
+from the upload response before locating the row. All detail, list, OCR and
+browser-tooling cases that call this shared helper are impacted; only L2.5 and
+the L3.2–L3.4 group were rerun under this authorization.
+
+Cleanup: disposable stack stop **exit 0**, PostgreSQL stop **exit 0**; database
+and storage removed. No EU-V-owned test/API/worker/database process remains.
+
+List failures on the initial integrated-tree run — L1.5 and L2.5 now pass their
+bounded reruns; L3.2–L3.4 is a scoped product candidate; others remain pending:
 
 | Case | Mode | Observed |
 |---|---|---|
 | L1.2 empty state (fresh workspace) | REAL_API | Empty-state copy/params under review |
 | L1.5 retained stale rows labelled | INJECTED_FAULT | Initial reload-based spec invalid; corrected real background-refetch case passed 1/1 |
-| L2.5 retry preserves query/filters | INJECTED_FAULT | Filters not preserved as expected after a row-action failure |
-| L3.2/L3.3/L3.4 row badge failure | INJECTED_FAULT | Row-level badge failure feedback not matched |
+| L2.5 retry preserves query/filters | INJECTED_FAULT | Corrected exact-ID failure/retry case passed 1/1; both controls preserved |
+| L3.2/L3.3/L3.4 row badge failure | INJECTED_FAULT | Accessible scoped failure and recovery worked, but raw traceback/SQL leaked: product candidate |
 | L4.7 duplicate warnings retained | REAL_API | Duplicate banner locator not matched |
 | L4.8 original navigation preserved | REAL_API | `toHaveURL(/\/evidence\/<id>/)` did not match |
 
@@ -232,23 +287,20 @@ $ .venv/bin/python scripts/eu_browser_stack.py stop
    and resolves via `NODE_PATH`. No CI file, manifest or lockfile is touched; the
    existing five CI jobs are untouched. An additive `evidence-ui` job remains a
    separate, later approval.
-2. **Native PDF rendering** stays with EU-M: the sandbox Chromium reports
-   `pdfViewerEnabled=false`. D3.1–D3.7 still run here (no auto-download, opt-in
-   gating, object-URL lifecycle, labels, fallback, unchanged attachment
-   headers). On a Mac, `bash scripts/eu_browser_setup.sh playwright-download`
-   installs a full managed Chromium **with** the PDF viewer.
-3. **EU-L §3 baseline finding (unchanged, now machine-checked)**: on the current
-   tree `L4.1 upload works by keyboard only` fails — the hidden
-   `input[type=file]` opens no chooser from keyboard focus. The integrator's own
-   review reached the same conclusion for a different pending-upload path; this
-   is the keyboard finding, reported not worked around.
+2. **Native PDF rendering is not established here:** sandbox Chromium reports
+   `pdfViewerEnabled=false`. The owner has issued a **limited synthetic preview
+   release**, not full acceptance; current integration instructions govern that
+   separately.
+3. **Keyboard upload remains not run correctly.** Exercising the hidden
+   `input[type=file]` does not establish whether the visible upload button works
+   by keyboard. A future authorized case must focus and activate that visible
+   control and assert the exact focus/chooser path.
 
 ## Risks / follow-ups
 
-* Selectors/copy in the product specs are behaviour-first (roles and labels) and
-  were written before seeing the EU-D/EU-L UI. After the D+L merge I will
-  reconcile labels and, if a required control genuinely does not exist, report it
-  as a finding against the owning clause — never weaken the assertion.
+* Product checkpoint `a040e9f739ec3741cd28ee99756d256ea8b78d43` is already
+  supplied. Remaining cases require separate bounded authorization; no merged
+  SHA request or aggregate acceptance claim remains.
 * The acceptance run is serial and long: `eu-acceptance-detail.spec.ts` took
   ~19 min on the failing baseline (many 20 s expectation timeouts); the OCR
   timeout case alone costs ~135 s. Fine post-merge, slow while red.
@@ -259,25 +311,21 @@ $ .venv/bin/python scripts/eu_browser_stack.py stop
   recompiles between navigations; restarting the stack clears it. Product specs
   separate that dev-server noise from real console errors and annotate it.
 * `playwright-download` cannot succeed in this sandbox (all browser CDNs except
-  npm are unreachable); the Mac path is therefore unverified here and must be
-  confirmed by EU-M.
+  npm are unreachable). Owner preview activity is limited to the separately
+  authorized synthetic preview; this is not full EU-V acceptance.
 
 ## What the next agent must know
 
-* **Integrator:** please supply the corrected D+L merged SHA. On that tip I will
-  run `bash scripts/eu_browser_setup.sh` →
-  `.venv/bin/python scripts/eu_browser_stack.py start` →
-  `bash scripts/eu_browser_run.sh`, and report every checklist case as
-  pass/fail/blocked with its proof mode, then
-  `.venv/bin/python scripts/eu_browser_stack.py stop` (fixture cleanup).
+* **Integrator:** product checkpoint `a040e9f739ec3741cd28ee99756d256ea8b78d43`
+  is supplied and preserved. Issue the next bounded scope before any remaining
+  list, detail, or OCR execution; this batch is not final acceptance.
 * **EU-D / EU-L:** the specs live only in `tests/browser/eu-acceptance-*`.
   Failures will be reported to you through the integrator with case ID, steps,
   observed vs expected and a trace excerpt; I will not edit your pages or your
   tests (`tests/browser/eu-d-*`, `eu-list-*`).
-* **EU-M (local Mac):** `bash scripts/eu_browser_setup.sh playwright-download`
-  installs a managed Chromium; then the same stack/run commands work with
-  `make infra-up` Postgres and a system `redis-server`. Please cover native PDF
-  preview rendering, the keyboard upload chooser (L4.1) and Safari downloads.
+* **Owner preview:** only the limited synthetic preview in current integration
+  instructions is released. It does not establish full acceptance, real-data
+  safety, extraction, or the incorrectly targeted keyboard case.
 * **Anyone running the guards:** `EU_V_ALLOW_NO_STACK=1 bash
   scripts/eu_browser_run.sh eu-acceptance-tooling-guards.spec.ts` (they start
   their own throwaway stack on ephemeral ports). They need a reachable admin

@@ -336,19 +336,35 @@ export function sourceState(sourceId: string): {
   return rows[0] ?? {};
 }
 
-/** Upload a synthetic fixture through the list page and open its detail page. */
+/** Upload a uniquely named synthetic fixture and correlate the response ID. */
 export async function seedSource(
   page: Page,
   kind: 'text' | 'pdf' | 'image',
 ): Promise<{ id: string; meta: FixtureMeta }> {
-  const meta = fixture(kind);
+  const base = fixture(kind);
+  const parsed = path.parse(base.filename);
+  const filename = `${parsed.name}-${crypto.randomUUID()}${parsed.ext}`;
+  const uniquePath = path.join(path.dirname(base.path), filename);
+  fs.copyFileSync(base.path, uniquePath);
+  const meta = { ...base, path: uniquePath, filename };
+
   await page.goto('/evidence');
+  const uploadResponse = page.waitForResponse(
+    (response) =>
+      /\/api\/v1\/sources(?:\?|$)/.test(response.url()) &&
+      response.request().method() === 'POST',
+    { timeout: 60_000 },
+  );
   await uploadViaInput(page, 'input[type=file]', meta.path);
-  const row = page.locator('table tbody tr', { hasText: meta.filename }).first();
-  await expect(row).toBeVisible({ timeout: 60_000 });
-  const href = await row.locator('a').first().getAttribute('href');
-  if (!href) throw new Error(`row for ${meta.filename} has no detail link`);
-  const id = href.split('/').filter(Boolean).pop()!;
+  const response = await uploadResponse;
+  expect(response.status(), 'synthetic upload response').toBeLessThan(400);
+  const uploaded = (await response.json()) as { id?: string };
+  expect(uploaded.id, 'upload response carries the created source ID').toBeTruthy();
+  const id = String(uploaded.id);
+
+  const row = page.locator('table tbody tr', { has: page.locator(`a[href="/evidence/${id}"]`) });
+  await expect(row, `row for uploaded source ${id}`).toBeVisible({ timeout: 60_000 });
+  await expect(row).toContainText(filename);
   return { id, meta };
 }
 
