@@ -521,3 +521,112 @@ test("INJECTED row badge failure is distinct from “no linked matters” and re
     timeout: 30_000,
   });
 });
+
+// ---------------------------------------------------------------------------
+// 2026-09-12 review follow-up — retry shares the guarded submission path.
+// The retry buttons call the SAME guarded entry function as first attempts
+// (upload: handleFile; row: submit), so a retry can never bypass the
+// single-flight lock. Interception below is used only to COUNT passthrough
+// requests and to hold a response; every request that is counted/released is
+// handled by the REAL API — outcomes are real.
+// ---------------------------------------------------------------------------
+
+test("GUARDED-RETRY same-tick double activation of upload retry starts exactly one upload", async ({
+  page,
+}) => {
+  const name = `${STAMP}-guarded-retry.txt`;
+
+  // Phase 1 (INJECTED): make the first upload fail so the retry exists.
+  await page.route("**/api/v1/sources", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    return route.abort("connectionrefused");
+  });
+  await gotoEvidence(page);
+  await keyboardUpload(page, name, `Synthetic guarded-retry fixture ${STAMP}\n`);
+  await expect(page.getByTestId("upload-error")).toBeVisible({ timeout: 30_000 });
+
+  // Phase 2: counting passthrough that HOLDS the first POST response; the
+  // real API handles every request once released.
+  let posts = 0;
+  let release: (() => void) | null = null;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  await page.unroute("**/api/v1/sources");
+  await page.route("**/api/v1/sources", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    posts += 1;
+    if (posts === 1) {
+      await held;
+      return route.fallback();
+    }
+    return route.fallback();
+  });
+
+  // Same-tick double activation of the RETRY button (two clicks dispatched
+  // before any re-render can interleave). The retry must go through the same
+  // single-flight guard as first attempts: exactly ONE request, the second
+  // attempt visibly refused.
+  const retryButton = page.getByRole("button", { name: `Retry upload of ${name}` });
+  await expect(retryButton).toBeVisible();
+  await retryButton.evaluate((el) => {
+    el.click();
+    el.click();
+  });
+
+  await expect(page.getByTestId("upload-pending")).toContainText(name, { timeout: 30_000 });
+  expect(posts).toBe(1);
+  await expect(page.getByTestId("upload-blocked")).toContainText("already in progress");
+  await expect(page.getByTestId("upload-blocked")).toContainText(name);
+  await expect(page.getByTestId("upload-button")).toBeDisabled();
+
+  // Release: the retried upload completes through the real API.
+  release?.();
+  await expect(page.getByTestId("upload-success")).toContainText(name, { timeout: 30_000 });
+  await expect(page.getByTestId("upload-blocked")).toHaveCount(0);
+  expect(posts).toBe(1);
+
+  const list = (await (await fetch(`${API}/sources`)).json()) as SourceRow[];
+  expect(list.filter((s) => s.original_filename === name)).toHaveLength(1);
+});
+
+test("GUARDED-RETRY row same-tick double activation sends exactly one PATCH; lock releases", async ({
+  page,
+}) => {
+  const name = `${STAMP}-row-guarded.txt`;
+  const created = await apiUpload(name, `Synthetic row-guarded fixture ${STAMP}\n`);
+
+  // Counting passthrough: the real API answers every PATCH (interception is
+  // only a counter).
+  let patches = 0;
+  await page.route("**/api/v1/sources/*", async (route) => {
+    if (route.request().method() !== "PATCH") return route.fallback();
+    patches += 1;
+    return route.fallback();
+  });
+
+  await gotoEvidence(page);
+  await page.getByLabel("Search titles").fill(titleOf(name));
+  const row = page.locator("tr", { hasText: name });
+  await expect(row).toBeVisible({ timeout: 30_000 });
+
+  // Same-tick double activation of the row's Include action (the retry and
+  // the buttons share one guarded submission path — submit()).
+  const includeBtn = row.getByTestId(`include-${created.id}`);
+  await includeBtn.evaluate((el) => {
+    el.click();
+    el.click();
+  });
+
+  await expect(includeBtn).toHaveText("Included", { timeout: 30_000 });
+  expect(patches).toBe(1);
+
+  // The lock released after settle: the opposite transition still works.
+  const excludeBtn = row.getByTestId(`exclude-${created.id}`);
+  await excludeBtn.click();
+  await expect(excludeBtn).toHaveText("Excluded", { timeout: 30_000 });
+  expect(patches).toBe(2);
+
+  const list = (await (await fetch(`${API}/sources`)).json()) as SourceRow[];
+  const final = list.find((s) => s.id === created.id);
+  expect(final?.excluded_flag).toBe(true);
+  expect(final?.included_flag).toBe(false);
+});

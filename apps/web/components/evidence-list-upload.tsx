@@ -16,6 +16,11 @@ import { Notice, RetryButton, describeError, outcomeKnown } from "./evidence-lis
 // in the same tick could both observe "idle" — the ref closes that window.
 // onSettled fires on success AND error, so the lock cannot get stuck.
 //
+// RETRY USES THE SAME GUARDED PATH: the retry button calls handleFile() (the
+// single entry point for submissions), never upload.mutate() directly, so a
+// retry observes the same single-flight lock, size guard and state resets as
+// any first attempt (2026-09-12 review follow-up).
+//
 // Failure copy distinguishes PROVEN outcomes (4xx server rejection: "the file
 // was not added") from RESPONSE-LOSS outcomes (network failure / 5xx: the
 // server may have committed before the connection dropped — "not known
@@ -211,7 +216,9 @@ export function EvidenceUpload() {
                 </button>
                 <RetryButton
                   label={`Retry upload of ${attemptedFile.name}`}
-                  onRetry={() => upload.mutate(attemptedFile)}
+                  // Same guarded submission path as any first attempt: the
+                  // single-flight lock, size guard and state resets all apply.
+                  onRetry={() => handleFile(attemptedFile)}
                   pending={upload.isPending}
                 />
               </>

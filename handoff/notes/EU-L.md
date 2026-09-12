@@ -10,6 +10,37 @@ Revision history:
 - `73418b9` — merge of integration commit `7ed39b1` (preserves `ab9164b`;
   see "Branch reconciliation" below)
 - Fix SHA: `ea9c8f1965d4340e8eae136f423d9eaed822a52f` (on top of `73418b9`)
+- 2026-09-12 follow-up — retry through the guarded submission path: SHA
+  recorded at commit (below)
+
+## What changed — 2026-09-12 follow-up (retry uses the guarded path)
+
+Review follow-up: retries previously called `upload.mutate()` /
+`update.mutate()` directly, bypassing the single-flight guards introduced in
+`ea9c8f1`.
+
+- `apps/web/components/evidence-list-upload.tsx` — the upload retry button now
+  calls `handleFile(attemptedFile)` (the same entry point as button change /
+  drop / picker selection), so a retry observes the same single-flight lock,
+  size guard and state resets as any first attempt.
+- `apps/web/components/evidence-list-row.tsx` — one guarded submission path
+  `submit(include)` per row: the Include/Exclude buttons AND the retry all go
+  through it; a synchronous `inFlightRef` (set before `mutate`, released in
+  the mutation's `onSettled` on success AND failure) blocks same-tick
+  re-activation. Nothing in the component calls `update.mutate` directly.
+- Regression tests (`tests/browser/eu-list-failures.spec.ts`, labelled
+  GUARDED-RETRY; interception is a counter/hold only — every counted request
+  is answered by the REAL API):
+  1. Same-tick double activation of the upload RETRY (two clicks before any
+     re-render), first response held: exactly ONE POST, blocked feedback
+     naming the file, button disabled + `aria-busy`; after release the retried
+     upload completes and the API holds exactly one source record.
+  2. Same-tick double activation of a row Include: exactly ONE PATCH; the
+     lock releases after settle and the opposite transition still works
+     (second PATCH, final state verified via the API).
+  Red/green proof: with the guarded path both tests pass; with a throwaway
+  revert to direct `mutate()` wiring both FAIL with "Expected: 1, Received:
+  2" — they catch the old bypass.
 
 ## What changed (this revision)
 
