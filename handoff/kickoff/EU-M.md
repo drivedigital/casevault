@@ -2,6 +2,13 @@
 
 **Assignee:** existing local tester/agent. Two phases; no product edits.
 
+## Current hold — 2026-09-12
+
+Owner has explicitly deferred EU-M and local environment startup until the
+integrator supplies a substantive integrated testing point, exact SHA and
+focused checklist. Do not start Phase A or B now. The checklist below is retained
+for that later run; this hold supersedes its previous “now” timing.
+
 ## Paste-ready assignment
 
 Read `docs/contracts/evidence_ui_closure.md`. Work is report-only; use your

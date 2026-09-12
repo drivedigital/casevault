@@ -7,7 +7,7 @@
 | Brief | Assignment | Suggested agent | Start/status |
 |---|---|---|---|
 | EU-D | Detail: Status, downloads/PDF, errors, OCR refresh | `01a08cdf` / PR #18 `5e7036c` | Changes requested: body timeout, late-preview cleanup, abortable OCR polling |
-| EU-L | List/upload/row/matter error handling | `01a08ce1` / PR #17 `ab9164b` | Changes requested: pending-drop upload bypass, uncertainty copy and keyboard proof |
+| EU-L | List/upload/row/matter error handling | `01a08ce1` / PR #17 `6bd3cdf` | Re-review: initial drop guard fixed; Retry still bypasses lock; changes requested |
 | EU-V | Independent browser acceptance | `01a08ce3` / PR #19 `a434ae1` | Preparation delivered; tooling fixes requested; final acceptance not done |
 | EU-M | Native Mac Reprocess + local browser proof | Existing local tester | Exact worker reproduction now; new UI proof after D+L |
 
@@ -127,3 +127,6 @@ Reviews each PR against contract + write set, merges in the fixed order,
 re-runs `scripts/verify_all.sh` after every merge, sequences contract changes,
 resolves shared-surface conflicts, maintains the handoff docs, and hands the
 integrated wave to the local tester.
+
+2026-09-12 owner update: **EU-M / local environment on hold** until integrator
+supplies a substantive corrected D+L integrated SHA and focused checklist.

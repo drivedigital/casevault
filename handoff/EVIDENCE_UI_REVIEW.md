@@ -87,3 +87,34 @@ Diagnostics and scratch tools live outside tracked repo. Temporary review web
 servers/browser processes stopped; no persistent product services left running.
 No new dependency manifests, lockfiles, feature changes, or skipped-assertion
 workarounds added to integration.
+
+## EU-L revision re-review — 2026-09-12
+
+Reviewed PR 17 revision `6bd3cdfd77718c3f41bb87a752fd668d72b2bb5c` on
+integration `7ed39b1`. Strict independent gate: **119 passed, no skips**, migration
+round-trip, Ruff, web lint/typecheck/build pass (pre-existing detail img warning).
+Original same-tick double-drop now produces ONE POST. Response-loss uncertainty
+copy and title-search label corrected. Agent reports 16 browser tests; that full
+suite was not independently rerun here.
+
+**Remaining blocker independently reproduced:** after an injected initial upload
+failure, click the Retry button and dispatch another synthetic file drop in the
+same browser evaluation/task. Two uploads remain pending (three POSTs total,
+including failed original). Retry invokes `upload.mutate(attemptedFile)` directly,
+bypassing the synchronous inFlightRef guard used by normal submissions. Fix by
+routing retry through the same guarded path; cover retry+drop/rapid retries and
+lock release after success/failure. PR comment:
+https://github.com/drivedigital/casevault/pull/17#issuecomment-5644130294
+
+Proof: actual production Next UI and Chromium 152; labelled injected route abort
+and held responses, no real backend/data in browser probe. Scratch script
+`/home/user/eu-review-tools/list-revision-probe.mjs`; strict gate log
+`/home/user/eul-revision-gate.log` (outside Git). Candidate aborted, no merge.
+Review web/browser stopped. Restored stale Git metadata again reconciled only
+after backup and temporary-index equality check against remote integration.
+
+**Owner sequencing decision:** EU-M and local environment startup are on hold
+until a substantive integrated testing point. Do not request Phase A testing now.
+Integrator will supply an exact corrected D+L integrated SHA and focused checklist
+when useful. Native browser/PDF and exact Mac worker reproduction remain unverified
+until then, not waived.

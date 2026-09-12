@@ -859,3 +859,14 @@ All candidate merges aborted, no product code integrated. Fix requests posted to
 PRs 17/18/19. Detailed proof and scope approvals: EVIDENCE_UI_REVIEW.md. EU-V final
 acceptance tests remain future work after corrected D+L merge; local native PDF
 proof remains separate. Preview servers stopped; scratch dependencies only.
+
+## 2026-09-12 — EU-L revision still blocked; local testing deferred
+
+Reviewed PR 17 revision 6bd3cdf against 7ed39b1. Independent strict gate 119 passed
+(no skips), migrations/Ruff/web green. Browser confirms original rapid double-drop
+fixed but reproduces TWO pending uploads after failed upload -> same-tick Retry +
+drop. Retry bypasses new synchronous guard. Requested centralized submission path
+and regression on existing PR (comment 5644130294); candidate aborted, no merge.
+See EVIDENCE_UI_REVIEW.md for exact proof/limits. Owner explicitly holds EU-M and
+local environment startup until substantive integrated testing point; no Phase A
+request now. Integrator to supply exact corrected D+L SHA/checklist then.
