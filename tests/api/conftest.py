@@ -1,13 +1,19 @@
 """API test fixtures.
 
-Tests run against a REAL Postgres (TEST_DATABASE_URL or DATABASE_URL env,
-defaulting to the local docker postgres target db `casevault_test`).
+Tests require an explicit TEST_DATABASE_URL naming a disposable test/CI database.
 The schema is created from model metadata and all rows are deleted between
 tests — migrations themselves are verified separately by CI's
 `alembic upgrade head` step.
 """
 import os
+
+# Validate before app imports or any database connection.
+import runpy
 import tempfile
+from pathlib import Path
+
+_guard = runpy.run_path(str(Path(__file__).resolve().parents[2] / "scripts/test_database_guard.py"))
+TEST_DATABASE_URL = _guard["require_disposable_database"](os.environ.get("TEST_DATABASE_URL"))
 
 # Redirect evidence storage to a scratch dir BEFORE the app/settings import
 # so upload tests never write into the real ./data tree.
@@ -22,12 +28,6 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
 
-TEST_DATABASE_URL = os.environ.get(
-    "TEST_DATABASE_URL",
-    os.environ.get(
-        "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/casevault_test"
-    ),
-)
 # pytest runs other files (health tests) which don't need a DB; only this
 # fixture requires one, and it fails loudly if postgres is down (that is the
 # intended local/CI contract: make infra-up first).

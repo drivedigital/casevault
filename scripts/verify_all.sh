@@ -22,9 +22,11 @@ fail() { echo; echo "GATE FAILED: $*"; exit 1; }
 [ -x "$PY" ] || fail "no venv — run: bash scripts/setup_local.sh"
 
 echo "==> Database"
-if [ -n "${DATABASE_URL:-}" ] && [ "${DATABASE_URL}" != *"pgdata"* ]; then
+if [ -n "${TEST_DATABASE_URL:-}" ]; then
   echo "    using provided DATABASE_URL (compose path)"
-  TEST_URL="${TEST_DATABASE_URL:-$DATABASE_URL}"
+  TEST_URL="$TEST_DATABASE_URL"
+elif [ -n "${DATABASE_URL:-}" ]; then
+  fail "Set TEST_DATABASE_URL explicitly; refusing application DATABASE_URL fallback"
 else
   if ! $PY scripts/agent_pg.py status >/dev/null 2>&1; then
     echo "    starting embedded postgres (no docker available)"
@@ -42,6 +44,8 @@ else
     || { cat /tmp/cv_create.log; fail "could not create casevault_test"; }
   echo "    fresh casevault_test created"
 fi
+export TEST_DATABASE_URL="$TEST_URL"
+$PY scripts/test_database_guard.py
 export DATABASE_URL="$TEST_URL"
 export TEST_DATABASE_URL="$TEST_URL"
 

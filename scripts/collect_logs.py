@@ -45,6 +45,7 @@ def run(cmd: list[str]) -> str:
 
 
 def redact(text: str) -> str:
+    text = re.sub(r"([a-zA-Z][a-zA-Z0-9+.-]*://)[^\s/@]+@", r"\1<REDACTED>@", text)
     # patterns 0-2 match full secret tokens: replace the whole match
     for pattern in SECRET_PATTERNS[:3]:
         text = pattern.sub("<REDACTED>", text)
@@ -62,6 +63,10 @@ def gather_logs(bundle: Path) -> list[str]:
         if not source_dir.exists():
             continue
         for log_file in sorted(source_dir.rglob("*")):
+            if log_file.is_symlink() or log_file.suffix.lower() not in {".log", ".txt"}:
+                continue
+            if any(word in log_file.name.lower() for word in ("secret", "credential", ".env", "token", "password")):
+                continue
             if not log_file.is_file():
                 continue
             found += 1
@@ -92,7 +97,7 @@ def write_config_summary(bundle: Path) -> None:
             key, _, val = line.partition("=")
             key = key.strip()
             sensitive = any(m in key.upper() for m in ("KEY", "SECRET", "TOKEN", "PASSWORD"))
-            summary[key] = "<REDACTED>" if (sensitive and val.strip()) else val.strip()
+            summary[key] = "<REDACTED>" if (sensitive and val.strip()) else redact(val.strip())
     (bundle / "config_summary_redacted.json").write_text(
         json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8"
     )

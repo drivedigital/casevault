@@ -1,94 +1,132 @@
 #!/usr/bin/env python3
-"""Back up the local workspace: Postgres dump + data/ archive.
+"""Create a complete local backup. Stop writers first for DB/file consistency.
 
-Output goes to data/backups/<timestamp>/ (git-ignored like everything else
-under data/). Backups contain real evidence — handle them accordingly.
-
-    python scripts/backup_workspace.py           # dry run: print the plan
-    python scripts/backup_workspace.py --yes     # actually run
-
-Status: Phase 0 scaffold. TODOs: verify dump integrity (pg_restore --list),
-retention/pruning policy, optional encrypted destination.
+Dry run by default; --yes writes db.dump, data_archive.tar.gz and a manifest.
+A .partial directory is retained on failure and is never reported as complete.
+pg_restore --list validates dump structure, not a full restore; see local ops guide.
 """
 import argparse
+import hashlib
+import json
 import os
 import shutil
 import subprocess
 import sys
 import tarfile
-import time
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import parse_qsl, unquote, urlsplit
+
+from dotenv import dotenv_values
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
 def load_database_url() -> str:
-    for path in (ROOT / ".env.local", ROOT / ".env"):
-        if path.exists():
-            for line in path.read_text(encoding="utf-8").splitlines():
-                if line.strip().startswith("DATABASE_URL="):
-                    return line.split("=", 1)[1].strip()
-    return os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/casevault")
+    values = {**dotenv_values(ROOT / '.env'), **dotenv_values(ROOT / '.env.local'), **os.environ}
+    return values.get('DATABASE_URL') or 'postgresql://postgres:postgres@localhost:5432/casevault'
+
+
+def backup(database_url: str, storage: Path, destination: Path, postgres_container: str | None = None) -> Path:
+    """Back up to a new directory; never overwrite an earlier backup."""
+    dump, restore = shutil.which('pg_dump'), shutil.which('pg_restore')
+    if not postgres_container and (not dump or not restore):
+        raise RuntimeError('pg_dump and pg_restore are required; no backup created')
+    if not storage.is_dir():
+        raise RuntimeError('Storage directory does not exist')
+    if destination.exists():
+        raise RuntimeError('Backup destination already exists')
+    if destination.resolve().is_relative_to(storage.resolve()):
+        relative = destination.resolve().relative_to(storage.resolve())
+        if len(relative.parts) > 1 and relative.parts[0] != 'backups':
+            raise RuntimeError('Nested backup destinations must be under storage/backups')
+    partial = destination.with_name(destination.name + '.partial')
+    partial.mkdir(parents=True, mode=0o700)
+    # Keep connection credentials out of command arguments, console output and manifest.
+    parsed = urlsplit(database_url)
+    env = {**os.environ, 'PGDATABASE': unquote(parsed.path.lstrip('/')),
+           'PGHOST': parsed.hostname or 'localhost', 'PGPORT': str(parsed.port or 5432)}
+    if parsed.username is not None:
+        env['PGUSER'] = unquote(parsed.username)
+    if parsed.password is not None:
+        env['PGPASSWORD'] = unquote(parsed.password)
+    for key, value in parse_qsl(parsed.query):
+        if key not in {'sslmode', 'sslrootcert', 'sslcert', 'sslkey', 'connect_timeout', 'gssencmode'}:
+            raise RuntimeError('Unsupported database connection option; backup refused')
+        env['PG' + key.upper()] = value
+
+    if postgres_container:
+        with (partial / 'db.dump').open('wb') as output:
+            result = subprocess.run(['docker', 'exec', postgres_container, 'pg_dump',
+                                     '-U', env.get('PGUSER', 'postgres'), '-d', env['PGDATABASE'],
+                                     '--format=custom'], stdout=output, stderr=subprocess.PIPE, check=False)
+    else:
+        result = subprocess.run([dump, '--format=custom', '--file', str(partial / 'db.dump')],
+                                env=env, capture_output=True, check=False)
+    if result.returncode or not (partial / 'db.dump').is_file() or (partial / 'db.dump').stat().st_size == 0:
+        raise RuntimeError('Database dump failed; incomplete backup retained as .partial')
+    if postgres_container:
+        with (partial / 'db.dump').open('rb') as source:
+            result = subprocess.run(['docker', 'exec', '-i', postgres_container, 'pg_restore', '--list'],
+                                    stdin=source, capture_output=True, check=False)
+    else:
+        result = subprocess.run([restore, '--list', str(partial / 'db.dump')],
+                                capture_output=True, check=False)
+    if result.returncode:
+        raise RuntimeError('Database dump validation failed; incomplete backup retained as .partial')
+    archive = partial / 'data_archive.tar.gz'
+    with tarfile.open(archive, 'w:gz', dereference=False) as tar:
+        for item in sorted(storage.iterdir()):
+            if item.name == 'backups' or item.resolve() in (partial.resolve(), destination.resolve()):
+                continue
+            tar.add(item, arcname=f'data/{item.name}')
+    with tarfile.open(archive, 'r:gz') as tar:
+        for member in tar:
+            if member.isfile():
+                handle = tar.extractfile(member)
+                if handle:
+                    while handle.read(1024 * 1024):
+                        pass
+    files = {}
+    for name in ('db.dump', 'data_archive.tar.gz'):
+        with (partial / name).open('rb') as handle:
+            files[name] = hashlib.file_digest(handle, 'sha256').hexdigest()
+    (partial / 'MANIFEST.json').write_text(json.dumps({
+        'created_utc': datetime.now(timezone.utc).isoformat(),
+        'status': 'complete', 'sha256': files,
+        'validation': 'pg_restore --list and full archive read; restore drill separate',
+        'consistency': 'Stop application writers before invoking backup',
+    }, indent=2) + '\n')
+    partial.rename(destination)
+    return destination
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--yes", action="store_true", help="actually perform the backup")
+    parser.add_argument('--postgres-container', help='Use matching dump tools inside this existing Postgres container')
+    parser.add_argument('--yes', action='store_true')
+    parser.add_argument('--storage-root', type=Path)
+    parser.add_argument('--destination', type=Path)
     args = parser.parse_args()
-
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
-    backup_dir = ROOT / "data" / "backups" / timestamp
-    database_url = load_database_url()
-    pg_dump = shutil.which("pg_dump")
-
-    plan = [
-        f"1. pg_dump {database_url} -> {backup_dir}/db.dump (custom format)",
-        f"2. tar.gz data/ (excluding data/backups) -> {backup_dir}/data_archive.tar.gz",
-        "3. write manifest",
-    ]
-    print("Backup plan:")
-    print("\n".join(plan))
+    values = {**dotenv_values(ROOT / '.env'), **dotenv_values(ROOT / '.env.local'), **os.environ}
+    storage = args.storage_root or Path(values.get('LOCAL_STORAGE_ROOT') or ROOT / 'data')
+    if not storage.is_absolute():
+        storage = ROOT / storage
+    destination = args.destination or storage / 'backups' / datetime.now(timezone.utc).strftime('%Y-%m-%dT%H-%M-%S.%fZ')
+    print(f'Backup destination: {destination}')
+    print('Plan: database dump + structural validation + file archive + checksummed manifest.')
+    print('Stop application writers first; the database and files are not one atomic snapshot.')
     if not args.yes:
-        print("\nDry run. Re-run with --yes to execute.")
+        print('Dry run. Re-run with --yes to execute.')
         return 0
-
-    backup_dir.mkdir(parents=True, exist_ok=True)
-
-    # 1. database dump
-    if pg_dump:
-        print("Running pg_dump ...")
-        result = subprocess.run(
-            [pg_dump, database_url, "--format=custom", "--file", str(backup_dir / "db.dump")],
-            capture_output=True, text=True, check=False,
-        )
-        if result.returncode != 0:
-            print(f"pg_dump FAILED:\n{result.stderr}")
-            return 1
-    else:
-        print("WARNING: pg_dump not found — skipping database dump (TODO: document install requirement)")
-
-    # 2. data archive (never recurse into backups themselves)
-    print("Archiving data/ ...")
-    archive_path = backup_dir / "data_archive.tar.gz"
-    with tarfile.open(archive_path, "w:gz") as tar:
-        for item in sorted((ROOT / "data").iterdir()):
-            if item.name == "backups":
-                continue
-            tar.add(item, arcname=f"data/{item.name}")
-
-    # 3. manifest
-    (backup_dir / "MANIFEST.txt").write_text(
-        f"backup_utc: {timestamp}\ndatabase_url: {database_url}\n"
-        f"db_dump: {'db.dump' if pg_dump else 'SKIPPED (pg_dump missing)'}\n"
-        f"data_archive: data_archive.tar.gz\n",
-        encoding="utf-8",
-    )
-    print(f"\nBackup complete: {backup_dir}")
-    print("WARNING: this backup contains real evidence. Store/delete it accordingly.")
-    time.sleep(0)  # no-op; keeps linters calm about imports used above
+    try:
+        backup(load_database_url(), storage, destination, args.postgres_container)
+    except (OSError, RuntimeError, tarfile.TarError) as exc:
+        print(f'Backup FAILED: {exc}', file=sys.stderr)
+        return 1
+    print(f'Backup complete: {destination}')
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     sys.exit(main())
