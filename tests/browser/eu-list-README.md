@@ -1,14 +1,43 @@
 # EU-L browser regression suites — evidence list page
 
-Contract: `docs/contracts/evidence_ui_closure.md` v1.0 §EU-L.
+Contract: `docs/contracts/evidence_ui_closure.md` v1.0 (including the
+2026-09-11 authorized integration amendment).
 
 | File | What it proves | Network |
 |---|---|---|
-| `eu-list.spec.ts` | Keyboard-operable upload adds a source and refreshes the list; include/exclude are exclusive real-API transitions; duplicate warnings stay visible; empty vs filtered-empty are distinct; matter filter works | **Real** — real Chromium → real Next dev server → real FastAPI + Postgres. Nothing mocked. |
-| `eu-list-failures.spec.ts` | Failed list request never renders as empty; retry works; stale rows are labelled “saved”; search input survives failure/retry; upload failure names the file and retries; row mutation failure is visible+attributed+retryable; pending rows can't be double-submitted; matter-filter and row-badge failures are announced with retry | **INJECTED** — Playwright route interception aborts/stubs specific calls (labelled per test) or adds latency in front of the real API. App code and browser are real; only the network outcome is forced. |
+| `eu-list.spec.ts` (5 tests) | Keyboard-operable upload (single activation) adds a source and refreshes the list; include/exclude are exclusive real-API transitions; duplicate warnings stay visible; empty vs filtered-empty are distinct; matter filter sends `matter_id` to `GET /sources` and filtered-empty shows for a fresh matter | **Real** — real Chromium → real Next dev server → real FastAPI + Postgres. Nothing mocked. |
+| `eu-list-failures.spec.ts` (11 tests) | Failed list request never renders as empty; retry works; stale rows are labelled "saved"; search input survives failure/retry; upload response loss names the file, reports the outcome as unknown, offers refresh-before-retry, retry succeeds; 4xx upload rejection states the proven outcome; **held first upload response + second drop/picker activation cannot start a second upload (single-flight guard, 2026-09-11 review)**; row mutation response loss is honestly uncertain with refresh-first reconciliation; 4xx row rejection says "row unchanged"; slow row PATCH disables that row's buttons (one PATCH); matter-filter and row-badge failures are announced with retry | **INJECTED** — Playwright route interception aborts/stubs/delays/holds specific calls (labelled per test). App code and browser are real; only the network outcome is forced. |
 
-All fixtures are synthetic `.txt` files generated at runtime into the OS temp
-dir — no real evidence, no identifying filenames or hashes.
+All fixtures are synthetic in-memory TXT content (constructed as in-page
+`File` objects) — no real evidence, no identifying filenames or hashes.
+
+## Keyboard-upload proof — single activation (2026-09-11 review finding 5)
+
+The suites open the file picker with the keyboard **once** — no repeated
+presses, no silent fallbacks. Diagnosis behind the earlier three-attempt
+helper (measured in this sandbox, Chromium via CDP, 2026-09-12):
+
+- A genuine (CDP) Enter press **always** activated the upload button and
+  **always** invoked the product's `input.click()` — 20/20 in every measured
+  variant. The product's keyboard affordance is correct.
+- An Enter pressed *immediately* after Playwright's injected `locator.focus()`
+  loses the activation (2–4 of 8 single-activation successes, **with and
+  without route interception** — routes are not the cause); ≥50 ms of settle
+  between focus and press makes it reliable (8/8 at 50 ms, 12/12 at 250 ms
+  with routes). Residual misses were always the CDP `filechooser` event not
+  surfacing (14–19 of 20 at 500 ms) while the in-page `click` on the input
+  still fired 20/20 — i.e. a test-harness interception artefact, not product
+  behaviour.
+- The committed helpers therefore: focus → 500 ms settle → **one** Enter →
+  assert the picker opened via an in-page click listener on the file input
+  (deterministic product proof) → hand the synthetic file to the input at the
+  DOM boundary (`input.files` + `change` event), which drives the same
+  downstream React flow as the native dialog (Playwright's `setFiles()`
+  bypasses the OS dialog in exactly the same way).
+- If the single activation ever fails to open the picker, the test **fails
+  loudly** (see the `message:` on the `expect.poll`). Reliability across this
+  revision's runs: 16/16 tests × 5 consecutive full-suite runs plus 3
+  positive-suite runs — 80+ single keyboard activations, zero misses.
 
 ## Reproducible setup (versioned)
 
@@ -66,10 +95,9 @@ browser was obtained **entirely from npm** with
 `npm i -D @sparticuz/chromium` (its bundled Chromium + Amazon-Linux-2023
 library tar, extracted manually) and launched by Playwright via
 `executablePath` + `LD_LIBRARY_PATH` pointing at the extracted libs
-(`libnspr4/libnss3/libnssutil3` etc.). `chromium --version` for that binary:
-Chrome for Testing 153.0.8010.12 (Playwright chromium v1243 channel
-equivalent). No repo file depends on that path; on an unblocked machine the
-standard `npx playwright install chromium` from step 4 is equivalent.
+(`libnspr4/libnss3/libnssutil3` etc.). No repo file depends on that path; on
+an unblocked machine the standard `npx playwright install chromium` from step
+4 is equivalent.
 
 ## Not covered here (owned elsewhere / later)
 

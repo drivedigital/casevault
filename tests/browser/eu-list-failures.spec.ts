@@ -1,19 +1,21 @@
 // -----------------------------------------------------------------------------
 // EU-L negative-path browser proof — REAL browser, REAL app code, INJECTED
-// transport failures/status sequences. Contract §EU-L (1)–(3).
+// transport failures/status sequences. Contract §EU-L (1)–(3) + 2026-09-11
+// integration review findings.
 //
 // Honesty label: every test below that says "INJECTED" uses Playwright route
-// interception to abort or stub specific HTTP calls. The application code, its
-// queries, and the browser are real; only the network outcome is forced.
-// Positive-path (real API, no injection) proof lives in eu-list.spec.ts.
+// interception to abort, stub, delay, or hold specific HTTP calls (labelled
+// per test). The application code, its queries, and the browser are real;
+// only the network outcome is forced. Positive-path (real API, no injection)
+// proof lives in eu-list.spec.ts.
 //
-// Fixtures are synthetic; nothing here touches real evidence.
+// Keyboard-upload proof uses a SINGLE activation — see keyboardUpload() and
+// the diagnosis comment in eu-list.spec.ts / handoff/notes/EU-L.md (the
+// earlier three-attempt allowance was a harness artefact and is gone).
+// Fixtures are synthetic in-memory TXT content; nothing touches real evidence.
 // Setup: see tests/browser/eu-list-README.md.
 // -----------------------------------------------------------------------------
 
-import { writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
 const API = process.env.EU_API_BASE ?? "http://localhost:8100/api/v1";
@@ -44,25 +46,64 @@ async function apiUpload(name: string, content: string): Promise<SourceRow> {
   return (await resp.json()) as SourceRow;
 }
 
-/** Opens the file picker with the keyboard only (Enter on the upload button).
- *  With Playwright route interception active, this Chromium build swallows the
- *  FIRST keyboard chooser activation, so the same Enter press is repeated up
- *  to three times — every attempt is genuine keyboard activation; a pointer
- *  fallback is never used. Keyboard operability without injection is proven
- *  end-to-end in eu-list.spec.ts. */
-async function keyboardOpenChooser(page: Page) {
+/**
+ * Keyboard upload with a SINGLE activation (no retries allowed): focuses the
+ * upload button, lets the injected focus settle, presses Enter once, asserts
+ * the product opened the picker (in-page click listener), then hands the
+ * synthetic file to the input at the DOM boundary — the same downstream flow
+ * the native dialog drives. Full diagnosis: eu-list.spec.ts keyboardUpload()
+ * and handoff/notes/EU-L.md.
+ */
+async function keyboardUpload(page: Page, fileName: string, content: string) {
   const button = page.getByTestId("upload-button");
   await expect(button).toBeEnabled();
+  await page.evaluate(() => {
+    (globalThis as { __pickerOpenedByKeyboard?: boolean }).__pickerOpenedByKeyboard = false;
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error("file input not found");
+    input.addEventListener("click", () => {
+      (globalThis as { __pickerOpenedByKeyboard?: boolean }).__pickerOpenedByKeyboard = true;
+    });
+  });
   await button.focus();
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const chooserPromise = page
-      .waitForEvent("filechooser", { timeout: 2_500 })
-      .catch(() => null);
-    await page.keyboard.press("Enter");
-    const chooser = await chooserPromise;
-    if (chooser) return chooser;
-  }
-  throw new Error("file chooser never opened via keyboard");
+  await page.waitForTimeout(500); // let the injected focus() settle (CDP ordering)
+  await page.keyboard.press("Enter"); // THE single activation — no retries
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () => (globalThis as { __pickerOpenedByKeyboard?: boolean }).__pickerOpenedByKeyboard,
+        ),
+      { timeout: 5_000, message: "single Enter activation did not open the file picker" },
+    )
+    .toBe(true);
+  await page.evaluate(
+    ([name, text]) => {
+      const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+      if (!input) throw new Error("file input not found");
+      const dt = new DataTransfer();
+      dt.items.add(new File([text as string], name as string, { type: "text/plain" }));
+      input.files = dt.files;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    },
+    [fileName, content],
+  );
+}
+
+/** Dispatches a real drop event carrying a synthetic File on the upload zone. */
+async function dropFileOnZone(page: Page, fileName: string, content: string) {
+  await page.evaluate(
+    ([name, text]) => {
+      const dt = new DataTransfer();
+      dt.items.add(new File([text as string], name as string, { type: "text/plain" }));
+      const zone = document.querySelector<HTMLElement>('[data-testid="upload-zone"]');
+      if (!zone) throw new Error("upload zone not found");
+      zone.dispatchEvent(
+        new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt }),
+      );
+    },
+    [fileName, content],
+  );
 }
 
 async function gotoEvidence(page: Page) {
@@ -113,10 +154,11 @@ test("INJECTED failure then REAL retry loads the list once the API responds", as
     .click();
   await expect(page.getByTestId("list-error")).toBeHidden({ timeout: 30_000 });
   await expect(page.getByTestId("list-error")).toHaveCount(0);
-  // Real state renders: either the workspace rows or the true empty state.
-  await expect(
-    page.getByTestId("list-empty").or(page.locator("tbody tr").first()),
-  ).toBeVisible({ timeout: 30_000 });
+  // Real state renders: the body settles into data rows or the empty state —
+  // never the error row.
+  const firstRow = page.locator("tbody tr").first();
+  await expect(firstRow).toBeAttached({ timeout: 30_000 });
+  await expect(firstRow).not.toContainText("Couldn’t load the evidence list");
 });
 
 // ---------------------------------------------------------------------------
@@ -130,7 +172,7 @@ test("INJECTED refetch failure labels retained rows as saved data and preserves 
   await apiUpload(name, `Synthetic stale-fixture ${STAMP}\n`);
 
   await gotoEvidence(page);
-  const search = page.getByLabel("Search title / filename");
+  const search = page.getByLabel("Search titles");
   await search.fill(titleOf(name));
   await expect(page.locator("tr", { hasText: name })).toBeVisible({ timeout: 30_000 });
 
@@ -139,9 +181,9 @@ test("INJECTED refetch failure labels retained rows as saved data and preserves 
 
   // Move to a fresh key, then back to the cached one: the cached rows must
   // stay visible, explicitly labelled, with the error banner on top.
-  await search.fill(`${name}-zzz`);
+  await search.fill(`${titleOf(name)}-zzz`);
   await expect(page.getByTestId("list-error")).toBeVisible({ timeout: 30_000 });
-  await expect(search).toHaveValue(`${name}-zzz`); // input preserved in error state
+  await expect(search).toHaveValue(`${titleOf(name)}-zzz`); // input preserved in error state
 
   await search.fill(titleOf(name));
   const errorBox = page.getByTestId("list-error");
@@ -163,36 +205,40 @@ test("INJECTED refetch failure labels retained rows as saved data and preserves 
 });
 
 // ---------------------------------------------------------------------------
-// §EU-L 2/3 — upload failure is visible, attributable, retryable; the picker
-// is keyboard-operable even for the failure path.
+// §EU-L 2/3 — upload failure is visible, attributable, honest about outcome
+// uncertainty, retryable; the picker is keyboard-operable (single activation)
+// on the failure path too.
 // ---------------------------------------------------------------------------
 
-test("INJECTED upload failure names the file, is announced, and retry succeeds for real", async ({
+test("INJECTED upload response loss names the file, reports unknown outcome, refresh helps, retry succeeds", async ({
   page,
 }) => {
   const name = `${STAMP}-upload-fail.txt`;
-  const fixture = join(tmpdir(), name);
-  writeFileSync(fixture, `Synthetic upload-failure fixture ${STAMP}\n`, "utf8");
+  const content = `Synthetic upload-failure fixture ${STAMP}\n`;
 
-  const posts: string[] = [];
   let failUpload = true;
   await page.route("**/api/v1/sources", async (route) => {
     if (route.request().method() !== "POST") return route.fallback();
-    posts.push(route.request().url());
     if (failUpload) return route.abort("connectionrefused");
     return route.fallback();
   });
 
   await gotoEvidence(page);
-  const chooser = await keyboardOpenChooser(page);
-  await chooser.setFiles(fixture);
+  await keyboardUpload(page, name, content);
 
   const errorBox = page.getByTestId("upload-error");
   await expect(errorBox).toBeVisible({ timeout: 30_000 });
   await expect(errorBox).toContainText(`Upload failed for “${name}”`);
-  await expect(errorBox).toContainText("was not added");
+  // Response-loss honesty (2026-09-11 review finding 3): no false certainty.
+  await expect(errorBox).toContainText("not known whether the file was added");
+  await expect(errorBox).toContainText("duplicate copy");
   await expect(page.getByTestId("upload-success")).toHaveCount(0);
-  expect(posts.length).toBeGreaterThan(0);
+
+  // Safe reconciliation BEFORE retry: refreshing the list shows whether the
+  // upload landed (here the INJECTED abort prevented the request, so no row).
+  const listReq = page.waitForRequest((r) => r.url().includes("/api/v1/sources") && r.method() === "GET", { timeout: 15_000 });
+  await errorBox.getByTestId("upload-refresh").click();
+  await listReq;
 
   // INJECTED phase over — retry resubmits the SAME file through the real API.
   failUpload = false;
@@ -204,43 +250,95 @@ test("INJECTED upload failure names the file, is announced, and retry succeeds f
   expect(list.some((s) => s.original_filename === name)).toBe(true);
 });
 
-test("upload picker is disabled while one upload is pending (no duplicate submissions)", async ({
+test("INJECTED 4xx upload rejection states the proven outcome plainly", async ({ page }) => {
+  const name = `${STAMP}-upload-422.txt`;
+  const content = `Synthetic 422 fixture ${STAMP}\n`;
+
+  await page.route("**/api/v1/sources", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    // INJECTED: definite server rejection — outcome is provably known.
+    return route.fulfill({
+      status: 422,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "synthetic injected rejection" }),
+    });
+  });
+
+  await gotoEvidence(page);
+  await keyboardUpload(page, name, content);
+
+  const errorBox = page.getByTestId("upload-error");
+  await expect(errorBox).toBeVisible({ timeout: 30_000 });
+  await expect(errorBox).toContainText(`Upload failed for “${name}”`);
+  await expect(errorBox).toContainText("synthetic injected rejection");
+  // Known outcome: the copy MAY say "was not added" and must NOT hedge.
+  await expect(errorBox).toContainText("was not added to the evidence list");
+  expect(await errorBox.textContent()).not.toContain("not known whether");
+});
+
+test("INJECTED held upload response: drops and picker activation while pending cannot start a second upload", async ({
   page,
 }) => {
-  const name = `${STAMP}-pending-upload.txt`;
-  const fixture = join(tmpdir(), name);
-  writeFileSync(fixture, `Synthetic pending-upload fixture ${STAMP}\n`, "utf8");
+  const first = `${STAMP}-hold-first.txt`;
+  const second = `${STAMP}-hold-second.txt`;
 
+  // INJECTED: hold the FIRST upload response in flight; count every POST.
   let posts = 0;
-  // INJECTED latency: the real API answers, just slowly.
+  let releaseFirst: (() => void) | null = null;
+  const firstHeld = new Promise<void>((resolve) => { releaseFirst = resolve; });
   await page.route("**/api/v1/sources", async (route) => {
     if (route.request().method() !== "POST") return route.fallback();
     posts += 1;
-    await new Promise((r) => setTimeout(r, 1500));
+    if (posts === 1) {
+      await firstHeld; // hold the first response
+      return route.fallback();
+    }
     return route.fallback();
   });
 
   await gotoEvidence(page);
-  const chooser = await keyboardOpenChooser(page);
-  await chooser.setFiles(fixture);
-
-  const button = page.getByTestId("upload-button");
-  await expect(button).toBeDisabled({ timeout: 10_000 });
-  await expect(button).toHaveText("Uploading…");
-  await expect(page.getByTestId("upload-pending")).toContainText(name);
-  // The only way to attempt a second submission while disabled is the picker
-  // itself; the disabled state plus a single POST proves prevention.
+  await keyboardUpload(page, first, `Synthetic held-upload fixture one ${STAMP}\n`);
+  await expect(page.getByTestId("upload-pending")).toContainText(first, { timeout: 30_000 });
   expect(posts).toBe(1);
-  await expect(button).toBeEnabled({ timeout: 30_000 });
-  expect(posts).toBe(1); // still exactly one submission
+
+  // Attempt 1: drop a second file while the first is in flight.
+  await dropFileOnZone(page, second, `Synthetic held-upload fixture two ${STAMP}\n`);
+  const blocked = page.getByTestId("upload-blocked");
+  await expect(blocked).toContainText("already in progress", { timeout: 15_000 });
+  await expect(blocked).toContainText(second);
+  await expect(blocked).toContainText("was not submitted");
+
+  // Attempt 2: zone/button picker activation while pending is also refused.
+  await page.getByTestId("upload-zone").click();
+  await expect(blocked).toContainText("already in progress");
+  expect(posts).toBe(1); // no second request from either attempt
+
+  // The Choose button stays disabled and the zone announces busy.
+  await expect(page.getByTestId("upload-button")).toBeDisabled();
+  await expect(page.getByTestId("upload-zone")).toHaveAttribute("aria-busy", "true");
+
+  // Release the held response: the first upload completes for real.
+  releaseFirst?.();
+  await expect(page.getByTestId("upload-success")).toContainText(first, { timeout: 30_000 });
+  await expect(blocked).toHaveCount(0); // guard released, feedback cleared
+  expect(posts).toBe(1); // still exactly one POST ever
+
+  // The lock is reusable after completion: the second file uploads now.
+  await keyboardUpload(page, second, `Synthetic held-upload fixture two ${STAMP}\n`);
+  await expect(page.getByTestId("upload-success")).toContainText(second, { timeout: 30_000 });
+  expect(posts).toBe(2);
+
+  const list = (await (await fetch(`${API}/sources`)).json()) as SourceRow[];
+  expect(list.some((s) => s.original_filename === first)).toBe(true);
+  expect(list.some((s) => s.original_filename === second)).toBe(true);
 });
 
 // ---------------------------------------------------------------------------
-// §EU-L 2 — row include/exclude failures are visible, attributable, retryable;
-// pending protection blocks duplicate submissions; failures are not successes.
+// §EU-L 2 — row include/exclude failures are visible, attributable, honest
+// about uncertainty, retryable; pending protection blocks double submission.
 // ---------------------------------------------------------------------------
 
-test("INJECTED row mutation failure shows an inline row alert and retry succeeds", async ({
+test("INJECTED row mutation response loss shows an honest uncertain alert; retry succeeds", async ({
   page,
 }) => {
   const name = `${STAMP}-row-fail.txt`;
@@ -252,7 +350,8 @@ test("INJECTED row mutation failure shows an inline row alert and retry succeeds
     if (route.request().method() !== "PATCH") return route.fallback();
     patches.push(route.request().url());
     if (failPatch) {
-      // INJECTED 500 with a synthetic reason (no raw server trace).
+      // INJECTED 500: status code alone does not prove whether the server
+      // applied the change — the copy must reflect that uncertainty.
       return route.fulfill({
         status: 500,
         contentType: "application/json",
@@ -263,7 +362,7 @@ test("INJECTED row mutation failure shows an inline row alert and retry succeeds
   });
 
   await gotoEvidence(page);
-  await page.getByLabel("Search title / filename").fill(titleOf(name));
+  await page.getByLabel("Search titles").fill(titleOf(name));
   const row = page.locator("tr", { hasText: name });
   await expect(row).toBeVisible({ timeout: 30_000 });
 
@@ -272,12 +371,17 @@ test("INJECTED row mutation failure shows an inline row alert and retry succeeds
   await expect(rowError).toBeVisible({ timeout: 30_000 });
   await expect(rowError).toContainText(`Couldn’t include “${titleOf(name)}”`);
   await expect(rowError).toContainText("synthetic injected row-update failure");
-  await expect(rowError).toContainText("The row is unchanged");
+  // Response-loss honesty: no false "row is unchanged" claim.
+  await expect(rowError).toContainText("not known whether the change was saved");
+  await expect(rowError).toContainText("Refresh the list first");
 
-  // A failed mutation must not look like success: the flag is untouched and
-  // the row shows no Included/Excluded confirmation.
-  const viaApi = (await (await fetch(`${API}/sources`)).json()) as SourceRow[];
-  expect(viaApi.find((s) => s.id === created.id)?.included_flag).toBe(false);
+  // Safe reconciliation BEFORE retry: refresh shows the row's true state.
+  const listReq = page.waitForRequest((r) => r.url().includes("/api/v1/sources") && r.method() === "GET", { timeout: 15_000 });
+  await rowError.getByTestId(`row-refresh-${created.id}`).click();
+  await listReq;
+
+  // A failed mutation must not render as success while unresolved: the row
+  // button still shows the unapplied state.
   await expect(row.getByTestId(`include-${created.id}`)).not.toHaveText("Included");
 
   // INJECTED phase over: the row-level retry resubmits the same operation.
@@ -289,6 +393,39 @@ test("INJECTED row mutation failure shows an inline row alert and retry succeeds
   });
   const final = (await (await fetch(`${API}/sources`)).json()) as SourceRow[];
   expect(final.find((s) => s.id === created.id)?.included_flag).toBe(true);
+});
+
+test("INJECTED 4xx row rejection states the proven outcome plainly (row unchanged)", async ({
+  page,
+}) => {
+  const name = `${STAMP}-row-400.txt`;
+  const created = await apiUpload(name, `Synthetic row-400 fixture ${STAMP}\n`);
+
+  await page.route("**/api/v1/sources/*", async (route) => {
+    if (route.request().method() !== "PATCH") return route.fallback();
+    // INJECTED definite rejection — outcome provably known.
+    return route.fulfill({
+      status: 400,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "synthetic injected rejection" }),
+    });
+  });
+
+  await gotoEvidence(page);
+  await page.getByLabel("Search titles").fill(titleOf(name));
+  const row = page.locator("tr", { hasText: name });
+  await expect(row).toBeVisible({ timeout: 30_000 });
+
+  await row.getByTestId(`include-${created.id}`).click();
+  const rowError = page.getByTestId(`row-error-${created.id}`);
+  await expect(rowError).toBeVisible({ timeout: 30_000 });
+  await expect(rowError).toContainText("synthetic injected rejection");
+  await expect(rowError).toContainText("The row is unchanged");
+  expect(await rowError.textContent()).not.toContain("not known whether");
+
+  // The row really is unchanged (real API read-back).
+  const viaApi = (await (await fetch(`${API}/sources`)).json()) as SourceRow[];
+  expect(viaApi.find((s) => s.id === created.id)?.included_flag).toBe(false);
 });
 
 test("INJECTED slow row mutation disables that row's buttons — no double submission", async ({
@@ -306,7 +443,7 @@ test("INJECTED slow row mutation disables that row's buttons — no double submi
   });
 
   await gotoEvidence(page);
-  await page.getByLabel("Search title / filename").fill(titleOf(name));
+  await page.getByLabel("Search titles").fill(titleOf(name));
   const row = page.locator("tr", { hasText: name });
   await expect(row).toBeVisible({ timeout: 30_000 });
 
@@ -367,7 +504,7 @@ test("INJECTED row badge failure is distinct from “no linked matters” and re
 
   await page.route("**/api/v1/sources/*/matters", (route) => route.abort("connectionrefused"));
   await gotoEvidence(page);
-  await page.getByLabel("Search title / filename").fill(titleOf(name));
+  await page.getByLabel("Search titles").fill(titleOf(name));
   const row = page.locator("tr", { hasText: name });
   await expect(row).toBeVisible({ timeout: 30_000 });
 

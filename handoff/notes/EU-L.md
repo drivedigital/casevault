@@ -1,169 +1,199 @@
 # EU-L — evidence list resilience and accessible upload
 
-Contract: `docs/contracts/evidence_ui_closure.md` v1.0 (§EU-L)
-Branch: `arena/01a08ce1-casevault` (this session's assigned branch)
-Base SHA: `ab0ee23e8859e0a8a031e065c2537f10db005957` (integration tip, per session setup)
-Final SHA: `6dc932c93595ffd7ab3fd628cb445c35bad897a1` (single commit on top of base)
+Contract: `docs/contracts/evidence_ui_closure.md` v1.0 (§EU-L, including the
+2026-09-11 authorized integration amendment)
+Branch: `arena/01a08ce1-casevault` (session branch; PR #17 — same PR, no
+replacement, not self-merged)
+Base SHA: `ab0ee23e8859e0a8a031e065c2537f10db005957`
+Revision history:
+- `6dc932c` + `ab9164b` — original EU-L delivery (reviewed as `ab9164b`)
+- `73418b9` — merge of integration commit `7ed39b1` (preserves `ab9164b`;
+  see "Branch reconciliation" below)
+- Fix SHA: see "Proof" (final commit on top of `73418b9`)
 
-## What changed
+## What changed (this revision)
 
-Product (EU-L write set only):
+Addresses every blocking finding from `handoff/EVIDENCE_UI_REVIEW.md`
+(2026-09-11) and the PR #17 review comment. Still EU-L write set only —
+detail page, shared clients/types, shared components, backend/worker,
+manifests, lockfiles, CI untouched.
 
-- `apps/web/app/evidence/page.tsx` — list page recomposed around four distinct
-  body states: loading, request-error, filtered-empty, plain empty. A failed
-  list request renders an error banner with an explicit retry and — when older
-  results are still cached — keeps them visible, dimmed, and labelled
-  "Saved result — may be out of date" (`data-testid=stale-chip`), never as an
-  empty list. Header count shows "Unavailable" / "N results (saved)"
-  accordingly. Search/filter values live in page state and survive failure and
-  retry untouched. Success paths invalidate only the `["sources"]` query
-  prefix.
-- `apps/web/components/evidence-list-states.tsx` (new) — shared primitives:
-  `describeError` (API `detail` or generic fallback; raw traces never reach the
-  UI), `RetryButton` (labelled per action for screen readers), `Notice`
-  (`role=alert` for failures / `role=status` for neutral updates),
-  `ListStateRow` (the four table-body states, with "Clear filters" action for
-  filtered-empty).
-- `apps/web/components/evidence-list-upload.tsx` (new) — keyboard-operable
-  upload: a real `<button>` (Tab + Enter/Space) opens the file picker; drag &
-  drop preserved. Pending state disables the picker ("Uploading…",
-  `aria-busy`, `role=status`), preventing duplicate submissions. Failure
-  renders an attributable alert ("Upload failed for `<file>`", reason, "the
-  file was not added") with a retry that resubmits the SAME file. Oversize
-  files (>100 MB, client guard mirroring the server) get a visible error with
-  no fake retry. Success shows a `role=status` confirmation and refreshes only
-  source-list caches.
-- `apps/web/components/evidence-list-filters.tsx` (new) — the filter bar with
-  full parity to the shipped page: server filters (q, matter_id, source_type,
-  evidence_review_status) and client-side filters (source_status, ocr_status,
-  included/excluded). Matter-filter load failure renders an announced,
-  retryable error in place of the select — it cannot read as a normal empty
-  "All matters" list; the chosen matterId stays in state across the failure.
-  Included/Excluded remain an exclusive pair (checking one explicitly clears
-  the other).
-- `apps/web/components/evidence-list-row.tsx` (new) — per-row include/exclude
-  actions with a row-owned mutation: both flags always sent explicitly
-  (`included_flag:true, excluded_flag:false` and the mirror), both of that
-  row's buttons disabled while its request is pending (no double submission),
-  failure shows an inline `role=alert` naming row + operation + reason with a
-  retry resubmitting the same payload, and is never rendered as success.
-  Success invalidates only `["sources"]`. Per-row linked-matters badge
-  distinguishes loading / confirmed-empty ("—" only after a successful query) /
-  FAILED (announced "Couldn't load linked matters" + labelled retry).
+1. **Upload single-flight guard on every entry path** (was: button-only).
+   `apps/web/components/evidence-list-upload.tsx` now guards `handleFile`
+   (button change, drop, direct picker selection) AND `openPicker` (zone
+   click / button activation) with a synchronous `inFlightRef` lock plus the
+   `isPending` check — the ref closes the same-tick window where two rapid
+   events would both observe stale idle state; the integrator's reproduced
+   bypass (drop + held response → two POSTs) cannot recur. The lock releases
+   in the mutation's `onSettled` (fires on success AND failure), so it cannot
+   get stuck. A refused second attempt gets visible feedback ("An upload is
+   already in progress — “<file>” was not submitted…", `data-testid=
+   upload-blocked`); the zone carries `aria-busy` while pending; the blocked
+   feedback clears when the in-flight upload settles.
+2. **Browser regression for the bypass** —
+   `eu-list-failures.spec.ts`: "INJECTED held upload response: drops and
+   picker activation while pending cannot start a second upload" holds the
+   first POST response open, then (a) drops a second file on the zone and
+   (b) clicks the zone while pending, asserting the blocked feedback names
+   the file, the button is disabled, `aria-busy` is set, exactly ONE POST was
+   made; after release the first upload completes, the lock is reusable, and
+   the second file uploads as a second POST (verified in the real API).
+   The former latency-based pending test was superseded by this stronger
+   held-response version (same protection, stricter proof).
+3. **Honest outcome-uncertainty copy + refresh-first reconciliation**
+   (`evidence-list-states.tsx`, `evidence-list-upload.tsx`,
+   `evidence-list-row.tsx`): new `outcomeKnown(error)` — a 4xx ApiError
+   proves the outcome; network failure or 5xx does not. Upload response loss
+   now reads "…the connection failed before the server's answer arrived, so
+   it is not known whether the file was added — the server may have accepted
+   it… Refresh the list first… retrying… will create a duplicate copy";
+   row mutation response loss reads "…not known whether the change was
+   saved — the server may have applied it. Refresh the list first…". Both
+   notices offer "Refresh list first" (invalidates `["sources"]`) BEFORE the
+   retry. 4xx branches keep the definite wording ("the server rejected the
+   upload — the file was not added" / "The row is unchanged"). Read-only use
+   of the shared `ApiError` class — no client changes.
+4. **Search label** now matches shipped server behaviour:
+   "Search titles" with hint "Searches source titles only (not filenames)".
+   (`GET /sources?q=` matches `title` only — backend unchanged; parity
+   remains a BACKLOG item.)
+5. **Keyboard activation: repeated-Enter allowance removed and diagnosed.**
+   The helpers in both specs now use ONE activation: focus → 500 ms settle →
+   single Enter → assert the picker opened (in-page click listener on the
+   input) → hand the synthetic file over at the DOM boundary
+   (`input.files` + change). A miss fails the test loudly. Diagnosis
+   (measured, see below): the product's keyboard affordance is correct —
+   a genuine Enter always activated the button and always invoked
+   `input.click()` (20/20, all variants); the earlier misses were Playwright's
+   filechooser interception not surfacing the dialog (14–19/20) and, at zero
+   settle, the injected focus/keypress ordering racing (2–4/8, with and
+   without route interception — routes are NOT the cause). Test-harness
+   artefact, not product behaviour; documented in the spec headers and
+   `tests/browser/eu-list-README.md`.
 
-Tests (EU-L write set only):
+Preserved unchanged: filter bar + client/server filter parity, explicit
+both-flags include/exclude, row-attributable mutation feedback, matter
+filter/badge failure states, stale-data labelling, bare-array client,
+duplicate warnings, `["sources"]`-only cache refresh.
 
-- `tests/browser/eu-list.spec.ts` (new) — 5 positive-path tests, real browser
-  against the real stack (no mocks): keyboard upload → row + bare-array API
-  assertion; include/exclude exclusive transitions verified through the API;
-  duplicate warning; empty vs filtered-empty distinctness + Clear filters;
-  matter filter sends `matter_id` to `GET /sources` and filtered-empty shows
-  for a fresh matter.
-- `tests/browser/eu-list-failures.spec.ts` (new) — 9 negative-path tests using
-  INJECTED transport failures (Playwright route abort/500/latency, labelled in
-  each test name/body): list failure ≠ empty; retry loads the real list;
-  refetch failure labels retained rows "saved" and preserves the search term
-  through both failure states and retry; upload failure names the file and
-  retry succeeds for real; picker disabled while an upload is pending (exactly
-  one POST); row mutation 500 shows inline alert, flags unchanged (checked via
-  API), row retry succeeds; slow row PATCH disables that row's buttons with
-  exactly one PATCH; matter-filter failure announced + retry repopulates; row
-  badge failure distinct from "no linked matters" + retry shows the linked
-  matter.
-- `tests/browser/eu-list-README.md` (new) — versioned reproducible setup
-  (`@playwright/test` 1.63.0), disposable-stack instructions, env vars, the
-  real-vs-injected coverage table, and the sandbox browser note.
+## Branch reconciliation
 
-No changes to: detail page, shared `lib/api.ts` / `lib/types.ts` / shared
-components, backend, worker, migrations, CI, Makefile, package/lockfiles,
-ignore rules. The `["sources"]` bare-array client and shipped server filters
-are used as-is (§EU-L 4).
+Local checkout metadata had rolled back to base `ab0ee23` between sessions
+while the working tree matched remote `ab9164b` byte-for-byte (verified per
+file with `git show ab9164b:<path> | diff -`). Reconciled without losing
+work: reset HEAD to `ab9164b` (remote tip, PR #17 head), then merged
+integration `7ed39b1` as a true merge commit `73418b9` (parents `ab9164b` +
+`7ed39b1`; disjoint files, no conflicts). No force-push, no work discarded.
+
+## What changed (original delivery, for reference)
+
+- `apps/web/app/evidence/page.tsx` — four distinct body states
+  (loading/error/filtered-empty/empty), stale rows dimmed + labelled
+  ("Saved result — may be out of date"), filters preserved through
+  failure/retry, `["sources"]`-only invalidation.
+- `apps/web/components/evidence-list-states.tsx` — describeError,
+  outcomeKnown/errorStatus, labelled RetryButton, Notice (role=alert/status),
+  ListStateRow.
+- `apps/web/components/evidence-list-upload.tsx` — keyboard-operable upload
+  with entry-path-complete single-flight guard (see above).
+- `apps/web/components/evidence-list-filters.tsx` — filter bar with
+  title-search label fix; matter-filter failure announced + retryable;
+  Included/Excluded exclusive pair.
+- `apps/web/components/evidence-list-row.tsx` — per-row include/exclude
+  (both flags, row-scoped pending protection, honest failure alerts),
+  matter badge with distinct failed state.
+- `tests/browser/eu-list.spec.ts` (5), `tests/browser/eu-list-failures.spec.ts`
+  (11), `tests/browser/eu-list-README.md` — browser suites + versioned setup.
+- `handoff/notes/EU-L.md` — this note.
 
 ## Proof
 
-Environment: sandbox, no Docker — embedded Postgres via
-`python scripts/agent_pg.py` (Postgres 16, scratch `data/pgdata`), API via
-uvicorn on :8100 with `LOCAL_STORAGE_ROOT=/tmp/...` (never `data/`), web via
-`next dev` on :3000 proxying `/api/v1`. Browser: real Chromium (Chrome for
-Testing 153.0.8010.12, obtained from npm — see README sandbox note) driven by
-Playwright 1.63.0. All fixtures synthetic TXT generated at runtime; test
-uploads only in the disposable local DB.
+Environment (rebuilt this session): sandbox without Docker — embedded
+Postgres 16 via `python scripts/agent_pg.py`, API via uvicorn :8100 with
+`LOCAL_STORAGE_ROOT=/tmp/...` (never `data/`), web via `next dev` :3000
+proxying `/api/v1`. Browser: real Chromium (Chrome for Testing, npm-distributed
+build per README sandbox note) driven by Playwright 1.63.0. All fixtures
+synthetic in-memory TXT.
 
 1. Web gate:
    ```
-   npm run lint --workspace=web        # pass (only pre-existing warning in detail page, not my file)
+   npm run lint --workspace=web        # pass (only pre-existing detail-page warning)
    npm run typecheck --workspace=web   # pass
-   npm run build --workspace=web       # pass (9 routes compiled)
+   npm run build --workspace=web       # pass (inside verify_all.sh)
    ```
-2. Full wave gate:
+2. Full strict gate:
    ```
    bash scripts/verify_all.sh
-   ==> Database (fresh casevault_test) ... ==> Migrations (upgrade head ->
-   downgrade base -> upgrade head) ... ==> pytest (real Postgres)
-   118 passed, 1 skipped, 3 warnings
-   ==> ruff   All checks passed!
-   ==> web: lint / typecheck / build   pass
+   ==> Database ... ==> Migrations (upgrade head -> downgrade base -> upgrade head)
+   ==> pytest (real Postgres): 118 passed, 1 skipped, 3 warnings
+   ==> ruff: All checks passed!
+   ==> web: lint / typecheck / build: pass
    GATE GREEN — python, migrations, lint and web all pass.
    ```
-3. Browser regression proof (real API + real browser; failures suite uses
-   labelled injected transport errors per contract §Proof and safety):
+3. Browser regressions (review findings 1–5):
    ```
-   npx playwright test --config=playwright.config.ts   # 3 consecutive full runs
-   14 passed (25.5s) / 14 passed (23.9s) / 14 passed (26.5s)
-   # = eu-list.spec.ts (5) + eu-list-failures.spec.ts (9)
+   npx playwright test --config=playwright.config.ts   # 5 consecutive full runs
+   16 passed (19.5s) / 16 passed (20.8s) / 16 passed (23.4s)
+   16 passed (25.4s) / 16 passed (27.7s)               # + 3× positive suite alone: 5 passed
    ```
+   = eu-list-failures.spec.ts (11) + eu-list.spec.ts (5); 80+ single
+   keyboard activations across runs, zero misses.
 
-Coverage honesty (what each claim actually used):
+Coverage honesty (real vs injected):
 
-- Real browser interactions + real API (positive suite): keyboard-opened file
-  picker → real POST /sources → row appears; row include/exclude → real PATCH,
-  verified by reading back `GET /sources` (asserted bare array); duplicate
-  badge; filtered-empty vs empty; `matter_id` reaching `GET /sources`
-  (asserted on the outgoing request).
-- Injected transport failures (negative suite): real app code and browser, but
-  list/upload/PATCH/matters/badge requests were aborted, stubbed 500, or
-  delayed by route interception. Positive halves of those tests (retry after
-  unrouting) hit the real API. No real-worker OCR behaviour is exercised
-  (list page does not poll OCR); upload enqueue degradation without Redis is
-  the server's existing best-effort path, unmodified.
+- **Real browser + real API** (positive suite, no mocks): keyboard-opened
+  picker → real POST /sources → row + bare-array `GET /sources` read-back;
+  include/exclude exclusive transitions verified through the API; duplicate
+  badge; filtered-empty vs empty; `matter_id` asserted on the outgoing
+  request.
+- **Injected transport failures** (negative suite, labelled INJECTED per
+  test): real app code/browser with route-level abort / 422 / 400 / 500 /
+  latency / held-response. Each test's positive half (retry after unrouting
+  or releasing the hold) hits the real API — e.g. the held-upload regression
+  verifies the first upload really completes and the second really uploads
+  (two real POSTs total, in the real DB). The single-flight bypass scenario
+  itself (review finding 1/2) is injected-timing reproduction; the fix is
+  product code exercised by the real drop/keyboard events.
+- Keyboard diagnosis numbers (finding 5) come from scratch harness probes
+  outside the repo: button-activation/product-path proof 20/20 in every
+  variant; chooser-event surfacing 14–19/20; immediate-press loss 2–4/8 with
+  and without routes; ≥50 ms settle 8/8–12/12. Committed tests use the
+  resulting single-activation protocol.
+- No real-worker OCR path is exercised (the list page does not poll OCR);
+  upload enqueue degradation without Redis remains the server's existing
+  best-effort behaviour, unmodified.
 
 ## Contract gaps
 
-- None blocking. Two observations for the integrator:
-  1. `GET /sources?q=` matches `title` only (not filename) — the UI search
-     label says "Search title / filename"; either the label or the filter is
-     slightly off. Backend change ⇒ out of scope here (BACKLOG filter-parity
-     item already tracks parity).
-  2. Contract §EU-L 2 says "Send both flags for exclusive include/exclude
-     transitions" — implemented literally (both flags always in the PATCH
-     body). No API change needed; noted so reviewers know the payload is
-     intentional.
+- Unchanged from the original delivery: `GET /sources?q=` matches title only
+  while the UI previously advertised filename search — resolved on the UI
+  side this revision (label now says "Search titles"); server-side filename
+  matching remains a BACKLOG parity item.
+- §EU-L 2 "send both flags" is implemented literally (both flags always in
+  the PATCH body); noted so reviewers know the payload is intentional.
 
 ## Risks / follow-ups
 
-- `tests/browser/` needs a runner decision: Playwright is proposed as the de
-  facto runner but is NOT added to package.json/CI (contract: no mandatory
-  dependency/CI change; tooling proposal belongs to EU-V). The suites run
-  standalone per the README; if EU-V ratifies Playwright, only the harness
-  config needs committing.
-- Row actions disable only the mutating row; other rows stay interactive
-  (per-row parallel actions are safe — each row owns its mutation).
-- Stale-labelling relies on react-query's per-key cache (`errorUpdatedAt`);
-  a hard reload during an API outage shows the full-error state (no cache),
-  which is the correct, distinct behaviour.
-- The first-activation file-chooser quirk (swallowed Enter when Playwright
-  interception is active) is a browser/CDP artefact, worked around in tests by
-  repeating the same keyboard press; documented in the spec headers and README.
+- `tests/browser/` still needs the runner decision from EU-V/integrator;
+  Playwright remains an isolated tool (nothing added to package.json/CI).
+- Row actions disable only the mutating row; per-row parallel actions remain
+  safe (each row owns its mutation).
+- The blocked-upload feedback is info-tone; if the product later wants a
+  queue ("upload next after current"), it is a small change on top of the
+  guard — out of scope here.
+- Stale-labelling relies on react-query's per-key cache; a hard reload during
+  an API outage shows the full-error state (correct distinct behaviour).
 
 ## What the next agent must know
 
-- EU-V: `tests/browser/eu-list-*.spec.ts` are ready for integrated acceptance;
-  they expect `EU_WEB_BASE`/`EU_API_BASE` (defaults localhost:3000/:8100), run
-  serially (`workers:1`), and seed synthetic rows into the configured
-  disposable DB (no cleanup endpoint exists for sources — use a scratch DB).
-- EU-D: list-page success paths invalidate only the `["sources"]` prefix; the
-  detail page's `["source", id]` cache is intentionally untouched by list
-  mutations (unchanged from the shipped behaviour).
+- EU-V: suites are ready for integrated acceptance; `EU_WEB_BASE`/`EU_API_BASE`
+  env vars, serial execution (`workers:1`), disposable DB (no source-deletion
+  endpoint — use a scratch DB). The held-response test intentionally holds a
+  real request open for a few seconds.
+- EU-D: list success paths invalidate only the `["sources"]` prefix; the
+  detail page's `["source", id]` cache is untouched by list mutations.
 - If `next build` runs while `next dev` serves the same `.next`, the dev
-  server 404s its own chunks (seen in this session) — restart the dev server
-  after any production build.
+  server 404s its own chunks — restart the dev server after any production
+  build (hit again this session).
+- The in-page click-listener technique (asserting the picker opened) is
+  reusable for any future keyboard-operability proof in this repo.

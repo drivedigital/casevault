@@ -3,29 +3,47 @@
 import { useCallback, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { Notice, RetryButton, describeError } from "./evidence-list-states";
+import { Notice, RetryButton, describeError, outcomeKnown } from "./evidence-list-states";
 
 // -----------------------------------------------------------------------------
-// EU-L evidence upload (list page). Contract §EU-L (2)–(3).
+// EU-L evidence upload (list page). Contract §EU-L (2)–(3) + 2026-09-11
+// integration review: pending protection must cover EVERY entry path (button,
+// drop zone, direct picker selection, same-tick rapid events) — not only the
+// disabled button — and must release reliably on completion AND failure.
 //
-// - Keyboard-operable: a real <button> opens the file picker (Tab + Enter /
-//   Space), so upload never requires pointer or drag. Drag & drop still works.
-// - Failures are visible and attributable to the attempted file, with a retry
-//   that resubmits the SAME file. A failed upload is never treated as success.
-// - Pending state disables the picker so a slow upload cannot be duplicated.
-// - On success only the source-list caches are refreshed — matters, row
-//   matter badges, ledger and intake queries are untouched (§EU-L 5).
+// Implementation: a synchronous in-flight ref guards handleFile/openPicker.
+// react-query's isPending alone flips state after a render tick, so two events
+// in the same tick could both observe "idle" — the ref closes that window.
+// onSettled fires on success AND error, so the lock cannot get stuck.
+//
+// Failure copy distinguishes PROVEN outcomes (4xx server rejection: "the file
+// was not added") from RESPONSE-LOSS outcomes (network failure / 5xx: the
+// server may have committed before the connection dropped — "not known
+// whether"), with a safe refresh/reconciliation action offered before retry.
 // -----------------------------------------------------------------------------
 
 // Mirrors the server guard (app config max_upload_bytes = 100 MB).
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
+type BlockedAttempt =
+  | { kind: "file"; name: string }
+  | { kind: "picker" }
+  | null;
+
 export function EvidenceUpload() {
   const qc = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
+  const inFlightRef = useRef(false);
   const [dragOver, setDragOver] = useState(false);
   const [tooLargeName, setTooLargeName] = useState<string | null>(null);
   const [uploadedName, setUploadedName] = useState<string | null>(null);
+  const [blocked, setBlocked] = useState<BlockedAttempt>(null);
+
+  const refreshLists = useCallback(() => {
+    // Safe reconciliation: re-read the list so the user can see whether an
+    // outcome-unknown upload actually landed before deciding to retry.
+    qc.invalidateQueries({ queryKey: ["sources"] });
+  }, [qc]);
 
   const upload = useMutation({
     mutationFn: (file: File) =>
@@ -36,11 +54,22 @@ export function EvidenceUpload() {
       setTooLargeName(null);
       setUploadedName(file.name);
     },
+    onSettled: () => {
+      // Reliable release: runs on success AND failure, before any retry can
+      // be attempted by a user reacting to the outcome.
+      inFlightRef.current = false;
+      setBlocked(null);
+    },
   });
 
   const handleFile = useCallback(
     (file: File) => {
       setUploadedName(null);
+      // Same-tick-safe single-flight guard across ALL entry paths.
+      if (inFlightRef.current || upload.isPending) {
+        setBlocked({ kind: "file", name: file.name });
+        return;
+      }
       if (file.size > MAX_UPLOAD_BYTES) {
         // Client-side guard: retrying cannot succeed, so no retry is offered —
         // the message says what to do instead. Filters elsewhere are untouched.
@@ -49,14 +78,23 @@ export function EvidenceUpload() {
         return;
       }
       setTooLargeName(null);
+      setBlocked(null);
+      inFlightRef.current = true;
       upload.mutate(file);
     },
     [upload],
   );
 
   const openPicker = useCallback(() => {
+    // Zone/button activation is also guarded: no second picker-driven
+    // submission can start while one is in flight.
+    if (inFlightRef.current || upload.isPending) {
+      setBlocked({ kind: "picker" });
+      return;
+    }
+    setBlocked(null);
     inputRef.current?.click();
-  }, []);
+  }, [upload.isPending]);
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
@@ -80,6 +118,7 @@ export function EvidenceUpload() {
   // Last attempted file (in flight or failed) — react-query keeps `variables`
   // after a failure, which is what the retry button resubmits.
   const attemptedFile = upload.variables ?? null;
+  const uploadOutcomeKnown = upload.isError ? outcomeKnown(upload.error) : true;
 
   return (
     <div>
@@ -91,6 +130,7 @@ export function EvidenceUpload() {
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}
         onClick={openPicker}
+        aria-busy={upload.isPending || undefined}
         data-testid="upload-zone"
         className={`mb-2 cursor-pointer rounded-lg border-2 border-dashed p-6 text-center transition ${
           dragOver ? "border-blue-500 bg-blue-50" : "border-slate-300 bg-slate-50 hover:bg-slate-100"
@@ -132,27 +172,67 @@ export function EvidenceUpload() {
         )}
       </div>
 
-      {/* Failure is announced and attributable to the attempted file; retry
-          resubmits the same file. Filter values live above and are untouched. */}
+      {/* A second attempt during an in-flight upload is visibly refused, not
+          silently queued or duplicated (2026-09-11 review finding 1). */}
+      {blocked && (
+        <div className="mb-2" data-testid="upload-blocked">
+          <Notice tone="info">
+            <span className="font-medium">An upload is already in progress.</span>{" "}
+            {blocked.kind === "file" ? (
+              <span className="block sm:inline">
+                “{blocked.name}” was not submitted — wait for the current upload to finish, then
+                choose or drop it again.
+              </span>
+            ) : (
+              <span className="block sm:inline">
+                Wait for the current upload to finish before choosing another file.
+              </span>
+            )}
+          </Notice>
+        </div>
+      )}
+
+      {/* Failure is announced and attributable to the attempted file. When the
+          outcome is provably known (4xx) the copy says so; on response loss it
+          honestly reports uncertainty and offers refresh-before-retry. */}
       {upload.isError && attemptedFile && (
         <div className="mb-2" data-testid="upload-error">
           <Notice
             tone="error"
             action={
-              <RetryButton
-                label={`Retry upload of ${attemptedFile.name}`}
-                onRetry={() => upload.mutate(attemptedFile)}
-                pending={upload.isPending}
-              />
+              <>
+                <button
+                  type="button"
+                  onClick={refreshLists}
+                  data-testid="upload-refresh"
+                  className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Refresh list first
+                </button>
+                <RetryButton
+                  label={`Retry upload of ${attemptedFile.name}`}
+                  onRetry={() => upload.mutate(attemptedFile)}
+                  pending={upload.isPending}
+                />
+              </>
             }
           >
             <span className="font-medium">
               Upload failed for “{attemptedFile.name}”.
             </span>{" "}
-            <span className="block sm:inline">
-              Reason: {describeError(upload.error)}. The file was not added to the
-              evidence list.
-            </span>
+            {uploadOutcomeKnown ? (
+              <span className="block sm:inline">
+                Reason: {describeError(upload.error)}. The server rejected the upload — the file
+                was not added to the evidence list.
+              </span>
+            ) : (
+              <span className="block sm:inline">
+                Reason: {describeError(upload.error)}. The connection failed before the server’s
+                answer arrived, so it is not known whether the file was added — the server may have
+                accepted it before the failure. Refresh the list first to check before retrying:
+                retrying an upload that did go through will create a duplicate copy.
+              </span>
+            )}
           </Notice>
         </div>
       )}

@@ -1,16 +1,33 @@
 "use client";
 
 import { secondaryButtonClass } from "@/components/field";
+import { ApiError } from "@/lib/api";
 
 // -----------------------------------------------------------------------------
 // EU-L shared list primitives — loading/empty/error states, alerts and retry.
-// Contract: docs/contracts/evidence_ui_closure.md v1.0 §EU-L (1)–(3).
+// Contract: docs/contracts/evidence_ui_closure.md v1.0 §EU-L (1)–(3), plus the
+// 2026-09-11 integration amendment notes on honest uncertainty copy.
 //
 // Failure states must never render like an empty list, and every failure gets
 // an explicit, labelled retry. Error text comes from the API's curated
 // `detail` string (ApiError.message); describeError() never renders anything
 // else, so raw server traces can never reach the UI.
 // -----------------------------------------------------------------------------
+
+/** HTTP status if the error came from a real server response, else null.
+ *  Read-only use of the shared ApiError class (no client changes). */
+export function errorStatus(error: unknown): number | null {
+  return error instanceof ApiError ? error.status : null;
+}
+
+/** True when the server's answer PROVES the mutation outcome (a 4xx
+ *  rejection). Network failures and 5xx leave the outcome unknown: the server
+ *  may have committed the change before the connection/response failed, so
+ *  the UI must not claim "not added"/"unchanged" (2026-09-11 review). */
+export function outcomeKnown(error: unknown): boolean {
+  const status = errorStatus(error);
+  return status !== null && status < 500;
+}
 
 /** User-safe message for a thrown value (API `detail` or generic fallback). */
 export function describeError(error: unknown): string {

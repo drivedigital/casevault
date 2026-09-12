@@ -76,13 +76,13 @@ export function EvidenceFilters({
 
   return (
     <div className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
-      <Field label="Search title / filename">
+      <Field label="Search titles" hint="Searches source titles only (not filenames)">
         <input
           className={inputClass}
           value={value.q}
           onChange={(e) => set({ q: e.target.value })}
           placeholder="Keyword"
-          aria-label="Search title / filename"
+          aria-label="Search titles"
         />
       </Field>
 
