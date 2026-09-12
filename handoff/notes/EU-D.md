@@ -6,10 +6,10 @@ Branch `arena/01a08cdf-casevault`. Base = integration tip `ab0ee23`;
 integration commit `7ed39b1` ("Integrator: review evidence closure PRs and
 request lifecycle/tooling fixes") incorporated via merge `13c9fdf`. Revision
 series: `5e7036c` (initial EU-D implementation, PR #18 revision 1) → fix
-commit **`<FINAL-FIX-SHA>`** (integrator review findings, PR #18 revision 2 —
-see "What changed — revision 2") → note-SHA update commit (this line only).
-The exact branch-tip SHA is stated in the PR review thread with the
-re-review request.
+commit **`f62622b`** (`f62622b071f0d984eb204f09a19e88cc3a6880ab`, integrator
+review findings, PR #18 revision 2 — see "What changed — revision 2") →
+note-SHA update commit (this line only). The exact branch-tip SHA is stated
+in the PR review thread with the re-review request.
 
 **PR status:** PR #18 (`arena/01a08cdf-casevault` → `arena/01a0899f-casevault`),
 both revisions pushed there. Stopped for integrator re-review; no self-merge,
