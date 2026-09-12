@@ -870,3 +870,17 @@ and regression on existing PR (comment 5644130294); candidate aborted, no merge.
 See EVIDENCE_UI_REVIEW.md for exact proof/limits. Owner explicitly holds EU-M and
 local environment startup until substantive integrated testing point; no Phase A
 request now. Integrator to supply exact corrected D+L SHA/checklist then.
+
+
+## 2026-09-12 — EU-D #18 accepted / merged c8c7d27
+
+Reviewed b041694 against 0f9e498; strict candidate and post-merge gates both
+119 passed/no skips, migrations/Ruff/web green. Independent full detail browser
+suite: workerless 25 passed/2 worker-only skipped, then both worker-only tests
+passed with real isolated Redis/RQ Worker. Verified TXT complete/PDF skipped
+result payloads against persisted state, not just RQ FINISHED. Lifecycle
+regressions pass (labelled injection); native PDF capability remains unverified.
+Details, exact commands/config/log references and synthetic job IDs in
+EVIDENCE_UI_REVIEW.md. Temporary review services stopped, browser DB/storage
+cleaned. EU-L retry-lock correction pending; EU-V still working and may base on
+merged D; EU-M remains explicitly held until substantive integrated checkpoint.

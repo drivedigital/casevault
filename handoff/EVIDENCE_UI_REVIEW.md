@@ -1,5 +1,9 @@
 # Evidence UI closure — integration review (2026-09-11)
 
+**Current status (2026-09-12): EU-D revision b041694 merged as `c8c7d27`.**
+EU-L still awaits the retry-lock correction; EU-V is working; EU-M remains on
+owner-requested hold. Earlier findings below are historical; see latest sections.
+
 Base: `ab0ee23`. Reviewed EU-L `ab9164b` (PR 17), EU-D `5e7036c`
 (PR 18), EU-V `a434ae1` (PR 19). **Changes requested; none integrated.**
 
@@ -118,3 +122,48 @@ until a substantive integrated testing point. Do not request Phase A testing now
 Integrator will supply an exact corrected D+L integrated SHA and focused checklist
 when useful. Native browser/PDF and exact Mac worker reproduction remain unverified
 until then, not waived.
+
+
+## EU-D revision accepted and merged — 2026-09-12
+
+Reviewed `b0416943c6f08a8a3360b13f523693b310f0bde0`, PR 18, against
+integration `0f9e498`. Merged as **c8c7d27**. EU-D write set honored; the only
+shared-client change is the approved optional getSource AbortSignal.
+
+Independent proof on candidate product tree (unchanged by merge):
+- Strict gate before AND after merge: **119 passed, no skips**, migrations
+  upgrade/downgrade/upgrade, Ruff, web lint/typecheck/build all green.
+- Full EU-D Playwright suite without Redis: **25 passed, 2 skipped** (both
+  require worker). Runtime ~3.1m, including real-time 120s polling test.
+- Then enabled isolated Redis 6397 + standard Linux RQ Worker: explicitly ran
+  the two worker-dependent tests: **2 passed**, no skips. This was a targeted
+  worker run, not a second full 27-test suite.
+- Real API/browser positive paths: downloads byte-equal for PDF/image, safe
+  PDF fallback, Status draft initialization/refetch/save/reset, pages, links,
+  queued:false, and real-worker complete (TXT)/skipped (PDF) refresh.
+- Labelled transport/clock/capability injection: errors/retries, stalled file
+  bodies aborted at 30s, cancelled/late preview cleanup, one active polling
+  request with actual abort and remaining-budget bound, delayed mutation
+  responses after navigation. No native PDF rendering claimed.
+- Independently read RQ payloads and corresponding persisted source state:
+  TXT job 7b8d491d-19eb-4a13-bda2-a1b29d4733fa -> result status complete,
+  ocr_status complete, page_count 1; persisted OCR/processing complete.
+  PDF job cf64e0a4-4059-4cb0-9997-5285cb027b60 -> result status complete,
+  ocr_status skipped; persisted OCR skipped / processing complete.
+
+Environment: isolated pinned Playwright 1.63.0, Chromium 152, real production
+Next 14.2.15, disposable Postgres database casevault_eud_review, synthetic files
+outside repo, Redis 6.2.14 / RQ 2.12.0 Linux Worker. No manifest/lockfile/CI edits.
+Scratch configs/logs outside Git: /home/user/eu-review-tools/d.config.mjs,
+/home/user/d-gate.log, /home/user/d-postmerge-gate.log,
+/home/user/d-browser-workerless.log, /home/user/d-browser-worker.log.
+
+Two initial API setup attempts failed before launch due to scratch DSN path
+rewriting/percent interpolation; corrected by replacing only the URL path while
+preserving its original socket query. No product changes needed. Temporary web,
+API, worker and queue stopped; disposable browser DB/storage removed, embedded
+Postgres stopped after final gate. Restored Git metadata was backed up and
+reconciled only after temporary-index equality with remote 0f9e498.
+
+EU-V can incorporate c8c7d27 now, but final integrated acceptance still waits for
+corrected EU-L. EU-M remains on hold; no request to start the local environment.
