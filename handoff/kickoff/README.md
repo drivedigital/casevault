@@ -6,12 +6,13 @@
 
 | Brief | Assignment | Suggested agent | Start/status |
 |---|---|---|---|
-| EU-D | Detail: Status, downloads/PDF, errors, OCR refresh | Former W2-I/J or new UI session | Ready for owner relay; one detail owner |
-| EU-L | List/upload/row/matter error handling | Former W2-F or available UI session | Ready in parallel with D |
-| EU-V | Independent browser acceptance | Former WS-D verifier | Plan/tooling now; final run after D+L |
+| EU-D | Detail: Status, downloads/PDF, errors, OCR refresh | `01a08cdf` / PR #18 `5e7036c` | Changes requested: body timeout, late-preview cleanup, abortable OCR polling |
+| EU-L | List/upload/row/matter error handling | `01a08ce1` / PR #17 `ab9164b` | Changes requested: pending-drop upload bypass, uncertainty copy and keyboard proof |
+| EU-V | Independent browser acceptance | `01a08ce3` / PR #19 `a434ae1` | Preparation delivered; tooling fixes requested; final acceptance not done |
 | EU-M | Native Mac Reprocess + local browser proof | Existing local tester | Exact worker reproduction now; new UI proof after D+L |
 
-No sessions are assumed started until owner confirms. Three Arena assignments
+Owner reports all three deliverables complete; integration review found blockers.
+See `handoff/EVIDENCE_UI_REVIEW.md` (2026-09-11). Three Arena assignments
 plus the existing local tester; integrator remains coordinator. Other agents
 stand by. No Wave 3 or OCR-engine work is authorized.
 
