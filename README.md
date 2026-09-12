@@ -20,8 +20,10 @@ chronology, claims and advanced intelligence are future work.
 **Start here:** [current status and tasks](handoff/STATUS.md),
 [agent policy](handoff/AGENT_POLICY.md), [recovery runbook](handoff/RECOVERY.md),
 [verification workflows](handoff/VERIFICATION_WORKFLOWS.md).
-**EU-M/local integration testing is on hold** until a renewed exact checkpoint,
-checklist and go-ahead. Setup below describes the product, not a testing release.
+**Limited synthetic owner preview is authorized** under
+[the pinned checklist and mandatory isolation preflight](handoff/OWNER_PREVIEW.md).
+Full acceptance and real-data testing remain held. Generic setup below does not
+override that safety scope.
 
 Database migrations run with Alembic: after `make infra-up`,
 `cd apps/api && ../../.venv/bin/python -m alembic upgrade head`.

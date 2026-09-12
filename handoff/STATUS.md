@@ -17,7 +17,9 @@ remain binding. Update this page when assignments, holds or merge status change.
   approval-blocked follow-up not implemented. Never bypass the approval block.
 - `dev-logs` contains reports/cumulative patches, not a merge source. Notes from
   `54001f0` were selectively archived at `0788ccc`; no product patch replay.
-- No main release, branch deletion, OCR-engine work or new feature wave authorized.
+- No main release, branch deletion or OCR-engine implementation authorized.
+  Two fresh-session briefs prepared (not launched here): PV-GATE preview verification
+  and OCR-PLAN design-only. Limited owner preview released under OWNER_PREVIEW.md.
 
 ## Tasks / acceptance blockers
 
@@ -28,7 +30,9 @@ remain binding. Update this page when assignments, holds or merge status change.
 | V-OCR | EU-V, after diagnostic review | Correct result-reader, enums and exact uploaded-ID correlation; establish real integrated OCR proof | Explicit Reprocess job ID -> decoded ocr_source payload -> SQL state/pages -> UI; TXT complete/PDF skipped |
 | V-DETAIL | EU-V, after diagnostic review | Triage saved detail failures, especially save-pending candidate | Dispatch AND completion times, action sequence and pending state before calling duplicate PATCH a product bug |
 | REVIEW-D/L | Integrator | Limitation notes recovered; no completed independent review | Fresh review requires new accessible session/own branch and explicit scope; do not recycle closed sessions |
-| M-HOLD | Owner/EU-M | **HOLD local integration/testing** | Integrator must issue renewed exact checkpoint, focused checklist and explicit go-ahead |
+| M-PREVIEW | Owner/EU-M | **Limited synthetic preview authorized** at a040e9f after isolation preflight in OWNER_PREVIEW.md; full acceptance/real-data work held | Exact SHA, native browser/download and explicit Reprocess observations, redacted report, owned cleanup |
+| PV-GATE | Fresh agent, not launched | kickoff/PV-GATE.md: independent bounded preview verification, <=45min | Focused tests/report, exact job/payload/SQL/UI correlation; new PR, no merge |
+| OCR-PLAN | Fresh agent, not launched | kickoff/OCR-PLAN.md: local PDF/image extraction design only, <=45min | Engine/packaging recommendation, safety/acceptance matrix and proposed write sets; note-only PR |
 | OPS | Local-ops author/integrator | Separate proposal review; wait for normal approval path | Socket-safe test guard, webhook tests, full gate; no real backup/restore claim from mocks |
 
 ## Measured proof versus reported proof
@@ -63,7 +67,7 @@ remain binding. Update this page when assignments, holds or merge status change.
 - Contracts: `docs/contracts/evidence_ui_closure.md` (active closure),
   `wave2_intake_core.md` and `sprint3_evidence.md` (shipped interfaces/history).
 
-## Latest bounded verifier checkpoint
+## Latest bounded verifier checkpoint (preview hold superseded below)
 
 3c405cf changes only EU-V list spec and note. Corrected L1.5 uses Include success
 invalidation -> observed background GET failure -> same cached row + stale chip.
@@ -72,3 +76,15 @@ selectors executed no tests; earlier focus-trigger draft failed. No fresh whole-
 count, independent rerun or full acceptance inferred. Five other original list
 failure groups, detail and real-worker payload proof remain unresolved. Next batch
 request: PR19 comment5648897894. EU-M hold unchanged.
+
+## Renewed owner-preview decision
+
+Owner asked when local preview can run. Product is unchanged since a040e9f; do not
+wait for all verifier cases to permit a bounded synthetic demonstration. Explicit
+renewed release/checklist is OWNER_PREVIEW.md. Preflight isolation failure means
+STOP; no real evidence, backup/restore, destructive gate or unmerged tooling.
+Final acceptance remains held. PDF/image stub rechecked in both process_source
+and ocr_source at a040e9f: each deliberately sets skipped and records no engine
+wired. Successful worker orchestration/native PDF rendering is not extraction.
+3c405cf is the same reviewed short-batch head, not an additional EU-V delivery.
+No agent-launch tool is available here; owner must start the two fresh sessions.

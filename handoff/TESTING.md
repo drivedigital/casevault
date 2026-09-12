@@ -1,6 +1,7 @@
 # Testing
 
-**Current: EU-M/local integration ON HOLD.** No setup/test/backup run is requested.
+**Current: limited synthetic owner preview released via OWNER_PREVIEW.md.**
+Mandatory isolation preflight; full acceptance/real-data and backup work remain held.
 Read [STATUS.md](STATUS.md), [VERIFICATION_WORKFLOWS.md](VERIFICATION_WORKFLOWS.md)
 and [RECOVERY.md](RECOVERY.md). The phase checklists below are historical reference;
 old counts and Python versions are not current acceptance. Full gate and pytest

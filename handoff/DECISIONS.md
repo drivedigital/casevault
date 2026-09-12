@@ -1,3 +1,8 @@
+> Latest 2026-09-12: limited synthetic owner preview released under
+> OWNER_PREVIEW.md at a040e9f, only after isolation preflight. Full acceptance
+> remains held. PV-GATE/OCR-PLAN fresh-session briefs prepared, not launched;
+> engine implementation is not yet approved. This supersedes blanket hold below.
+
 # Current coordination decisions — 2026-09-12
 
 - STATUS.md is the current task/hold entry point; historical records remain provenance.

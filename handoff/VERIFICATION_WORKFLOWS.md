@@ -80,8 +80,9 @@ failure; new test counts may legitimately grow with reviewed changes.
 
 ## Local test release and operational tools
 
-EU-M is ON HOLD. Only a renewed integrator go-ahead with exact SHA and focused
-checklist releases it. Historical setup recipes are reference, not permission.
+EU-M has a limited synthetic preview release at a040e9f via OWNER_PREVIEW.md,
+subject to mandatory isolation preflight. Full acceptance/real-data work remains
+held. Historical setup recipes are reference, not permission.
 Never stop Homebrew/system services or change ports without ownership review.
 Python3.14/native Mac behavior is not proven by Linux CI or older Phase1 results.
 

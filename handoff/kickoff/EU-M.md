@@ -1,6 +1,7 @@
-> **Current owner instruction: ON HOLD.** Do not start local integration tests.
-> Earlier release/checklist below is historical until integrator explicitly supplies
-> a renewed go-ahead, exact checkpoint and checklist.
+> **Latest: limited synthetic owner preview authorized.** Follow
+> `handoff/OWNER_PREVIEW.md` (product a040e9f, mandatory isolation preflight).
+> Full acceptance/real-data testing remains held. Earlier holds and broader
+> checklists below are historical; this preview release is the only go-ahead.
 
 # EU-M — local Mac/browser acceptance (report-only)
 

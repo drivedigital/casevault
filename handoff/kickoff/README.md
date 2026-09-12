@@ -9,7 +9,9 @@ Read [current status](../STATUS.md), [policy](../AGENT_POLICY.md), and
 | EU-D | PR18 merged c8c7d27; session closed | None. List-review limitation note recovered; new review requires fresh accessible session |
 | EU-L | PR17 merged a040e9f; session closed | None. OCR-review limitation note recovered; corrected plan in REVIEW_PATCH_INTAKE.md |
 | EU-V | PR19 open; latest inspected3c405cf | Short batch done; next L2.5 + L3.2–L3.4 only, work<=30min/tests<=5min, retries0; checkpoint/stop, no long rerun or merge |
-| EU-M | Local integration ON HOLD | Wait for renewed exact checkpoint/checklist/go-ahead; no local-ops approval bypass |
+| EU-M | Limited synthetic preview released | Follow ../OWNER_PREVIEW.md at a040e9f; full acceptance held |
+| PV-GATE | Fresh session brief ready, not launched | PV-GATE.md; focused independent preview checks, no product changes |
+| OCR-PLAN | Fresh session brief ready, not launched | OCR-PLAN.md; design-only real PDF/image extraction proposal |
 | Integrator | Owns integration and shared docs | Review measured results, coordinate fixes, full gate after product merge; do not implement agent features |
 
 D/L/V/M briefs in this directory retain historical implementation scope. Current

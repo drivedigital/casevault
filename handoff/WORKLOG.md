@@ -954,3 +954,18 @@ Original list14/6 is not retrospectively15/5; five other failure groups and deta
 OCR proof remain open. Next bounded L2.5 + row-badge L3.2–3.4 assigned on PR19
 comment5648897894 (30min work/5min tests/no retries). No product or verifier merge;
 EU-M hold remains. Status/backlog/roster updated; documentation diff-check only.
+
+## 2026-09-12 — verify OCR boundary; release limited owner preview, new briefs
+
+Rechecked actual a040e9f process_source and ocr_source: PDF/image branch explicitly
+sets skipped with no OCR engine wired; preview/queue success is not extraction.
+User-supplied3c405cf is same previously reviewed EU-V short-batch head, PR19 open.
+Clarified implementation scope: evidence lifecycle complete, actual PDF/image OCR
+not implemented. Renewed limited synthetic owner-preview release/checklist added
+OWNER_PREVIEW.md, exact producta040e9f, mandatory disposable-target preflight; no
+real evidence, destructive gate, backup/restore, unmerged scripts or acceptance
+claim. Full acceptance held; EU-V continues bounded list work in parallel.
+Prepared two disjoint fresh-session briefs PV-GATE (focused preview proof) and
+OCR-PLAN (design only), <=45min each, own assigned branches/new PRs/no self-merge.
+No agent-launch tool available here: sessions not spawned, owner relay required.
+No product, dependency, CI or runtime safety changes; no local tests executed.
