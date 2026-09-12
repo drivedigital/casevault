@@ -22,7 +22,8 @@ export class FileActionError extends Error {
 /** Maps any thrown client-side error to one honest, user-safe sentence. */
 export function describeError(err: unknown): string {
   if (err instanceof FileActionError) {
-    if (err.timedOut) return "The file request timed out.";
+    // The message is already actionable (timeouts say how long they waited
+    // and what to do next) — the generic fallback is only for empty ones.
     return err.message || "The file could not be fetched.";
   }
   if (err instanceof ApiError) {

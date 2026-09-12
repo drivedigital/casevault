@@ -144,7 +144,15 @@ export function EvidenceViewer({
                   data-testid="preview-loading"
                   className="rounded border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500"
                 >
-                  Loading preview…
+                  Loading preview…{" "}
+                  <button
+                    type="button"
+                    onClick={dismiss}
+                    className="font-medium text-blue-700 underline"
+                    data-testid="cancel-preview"
+                  >
+                    Cancel
+                  </button>
                 </div>
               ) : preview.phase === "error" ? (
                 <div className="space-y-2">

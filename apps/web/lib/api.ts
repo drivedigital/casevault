@@ -127,7 +127,11 @@ export const api = {
     // apiFetch skips the JSON Content-Type for FormData (multipart boundary).
     return apiFetch<Source>("/sources", { method: "POST", body: form });
   },
-  getSource: (id: string) => apiFetch<Source>(`/sources/${id}`),
+  // EU-D (integrator-approved amendment 2026-09-11): optional AbortSignal so
+  // the OCR watch loop can genuinely cancel in-flight status requests. All
+  // existing callers omit it and behave exactly as before.
+  getSource: (id: string, signal?: AbortSignal) =>
+    apiFetch<Source>(`/sources/${id}`, signal ? { signal } : undefined),
   updateSource: (
     id: string,
     payload: Partial<

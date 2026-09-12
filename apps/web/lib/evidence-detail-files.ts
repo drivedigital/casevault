@@ -7,15 +7,27 @@
 // viewer) makes the browser download the file on page load. Every preview or
 // download from the detail page therefore goes through a controlled fetch()
 // that can surface errors, and PDF previews are opt-in to avoid eagerly
-// buffering large files. Object URLs are revoked on source change, unmount,
-// reload and dismiss.
+// buffering large files.
+//
+// Lifecycle rules (integrator review 2026-09-11):
+// - The request timeout spans the COMPLETE body, not just response headers:
+//   a response whose headers arrive but whose body stalls is aborted at the
+//   bound with actionable feedback (the timer stays armed across
+//   resp.blob()/resp.json()).
+// - Preview loads are genuinely abortable: dismissal, source change, unmount
+//   and reload all abort the in-flight fetch (which cancels the body stream)
+//   and invalidate the generation, so a late result can never create an
+//   unreclaimed object URL or update the wrong source's view. Object URLs
+//   are created only after the generation check, so cancelled loads create
+//   none at all.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { Source } from "@/lib/types";
 import { describeError, FileActionError } from "./evidence-detail-errors";
 
-/** Per-request timeout for file fetches (download + preview). */
+/** Per-request timeout for file fetches (download + preview), covering the
+ *  complete response body, not just the headers. */
 export const FILE_REQUEST_TIMEOUT_MS = 30_000;
 
 /** How long a download anchor's object URL is kept alive after the click. */
@@ -23,13 +35,26 @@ const DOWNLOAD_URL_LIFETIME_MS = 10_000;
 
 type FileFetchOptions = {
   timeoutMs?: number;
+  /** External cancellation (preview lifecycle). Aborting it aborts the
+   *  underlying request — including a body that is still streaming. */
   signal?: AbortSignal;
 };
 
-async function fetchSourceFileResponse(
+interface FileFetchResult {
+  response: Response;
+  blob: Blob;
+}
+
+/**
+ * Fetches a source file and reads its COMPLETE body under a single timeout:
+ * the timer is only cleared after `blob()` settles, so a stalled body is
+ * aborted at the bound instead of hanging forever. An external `signal`
+ * aborts the same underlying request at any point.
+ */
+async function fetchSourceFileBytes(
   url: string,
   opts: FileFetchOptions = {},
-): Promise<Response> {
+): Promise<FileFetchResult> {
   const timeoutMs = opts.timeoutMs ?? FILE_REQUEST_TIMEOUT_MS;
   const controller = new AbortController();
   let timedOut = false;
@@ -43,21 +68,32 @@ async function fetchSourceFileResponse(
     else opts.signal.addEventListener("abort", onExternalAbort, { once: true });
   }
   try {
-    const resp = await fetch(url, { cache: "no-store", signal: controller.signal });
-    if (!resp.ok) {
-      let detail = `HTTP ${resp.status}`;
+    const response = await fetch(url, { cache: "no-store", signal: controller.signal });
+    if (!response.ok) {
+      let detail = `HTTP ${response.status}`;
       try {
-        const body = (await resp.json()) as { detail?: unknown };
+        // Error-body read is also under the timeout: a stalled error body
+        // must terminate too.
+        const body = (await response.json()) as { detail?: unknown };
         if (body && typeof body.detail === "string") detail = body.detail;
       } catch {
         /* non-JSON error body — keep the status text */
       }
-      throw new FileActionError(detail, resp.status);
+      throw new FileActionError(detail, response.status);
     }
-    return resp;
+    // Still under the armed timeout: a body whose headers arrived but which
+    // never completes is aborted at the bound (integrator finding #1).
+    const blob = await response.blob();
+    return { response, blob };
   } catch (err) {
     if (err instanceof FileActionError) throw err;
-    if (timedOut) throw new FileActionError("The file request timed out.", null, true);
+    if (timedOut) {
+      throw new FileActionError(
+        `The file did not finish downloading within ${Math.round(timeoutMs / 1000)}s — the connection may be stalled mid-transfer. Retry, or check that the API is healthy.`,
+        null,
+        true,
+      );
+    }
     if (err instanceof DOMException && err.name === "AbortError") {
       throw new FileActionError("The file request was cancelled.", null);
     }
@@ -96,7 +132,8 @@ export interface DownloadResult {
  * fetches the shipped same-origin file endpoint, preserves the served bytes
  * and the server-declared filename, and hands the blob to the browser via a
  * temporary object URL. Unlike a bare <a href>, failures (missing stored
- * file → 410, API down, timeout) are thrown so the UI can show them.
+ * file → 410, API down, timeout — including a stalled body) are thrown so
+ * the UI can show them.
  */
 export async function downloadOriginalFile(
   source: Pick<Source, "id" | "original_filename">,
@@ -105,10 +142,9 @@ export async function downloadOriginalFile(
   if (typeof document === "undefined") {
     throw new FileActionError("Downloads require a browser environment.");
   }
-  const resp = await fetchSourceFileResponse(api.sourceFileUrl(source.id), opts);
-  const blob = await resp.blob();
+  const { response, blob } = await fetchSourceFileBytes(api.sourceFileUrl(source.id), opts);
   const filename =
-    parseContentDispositionFilename(resp.headers.get("content-disposition")) ??
+    parseContentDispositionFilename(response.headers.get("content-disposition")) ??
     source.original_filename ??
     `source-${source.id}`;
   const objectUrl = URL.createObjectURL(blob);
@@ -125,26 +161,29 @@ export async function downloadOriginalFile(
   return { filename, bytes: blob.size };
 }
 
-export interface SourcePreview {
-  objectUrl: string;
+export interface SourcePreviewBlob {
+  /** The raw blob — the caller creates the object URL itself, so a result
+   *  that arrives after the load was cancelled/superseded never creates a
+   *  URL that would need reclaiming. */
+  blob: Blob;
   contentType: string;
   sizeBytes: number;
 }
 
 /**
- * Controlled fetch for the opt-in PDF preview (contract §EU-D.3): returns a
- * Blob object URL with no Content-Disposition semantics, so rendering it can
- * never trigger a download. The caller must revoke the URL when done.
+ * Controlled fetch for the opt-in PDF preview (contract §EU-D.3): returns
+ * the file as a Blob (no Content-Disposition semantics, so rendering it can
+ * never trigger a download) under the body-spanning timeout. The caller owns
+ * object-URL creation and revocation.
  */
 export async function fetchPreviewBlob(
   source: Pick<Source, "id">,
   opts: FileFetchOptions = {},
-): Promise<SourcePreview> {
-  const resp = await fetchSourceFileResponse(api.sourceFileUrl(source.id), opts);
-  const blob = await resp.blob();
+): Promise<SourcePreviewBlob> {
+  const { response, blob } = await fetchSourceFileBytes(api.sourceFileUrl(source.id), opts);
   return {
-    objectUrl: URL.createObjectURL(blob),
-    contentType: resp.headers.get("content-type") ?? blob.type ?? "application/octet-stream",
+    blob,
+    contentType: response.headers.get("content-type") ?? blob.type ?? "application/octet-stream",
     sizeBytes: blob.size,
   };
 }
@@ -156,59 +195,92 @@ export type PreviewState =
   | { phase: "error"; message: string };
 
 /**
- * Opt-in preview lifecycle (contract §EU-D.3): load on demand, label
- * loading/error, revoke the object URL on source change, unmount, reload or
- * dismiss, and drop results from superseded loads.
+ * Opt-in preview lifecycle (contract §EU-D.3 + integrator review): load on
+ * demand, label loading/error, and abort + invalidate pending work on
+ * dismissal, source change, unmount and reload. Object URLs are created only
+ * after the generation check (cancelled loads create none) and revoked on
+ * every transition away from "ready".
  */
 export function useFilePreview(sourceId: string) {
   const [state, setState] = useState<PreviewState>({ phase: "idle" });
   const generationRef = useRef(0);
   const objectUrlRef = useRef<string | null>(null);
+  const loadAbortRef = useRef<AbortController | null>(null);
   const trackedSourceIdRef = useRef(sourceId);
 
   const revoke = useCallback((url: string | null) => {
     if (url) URL.revokeObjectURL(url);
   }, []);
 
-  // Navigating to another source without unmounting this component resets
-  // the preview and revokes the old URL.
+  /** Abort the in-flight preview load (cancels the body stream) and
+   *  invalidate its generation so the late result is dropped silently. */
+  const abortPendingLoad = useCallback(() => {
+    generationRef.current += 1;
+    loadAbortRef.current?.abort();
+    loadAbortRef.current = null;
+  }, []);
+
+  // Navigating to another source without unmounting this component aborts
+  // any pending load, revokes the old URL and resets the preview.
   useEffect(() => {
     if (trackedSourceIdRef.current === sourceId) return;
     trackedSourceIdRef.current = sourceId;
-    generationRef.current += 1; // in-flight loads for the old source are dropped
+    abortPendingLoad();
     revoke(objectUrlRef.current);
     objectUrlRef.current = null;
     setState({ phase: "idle" });
-  }, [sourceId, revoke]);
+  }, [sourceId, abortPendingLoad, revoke]);
 
-  // Revoke whatever is live when the viewer unmounts.
-  useEffect(() => () => revoke(objectUrlRef.current), [revoke]);
+  // Unmount: abort any pending load AND invalidate it — a late blob must not
+  // create an object URL nobody will revoke (integrator finding #2).
+  useEffect(
+    () => () => {
+      generationRef.current += 1;
+      loadAbortRef.current?.abort();
+      loadAbortRef.current = null;
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    },
+    [],
+  );
 
   const load = useCallback(async () => {
-    const generation = ++generationRef.current;
+    // A reload supersedes any pending load: cancel it before starting.
+    abortPendingLoad();
     revoke(objectUrlRef.current);
     objectUrlRef.current = null;
+
+    const generation = generationRef.current;
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
     setState({ phase: "loading" });
     try {
-      const preview = await fetchPreviewBlob({ id: sourceId });
-      if (generationRef.current !== generation) {
-        revoke(preview.objectUrl); // superseded by a newer load / source change
-        return;
-      }
-      objectUrlRef.current = preview.objectUrl;
-      setState({ phase: "ready", ...preview });
+      const preview = await fetchPreviewBlob({ id: sourceId }, { signal: controller.signal });
+      if (generationRef.current !== generation) return; // superseded — no URL, no state
+      const objectUrl = URL.createObjectURL(preview.blob);
+      objectUrlRef.current = objectUrl;
+      setState({
+        phase: "ready",
+        objectUrl,
+        contentType: preview.contentType,
+        sizeBytes: preview.sizeBytes,
+      });
     } catch (err) {
-      if (generationRef.current !== generation) return;
+      if (generationRef.current !== generation) return; // cancelled/superseded
       setState({ phase: "error", message: describeError(err) });
+    } finally {
+      if (loadAbortRef.current === controller) loadAbortRef.current = null;
     }
-  }, [sourceId, revoke]);
+  }, [sourceId, abortPendingLoad, revoke]);
 
+  /** Dismiss the preview — also the "Cancel" action while a load is pending:
+   *  aborts the fetch and drops the late result. */
   const dismiss = useCallback(() => {
-    generationRef.current += 1;
+    abortPendingLoad();
     revoke(objectUrlRef.current);
     objectUrlRef.current = null;
     setState({ phase: "idle" });
-  }, [revoke]);
+  }, [abortPendingLoad, revoke]);
 
   return { state: state, load, dismiss };
 }

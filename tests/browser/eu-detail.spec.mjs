@@ -103,6 +103,178 @@ async function pdfViewerEnabled(page) {
   return page.evaluate(() => navigator.pdfViewerEnabled === true);
 }
 
+/** Injects the PDF capability flag so PDF-incapable browsers (this sandbox's
+ *  headless Chromium reports navigator.pdfViewerEnabled === false) still
+ *  exercise the PREVIEW LIFECYCLE — fetch/object-URL/generation mechanics
+ *  only. This is the same technique the integrator review used; it is NOT a
+ *  claim that native PDF rendering was verified (any download seen while the
+ *  capability is injected is a browser artifact of the injection). */
+async function injectPdfCapability(page) {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "pdfViewerEnabled", {
+      get: () => true,
+      configurable: true,
+    });
+  });
+}
+
+/** Installs page-level fetch/URL instrumentation plus fault injection for
+ *  the lifecycle regressions (labels: "injected stalled body / stalled
+ *  response"). All faults are opt-in per call via window.__eu flags:
+ *  - fileStall: the NEXT /file fetch returns headers immediately but its
+ *    body never completes. bodyAborted/bodyCancelled prove the app's abort
+ *    reached the stream; releaseBody() finishes a stalled body late;
+ *    resistAbort makes the synthetic fetch ignore aborts so the GENERATION
+ *    guard is what must drop the late result.
+ *  - holdPoll: the NEXT GET /sources/{uuid} (the exact watch/status URL)
+ *    never settles on its own and rejects when the app aborts it.
+ *    pollCalls/pollInflight/pollMaxInflight count ALL requests to that URL;
+ *    watch* counters only requests carrying an AbortSignal (the watch loop
+ *    always passes one; the react-query detail query does not).
+ *  - urlsCreated/urlsRevoked count object-URL lifecycle. */
+async function installLifecycleInstrumentation(page) {
+  await page.addInitScript(() => {
+    const eu = {
+      fileStall: false,
+      resistAbort: false,
+      bodyAborted: false,
+      bodyCancelled: false,
+      bodyReleased: false,
+      releaseBody: () => {},
+      urlsCreated: 0,
+      urlsRevoked: 0,
+      pollCalls: 0,
+      pollInflight: 0,
+      pollMaxInflight: 0,
+      watchCalls: 0,
+      watchInflight: 0,
+      watchMaxInflight: 0,
+      holdPoll: false,
+      heldAborted: false,
+    };
+    window.__eu = eu;
+    const origFetch = window.fetch.bind(window);
+    window.fetch = function (input, init) {
+      const url = typeof input === "string" ? input : (input && input.url) || String(input);
+      const signal = (init && init.signal) || (input && input.signal) || null;
+
+      if (url.indexOf("/file") !== -1 && eu.fileStall) {
+        eu.fileStall = false;
+        eu.bodyAborted = false;
+        eu.bodyCancelled = false;
+        eu.bodyReleased = false;
+        let controller = null;
+        const stream = new ReadableStream({
+          start(c) {
+            controller = c;
+            c.enqueue(new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d])); // "%PDF-"
+          },
+          cancel() {
+            eu.bodyCancelled = true;
+          },
+        });
+        eu.releaseBody = () => {
+          eu.bodyReleased = true;
+          try {
+            if (controller) controller.close();
+          } catch (e) {
+            /* already errored/closed */
+          }
+        };
+        if (signal && !eu.resistAbort) {
+          const onAbort = () => {
+            eu.bodyAborted = true;
+            try {
+              if (controller) controller.error(new DOMException("Aborted", "AbortError"));
+            } catch (e) {
+              /* stream already closed */
+            }
+          };
+          if (signal.aborted) onAbort();
+          else signal.addEventListener("abort", onAbort, { once: true });
+        }
+        return Promise.resolve(
+          new Response(stream, {
+            status: 200,
+            headers: {
+              "content-type": "application/pdf",
+              "content-disposition": 'attachment; filename="stalled.pdf"',
+            },
+          }),
+        );
+      }
+
+      const m = /\/api\/v1\/sources\/([0-9a-fA-F-]{36})$/.exec(url);
+      const method = (init && init.method) || (input && input.method) || "GET";
+      if (m && method === "GET") {
+        eu.pollCalls += 1;
+        eu.pollInflight += 1;
+        if (eu.pollInflight > eu.pollMaxInflight) eu.pollMaxInflight = eu.pollInflight;
+        const isWatch = !!signal;
+        if (isWatch) {
+          eu.watchCalls += 1;
+          eu.watchInflight += 1;
+          if (eu.watchInflight > eu.watchMaxInflight) eu.watchMaxInflight = eu.watchInflight;
+        }
+        const settle = () => {
+          eu.pollInflight -= 1;
+          if (isWatch) eu.watchInflight -= 1;
+        };
+        if (eu.holdPoll) {
+          eu.holdPoll = false;
+          eu.heldAborted = false;
+          return new Promise((resolve, reject) => {
+            let done = false;
+            const finish = (fn, arg) => {
+              if (done) return;
+              done = true;
+              settle();
+              fn(arg);
+            };
+            if (signal) {
+              if (signal.aborted) {
+                finish(reject, signal.reason || new DOMException("Aborted", "AbortError"));
+                return;
+              }
+              signal.addEventListener(
+                "abort",
+                () => {
+                  eu.heldAborted = true;
+                  finish(reject, signal.reason || new DOMException("Aborted", "AbortError"));
+                },
+                { once: true },
+              );
+            }
+            // never settles on its own — only the app's abort can end it
+          });
+        }
+        return origFetch(input, init).then(
+          (r) => {
+            settle();
+            return r;
+          },
+          (e) => {
+            settle();
+            throw e;
+          },
+        );
+      }
+
+      return origFetch(input, init);
+    };
+    const origCreate = URL.createObjectURL.bind(URL);
+    const origRevoke = URL.revokeObjectURL.bind(URL);
+    URL.createObjectURL = (blob) => {
+      eu.urlsCreated += 1;
+      return origCreate(blob);
+    };
+    URL.revokeObjectURL = (u) => {
+      eu.urlsRevoked += 1;
+      return origRevoke(u);
+    };
+  });
+}
+
 // Mode detection: is a real Redis + worker consuming reprocess jobs?
 let workerMode = null;
 test.beforeAll(async () => {
@@ -629,11 +801,14 @@ test("ocr watch: bounded polling stops after the 120s budget with 'still unconfi
 
 // --------------------------------------------- §EU-D.3: preview failure ----
 
-test("pdf preview failure is labeled with a download fallback [injected 503]", async ({ page }) => {
+test("pdf preview failure is labeled with a download fallback [injected pdf capability + 503]", async ({ page }) => {
   const source = await apiUpload(fixtures.pdf, { title: "Preview failure check" });
+  // PDF capability is injected so the preview path (and its opt-in button)
+  // exists in this PDF-incapable browser; the 503 error path never renders
+  // an iframe, so no rendering is claimed. Native PDF rendering is NOT
+  // verified by this test.
+  await injectPdfCapability(page);
   await page.goto(`${WEB}/evidence/${source.id}`);
-  const canPreview = await pdfViewerEnabled(page);
-  test.skip(!canPreview, "this browser cannot render PDFs inline — the preview path is unreachable (covered by the labeled-fallback test)");
   await page.route(
     "**/api/v1/sources/*/file",
     (route) =>
@@ -649,4 +824,330 @@ test("pdf preview failure is labeled with a download fallback [injected 503]", a
   await expect(note).toContainText("file backend unavailable (injected)");
   // Fallback offer is present (its click would hit the same injected failure).
   await expect(page.getByTestId("download-original")).toHaveCount(2); // header + fallback
+});
+
+// ---------------------------------- lifecycle regressions (integrator review 2026-09-11) ---
+// These tests inject stalled/delayed responses and (where cheap) drive the
+// page clock. They exercise the app's real fetch/abort/object-URL handling;
+// the PDF capability flag is injected in this PDF-incapable browser to reach
+// the preview UI — that is NOT a native-rendering claim, and any download
+// observed while the capability is injected is a browser artifact.
+
+test("download: a stalled response body is aborted at the 30s bound with actionable feedback [injected stalled body + clock]", async ({ page }) => {
+  const source = await apiUpload(fixtures.text, { title: "Stalled download check" });
+  await installLifecycleInstrumentation(page);
+  await page.clock.install();
+  await page.goto(`${WEB}/evidence/${source.id}`);
+
+  await page.evaluate(() => {
+    window.__eu.fileStall = true;
+  });
+  await page.getByTestId("download-original").first().click();
+  await expect(page.getByTestId("download-original").first()).toContainText("Downloading…");
+
+  // Headers arrived instantly (synthetic response); the body never completes.
+  // The old code cleared its timeout when the headers resolved, so this stall
+  // waited forever — the timeout must span the COMPLETE body.
+  await page.clock.fastForward(31_000);
+  const err = page.getByText(/Download failed — The file did not finish downloading within 30s/i);
+  await expect(err).toBeVisible();
+  await expect(err).toContainText(/stalled mid-transfer/i);
+  await expect(page.getByTestId("download-original").first()).toBeEnabled(); // retry available
+  // The abort genuinely reached the body (stream errored/cancelled), and no
+  // object URL was created for the failed download.
+  expect(await page.evaluate(() => window.__eu.bodyAborted || window.__eu.bodyCancelled)).toBe(true);
+  expect(await page.evaluate(() => window.__eu.urlsCreated)).toBe(0);
+
+  // Recovery: with the stall released, Retry completes a real byte-exact download.
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByTestId("download-original").first().click(),
+  ]);
+  expect(download.suggestedFilename()).toBe(fixtures.text.filename);
+  const path = `/tmp/eu-d-download-retry-${Date.now()}.txt`;
+  await download.saveAs(path);
+  expect(sha256(readFileSync(path))).toBe(fixtures.text.sha256);
+});
+
+test("pdf preview: a stalled body is aborted at the 30s bound with actionable feedback [injected pdf capability + stalled body + clock]", async ({ page }) => {
+  const source = await apiUpload(fixtures.pdf, { title: "Stalled preview check" });
+  await injectPdfCapability(page);
+  await installLifecycleInstrumentation(page);
+  await page.clock.install();
+  await page.goto(`${WEB}/evidence/${source.id}`);
+
+  await page.evaluate(() => {
+    window.__eu.fileStall = true;
+  });
+  await page.getByTestId("load-preview").click();
+  await expect(page.getByTestId("preview-loading")).toBeVisible();
+
+  await page.clock.fastForward(31_000);
+  const note = page.getByTestId("error-note").filter({ hasText: "Preview failed" });
+  await expect(note).toBeVisible();
+  await expect(note).toContainText("did not finish downloading within 30s");
+  await expect(note.getByRole("button", { name: "Retry" })).toBeVisible();
+  // Download fallback is still offered (header + preview fallback).
+  await expect(page.getByTestId("download-original")).toHaveCount(2);
+  expect(await page.evaluate(() => window.__eu.bodyAborted || window.__eu.bodyCancelled)).toBe(true);
+  expect(await page.evaluate(() => window.__eu.urlsCreated)).toBe(0);
+});
+
+test("pdf preview: navigating away mid-load aborts it; a late-completing body creates no object URL [injected pdf capability + stalled body]", async ({ page }) => {
+  const source = await apiUpload(fixtures.pdf, { title: "Late body after unmount check" });
+  await injectPdfCapability(page);
+  await installLifecycleInstrumentation(page);
+
+  // Phase 1 — real abort on unmount (soft navigation keeps the document, so
+  // the instrumentation counters survive and prove what the unmounted
+  // component did): the pending fetch is aborted at the stream level.
+  await page.goto(`${WEB}/evidence/${source.id}`);
+  await page.evaluate(() => {
+    window.__eu.fileStall = true;
+  });
+  await page.getByTestId("load-preview").click();
+  await expect(page.getByTestId("preview-loading")).toBeVisible();
+  await page.getByRole("button", { name: "← Back to evidence" }).click();
+  await page.waitForURL("**/evidence");
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => window.__eu.bodyAborted || window.__eu.bodyCancelled)).toBe(true);
+  expect(await page.evaluate(() => window.__eu.urlsCreated)).toBe(0);
+
+  // Phase 2 — defensive generation guard (the integrator's exact repro): a
+  // body that completes AFTER the load was invalidated. The synthetic fetch
+  // deliberately ignores the abort (resistAbort) so only the generation
+  // check can drop the late result — it must create no object URL.
+  await page.goto(`${WEB}/evidence/${source.id}`);
+  await page.evaluate(() => {
+    window.__eu.resistAbort = true;
+    window.__eu.fileStall = true;
+  });
+  await page.getByTestId("load-preview").click();
+  await expect(page.getByTestId("preview-loading")).toBeVisible();
+  await page.getByRole("button", { name: "← Back to evidence" }).click();
+  await page.waitForURL("**/evidence");
+  await page.evaluate(() => window.__eu.releaseBody()); // the body finishes late
+  await page.waitForTimeout(700);
+  expect(await page.evaluate(() => window.__eu.urlsCreated)).toBe(0); // late result dropped, nothing to revoke
+  await expect(page.getByTestId("error-note")).toHaveCount(0); // nothing surfaced on the list page
+});
+
+test("pdf preview: cancelling a pending load aborts it; a later real load works and dismiss revokes [injected pdf capability + stalled body]", async ({ page }) => {
+  const source = await apiUpload(fixtures.pdf, { title: "Cancel preview check" });
+  await injectPdfCapability(page);
+  await installLifecycleInstrumentation(page);
+  await page.goto(`${WEB}/evidence/${source.id}`);
+
+  await page.evaluate(() => {
+    window.__eu.fileStall = true;
+  });
+  await page.getByTestId("load-preview").click();
+  await expect(page.getByTestId("preview-loading")).toBeVisible();
+  await page.getByTestId("cancel-preview").click();
+  await expect(page.getByTestId("load-preview")).toBeVisible(); // back to opt-in
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => window.__eu.bodyAborted || window.__eu.bodyCancelled)).toBe(true);
+  expect(await page.evaluate(() => window.__eu.urlsCreated)).toBe(0);
+
+  // A subsequent REAL load reaches ready (blob object URL created once)…
+  await page.getByTestId("load-preview").click();
+  await expect(page.getByTestId("preview-ready")).toBeVisible({ timeout: 15_000 });
+  expect(await page.evaluate(() => window.__eu.urlsCreated)).toBe(1);
+  // …and dismissing the ready preview revokes it.
+  await page.getByRole("button", { name: "Close preview" }).click();
+  await expect(page.getByTestId("load-preview")).toBeVisible();
+  expect(await page.evaluate(() => window.__eu.urlsCreated - window.__eu.urlsRevoked)).toBe(0);
+});
+
+test("ocr watch: a slow status request is aborted at the per-request bound; never two watch requests in flight [injected stalled response]", async ({ page }) => {
+  test.setTimeout(60_000);
+  const source = await apiUpload(fixtures.text, { title: "Slow status check" });
+  await installLifecycleInstrumentation(page);
+  const canned = await (await fetch(`${BASE}/sources/${source.id}`)).json();
+  canned.ocr_status = "queued";
+  canned.processing_status = "complete";
+  await page.route(
+    `**/api/v1/sources/${source.id}/reprocess`,
+    (route) =>
+      route.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: JSON.stringify({ queued: true, job_id: "slow-poll-job", reason: null }),
+      }),
+  );
+  await page.route(
+    `**/api/v1/sources/${source.id}`,
+    (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(canned) }),
+  );
+
+  await gotoStatusTab(page, source.id);
+  await page.getByTestId("reprocess-ocr").click();
+  await expect(page.getByTestId("ocr-accepted")).toBeVisible();
+  await expect(page.getByTestId("ocr-watching")).toBeVisible();
+  // Let the post-202 invalidation refetch settle, then hold the NEXT status
+  // poll (the watch loop's own request — it always carries a signal).
+  await page.waitForTimeout(600);
+  await page.evaluate(() => {
+    window.__eu.holdPoll = true;
+  });
+
+  // The held request is aborted at the 10s per-request bound (real time), the
+  // failure is visible, and the loop keeps watching.
+  const watchError = page.getByTestId("ocr-watch-error");
+  await expect(watchError).toBeVisible({ timeout: 15_000 });
+  await expect(watchError).toContainText("timed out");
+  await expect(watchError).toContainText("Still watching");
+  expect(await page.evaluate(() => window.__eu.heldAborted)).toBe(true); // the abort reached the request
+  expect(await page.evaluate(() => window.__eu.watchMaxInflight)).toBe(1); // strictly one watch request at a time
+
+  // The loop resumes after the failed check (canned "queued" → still watching).
+  const callsAfterHold = await page.evaluate(() => window.__eu.pollCalls);
+  await page.waitForTimeout(5_000);
+  expect(await page.evaluate(() => window.__eu.pollCalls)).toBeGreaterThan(callsAfterHold);
+  expect(await page.evaluate(() => window.__eu.watchMaxInflight)).toBe(1); // never overlapped
+
+  // Navigating away stops the loop and leaves nothing in flight.
+  await page.getByRole("button", { name: "← Back to evidence" }).click();
+  await page.waitForURL("**/evidence");
+  const atStop = await page.evaluate(() => window.__eu.pollCalls);
+  await page.waitForTimeout(5_000);
+  expect(await page.evaluate(() => window.__eu.pollCalls)).toBe(atStop);
+  expect(await page.evaluate(() => window.__eu.pollInflight)).toBe(0);
+});
+
+test("ocr watch: the total budget cuts even a hung request at the 120s deadline [injected stalled response + clock]", async ({ page }) => {
+  test.setTimeout(90_000);
+  const source = await apiUpload(fixtures.text, { title: "Budget cuts hung request check" });
+  await installLifecycleInstrumentation(page);
+  await page.clock.install();
+  const canned = await (await fetch(`${BASE}/sources/${source.id}`)).json();
+  canned.ocr_status = "queued";
+  canned.processing_status = "complete";
+  await page.route(
+    `**/api/v1/sources/${source.id}/reprocess`,
+    (route) =>
+      route.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: JSON.stringify({ queued: true, job_id: "hung-poll-job", reason: null }),
+      }),
+  );
+  await page.route(
+    `**/api/v1/sources/${source.id}`,
+    (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(canned) }),
+  );
+
+  await page.goto(`${WEB}/evidence/${source.id}`);
+  await page.getByRole("button", { name: "Status", exact: true }).click();
+  await page.getByTestId("reprocess-ocr").click();
+  await expect(page.getByTestId("ocr-watching")).toBeVisible();
+  const startedVirtual = await page.evaluate(() => Date.now());
+
+  // Drive the 2s cadence with the page clock (~57 instant canned polls in a
+  // few real seconds) up to ~114s of the 120s budget.
+  while (await page.evaluate((t0) => Date.now() - t0 < 114_000, startedVirtual)) {
+    await page.clock.fastForward(2_000);
+    await page.waitForTimeout(25);
+  }
+
+  // Hold the next status request: it starts with only ~6s of budget left, so
+  // its settle bound must be the REMAINING budget — not the full 10s. A
+  // request may never outlive the deadline.
+  await page.evaluate(() => {
+    window.__eu.holdPoll = true;
+  });
+  let elapsed = 0;
+  while (!(await page.evaluate(() => window.__eu.heldAborted)) && elapsed < 124_000) {
+    await page.clock.fastForward(1_000);
+    await page.waitForTimeout(25);
+    elapsed = await page.evaluate((t0) => Date.now() - t0, startedVirtual);
+  }
+  expect(await page.evaluate(() => window.__eu.heldAborted)).toBe(true);
+  expect(elapsed, "the hung request was cut at the deadline, not granted 10 more seconds").toBeLessThanOrEqual(122_000);
+  expect(await page.evaluate(() => window.__eu.watchMaxInflight)).toBe(1);
+
+  const timeoutNote = page.getByTestId("ocr-timeout");
+  await expect(timeoutNote).toBeVisible({ timeout: 10_000 });
+  await expect(timeoutNote).toContainText("stopped polling");
+  await expect(timeoutNote).toContainText("does not mean the job failed");
+  await expect(page.getByTestId("ocr-done")).toHaveCount(0);
+
+  // Automatic polling actually stopped at the budget.
+  const callsAtStop = await page.evaluate(() => window.__eu.pollCalls);
+  await page.clock.fastForward(6_000);
+  await page.waitForTimeout(100);
+  expect(await page.evaluate(() => window.__eu.pollCalls)).toBe(callsAtStop);
+  expect(await page.evaluate(() => window.__eu.pollInflight)).toBe(0);
+});
+
+test("save: a delayed PATCH across navigation updates only its own source, exactly once [injected delayed response]", async ({ page }) => {
+  const sourceA = await apiUpload(fixtures.text, { title: "Delayed save A" });
+  const sourceB = await apiUpload(fixtures.text, { title: "Delayed save B" });
+  let releasePatch;
+  const gate = new Promise((resolve) => {
+    releasePatch = resolve;
+  });
+  let patchCount = 0;
+  await page.route(`**/api/v1/sources/${sourceA.id}`, async (route) => {
+    if (route.request().method() === "PATCH") {
+      patchCount += 1;
+      await gate; // hold the response until the test releases it
+    }
+    await route.continue();
+  });
+
+  await gotoStatusTab(page, sourceA.id);
+  await page.getByTestId("draft-title").fill("Delayed save A v2");
+  await page.getByTestId("save-source").click();
+  // The save is still pending when the user navigates away.
+  await page.getByRole("button", { name: "← Back to evidence" }).click();
+  await page.waitForURL("**/evidence");
+  releasePatch();
+  await page.waitForTimeout(800);
+  expect(patchCount).toBe(1); // exactly one save — no duplicated submissions
+
+  // Source B is untouched by A's late response…
+  await page.goto(`${WEB}/evidence/${sourceB.id}`);
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Delayed save B");
+  await expect(page.getByTestId("error-note")).toHaveCount(0);
+  // …and source A shows the saved title when we return (server truth).
+  await page.goto(`${WEB}/evidence/${sourceA.id}`);
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Delayed save A v2");
+});
+
+test("reprocess: a delayed 202 after navigating away never starts a detached watch loop [injected delayed response]", async ({ page }) => {
+  const source = await apiUpload(fixtures.text, { title: "Delayed reprocess check" });
+  await installLifecycleInstrumentation(page);
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  await page.route(`**/api/v1/sources/${source.id}/reprocess`, async (route) => {
+    if (route.request().method() === "POST") await gate;
+    await route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify({ queued: true, job_id: "delayed-job", reason: null }),
+    });
+  });
+
+  await gotoStatusTab(page, source.id);
+  await page.getByTestId("reprocess-ocr").click();
+  // The reprocess response is still pending when the user navigates away.
+  await page.getByRole("button", { name: "← Back to evidence" }).click();
+  await page.waitForURL("**/evidence");
+  const callsBeforeRelease = await page.evaluate(() => window.__eu.pollCalls);
+  release();
+  // A detached watch loop would have polled the status URL ~2x by now.
+  await page.waitForTimeout(4_000);
+  expect(await page.evaluate(() => window.__eu.pollCalls)).toBe(callsBeforeRelease);
+  expect(await page.evaluate(() => window.__eu.pollInflight)).toBe(0);
+
+  // Returning to the page shows a healthy status tab with no phantom watch.
+  await page.goto(`${WEB}/evidence/${source.id}`);
+  await page.getByRole("button", { name: "Status", exact: true }).click();
+  await expect(page.getByTestId("ocr-watching")).toHaveCount(0);
+  await expect(page.getByTestId("ocr-done")).toHaveCount(0);
+  await expect(page.getByTestId("ocr-timeout")).toHaveCount(0);
+  await expect(page.getByTestId("ocr-watch-error")).toHaveCount(0);
 });
