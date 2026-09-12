@@ -13,6 +13,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import {
   apiGet,
+  apiPost,
   declareMode,
   expectDownloadEqual,
   fixture,
@@ -91,8 +92,10 @@ test.describe('EU-D/D1 status initialization, dirty drafts, save behaviour [REAL
     await title.fill('eu-v dirty draft');
     log.reset();
 
-    // React Query refetches on window focus by default: a real background refetch.
-    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    // A refetch must be real: the shipped Refresh control reloads the source
+    // (window-focus refetch is disabled in this app, verified: focus produced
+    // no request).
+    await page.getByRole('button', { name: /^refresh$/i }).click();
     await expect
       .poll(() => log.matching(new RegExp(`/api/v1/sources/${id}(\\?|$)`)).length, { timeout: 20_000 })
       .toBeGreaterThan(0);
@@ -172,7 +175,11 @@ test.describe('EU-D/D1 status initialization, dirty drafts, save behaviour [REAL
 
     const { title, save } = controls(page);
     await title.fill('eu-v concurrency');
-    await Promise.all([save.click(), save.click({ force: true }).catch(() => undefined)]);
+    await save.click();
+    // Second activation while the first save is still in flight: the handler
+    // guard (isPending) is what must stop it, so dispatch the DOM event
+    // directly rather than relying on a disabled attribute.
+    await save.dispatchEvent('click');
     await page.waitForTimeout(3_000);
 
     const patches = log.matching(new RegExp(`/api/v1/sources/${id}(\\?|$)`)).filter((r) => r.method() === 'PATCH');
@@ -187,7 +194,7 @@ test.describe('EU-D/D2 downloads and EU-D/D6 cache consistency', () => {
       declareMode('REAL_API', 'real download click against the integrated API');
       const { id, meta } = await seedSource(page, kind);
       await page.goto(`/evidence/${id}`);
-      const link = page.getByRole('link', { name: /download original|download/i }).first();
+      const link = page.getByRole('button', { name: /download original/i }).first();
       await expect(link, 'a download control must exist for every type').toBeVisible();
 
       const log = recordRequests(page);
@@ -209,7 +216,7 @@ test.describe('EU-D/D2 downloads and EU-D/D6 cache consistency', () => {
     const { id } = await seedSource(page, 'text');
     await page.goto(`/evidence/${id}`);
     const restore = await injectNetworkError(page, /\/api\/v1\/sources\/[^/]+\/file/);
-    const link = page.getByRole('link', { name: /download original|download/i }).first();
+    const link = page.getByRole('button', { name: /download original/i }).first();
     await link.click();
     await expect(page.locator('body')).toContainText(/(failed|error|could not|unable|retry)/i, {
       timeout: 20_000,
@@ -259,10 +266,41 @@ test.describe('EU-D/D3 PDF preview safety', () => {
     const { id, meta } = await seedSource(page, 'pdf');
     await instrumentObjectUrls(page);
     await page.goto(`/evidence/${id}`);
+    await expect(page.getByRole('heading').first()).toBeVisible();
 
+    // Capability probe (checklist §5): this sandbox Chromium has no built-in
+    // PDF viewer, and EU-D deliberately refuses to open a preview that would
+    // silently download. When the capability is absent we assert the shipped
+    // degradation and hand native rendering to EU-M - we never weaken the
+    // opt-in, lifecycle or fallback requirements themselves.
+    const capability = await page.evaluate(() => ({
+      pdfViewerEnabled: navigator.pdfViewerEnabled === true,
+      plugins: navigator.plugins.length,
+    }));
     const preview = page.getByRole('button', { name: /preview|view pdf|open preview/i }).first();
-    await expect(preview, 'the preview must be an explicit user action').toBeVisible();
 
+    if (!capability.pdfViewerEnabled && (await preview.count()) === 0) {
+      const body = page.locator('body');
+      await expect(body, 'the page states preview is unavailable in this browser').toContainText(
+        /no built-in PDF viewer|not available in this browser|preview/i,
+      );
+      await expect(body, 'and that opening the page did not download the document').toContainText(
+        /never downloads|only when you ask|opt-in/i,
+      );
+      const fallback = page.getByRole('button', { name: /download original/i }).first();
+      await expect(fallback, 'a download fallback is offered').toBeVisible();
+      await expectDownloadEqual(page, () => fallback.click(), meta);
+      test.info().annotations.push({
+        type: 'eu-v-not-run-native-pdf',
+        description:
+          'object-URL lifecycle and native inline rendering NOT RUN: ' +
+          `pdfViewerEnabled=${capability.pdfViewerEnabled} plugins=${capability.plugins}. ` +
+          'Handed to EU-M on a browser with a built-in PDF viewer (checklist §5).',
+      });
+      return;
+    }
+
+    await expect(preview, 'the preview must be an explicit user action').toBeVisible();
     const restoreDelay = await injectDelay(page, /\/api\/v1\/sources\/[^/]+\/file/, 1_500);
     await preview.click();
     await expect(page.locator('body')).toContainText(/(loading|preparing|fetching)/i, { timeout: 10_000 });
@@ -272,7 +310,6 @@ test.describe('EU-D/D3 PDF preview safety', () => {
     const state = await objectUrlState(page);
     expect(state.created.length, 'a blob/object URL backs the preview').toBeGreaterThan(0);
 
-    // Leaving the source must revoke what was created.
     await page.goto('/evidence');
     await page.goto(`/evidence/${id}`);
     await expect(page.getByRole('heading').first()).toBeVisible();
@@ -283,7 +320,7 @@ test.describe('EU-D/D3 PDF preview safety', () => {
     if (await previewAgain.count()) {
       await previewAgain.click();
       await expect(page.locator('body')).toContainText(/(failed|error|unavailable)/i, { timeout: 15_000 });
-      const fallback = page.getByRole('link', { name: /download/i }).first();
+      const fallback = page.getByRole('button', { name: /download original/i }).first();
       await expect(fallback, 'an error state offers a download fallback').toBeVisible();
       await restoreFail();
       await expectDownloadEqual(page, () => fallback.click(), meta);
@@ -292,21 +329,40 @@ test.describe('EU-D/D3 PDF preview safety', () => {
     }
   });
 
-  test('D3.6 no untrusted HTML injection into the preview area', async ({ page }) => {
-    declareMode('REAL_API', 'DOM check: file content is rendered as text, not markup');
+  test('D3.6 file content is rendered as text, never as markup', async ({ page }) => {
+    declareMode('REAL_API', 'DOM check: file content is escaped, not injected');
     const { id } = await seedSource(page, 'text');
     const { errors } = recordErrors(page);
     await page.goto(`/evidence/${id}`);
     await expect(page.getByRole('heading').first()).toBeVisible();
-    const scripts = await page.locator('script:not([src])').count();
-    const injected = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('*')).some((node) =>
-        node.innerHTML.includes('<script') && !node.closest('script'),
-      ),
-    );
-    expect(injected, 'no injected script markup from file content').toBe(false);
+
+    // The fixture contains HTML-ish markers; none may become live markup.
+    const injection = await page.evaluate(() => {
+      const marker = 'CASEVAULT SYNTHETIC FIXTURE';
+      const scripts = Array.from(document.querySelectorAll('script'))
+        .map((node) => node.textContent ?? '')
+        .filter((text) => text.includes(marker));
+      // Scope the check to the container that actually renders the file
+      // content: framework-level scripts elsewhere in the document are not an
+      // injection from the file.
+      const markerNodes = Array.from(document.querySelectorAll('*')).filter(
+        (node) => (node.textContent ?? '').includes(marker) && node.children.length === 0,
+      );
+      const live = markerNodes.filter((node) =>
+        node.closest('script, iframe, object, embed') !== null ||
+        node.querySelectorAll('script, iframe, object, embed').length > 0,
+      );
+      return {
+        scriptsWithContent: scripts.length,
+        injectedContainers: live.length,
+        renderedAsText: (document.body.innerText || '').includes(marker),
+      };
+    });
+
+    expect(injection.scriptsWithContent, 'no file content inside a script element').toBe(0);
+    expect(injection.injectedContainers, 'no live object/iframe/script injected from file content').toBe(0);
+    expect(injection.renderedAsText, 'the file content is shown as text').toBe(true);
     expect(errors.filter((e) => /content security|unsafe/i.test(e))).toEqual([]);
-    expect(scripts).toBeGreaterThanOrEqual(0);
   });
 
   test('D3.7 attachment and security headers are unchanged [TRANSPORT]', async ({ page }) => {
@@ -331,7 +387,7 @@ test.describe('EU-D/D4 distinct errors, retries and pending protection [INJECTED
       const restore = await fault.apply();
       await page.goto(`/evidence/${id}`);
       await expect(page.locator('body'), `${fault.label} shows an error`).toContainText(
-        /(failed|error|unavailable|not found|could not|unable)/i,
+        /(failed|error|unavailable|not found|couldn't|could not|unable|load failure)/i,
         { timeout: 20_000 },
       );
       await expect(page.locator('body')).not.toContainText(/untitled source/i);
@@ -368,16 +424,25 @@ test.describe('EU-D/D4 distinct errors, retries and pending protection [INJECTED
   test('D4.4 link and unlink failures are attributable and preserve input', async ({ page }) => {
     declareMode('INJECTED_FAULT', 'POST link and DELETE unlink both fail');
     const { id } = await seedSource(page, 'text');
+
+    // The Link control is disabled until a matter is selected, so create one
+    // through the real API first (no real case data: synthetic name only).
+    const matter = await apiPost<any>(page, '/api/v1/matters', { name: `eu-v synthetic matter ${Date.now()}` });
     await page.goto(`/evidence/${id}`);
     await page.getByRole('button', { name: /^matters$/i }).click();
+    const select = page.locator('select').first();
+    await expect(select, 'the matter list loaded').toBeVisible({ timeout: 20_000 });
+    await select.selectOption(matter.id);
+
     const restore = await injectFailure(page, /\/api\/v1\/matters\/[^/]+\/sources/, { status: 500 });
     const linkButton = page.getByRole('button', { name: /^link$/i }).first();
-    if (await linkButton.count()) {
-      await linkButton.click();
-      await expect(page.locator('body')).toContainText(/(failed|error|could not|unable|retry)/i, {
-        timeout: 20_000,
-      });
-    }
+    await expect(linkButton, 'the Link control is enabled once a matter is selected').toBeEnabled();
+    await linkButton.click();
+
+    await expect(page.locator('body')).toContainText(/(failed|error|couldn't|could not|unable|retry)/i, {
+      timeout: 20_000,
+    });
+    await expect(select, 'the selected matter is preserved for the retry').toHaveValue(matter.id);
     await restore();
   });
 
@@ -390,10 +455,16 @@ test.describe('EU-D/D4 distinct errors, retries and pending protection [INJECTED
     const { save, title } = controls(page);
     await title.fill('eu-v pending');
     await save.click();
-    await page.waitForTimeout(200);
-    const second = save.click({ force: true, timeout: 2_000 }).catch(() => undefined);
-    await second;
+    const pendingState = {
+      disabled: await save.isDisabled(),
+      busy: await save.getAttribute('aria-busy'),
+    };
+    await save.dispatchEvent('click');
     await page.waitForTimeout(2_500);
+    test.info().annotations.push({
+      type: 'eu-v-pending-state',
+      description: `Save control during an in-flight save: ${JSON.stringify(pendingState)}`,
+    });
     const patches = log.matching(new RegExp(`/api/v1/sources/${id}(\\?|$)`)).filter((r) => r.method() === 'PATCH');
     expect(patches.length, `PATCH count: ${patches.length}`).toBe(1);
     await restore();

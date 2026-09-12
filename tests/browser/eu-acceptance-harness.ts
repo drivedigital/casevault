@@ -359,6 +359,13 @@ export async function apiGet<T = any>(page: Page, path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+/** POST a synthetic record through the browser context (real API). */
+export async function apiPost<T = any>(page: Page, path: string, payload: unknown): Promise<T> {
+  const response = await page.request.post(path, { data: payload });
+  expect(response.status(), `${path} status`).toBeLessThan(400);
+  return (await response.json()) as T;
+}
+
 /** Search-text helper: visible text of the region containing a source row. */
 export async function rowTextFor(page: Page, title: string): Promise<string> {
   const row = page.locator('tr', { hasText: title }).first();

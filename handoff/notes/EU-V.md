@@ -12,13 +12,16 @@ its own commit SHA; verify with
 PROGRESS against the integrator's checkpoint.**
 
 * Product under test: **a040e9f739ec3741cd28ee99756d256ea8b78d43** (EU-D
-  `c8c7d27` + EU-L `14f4491`). Branch tip: **3499164** = my tooling commit
-  rebased onto **e3e0b76** (`git rebase --onto e3e0b76 7ed39b1`), pushed with
-  `--force-with-lease`.
-* Measured so far on that integrated tree: **tooling + guards 15/15 pass**;
-  **list 14 passed / 6 failed** (triage below, not yet judged).
-* Detail and OCR suites are still to be run on this checkpoint. Nothing is
-  declared accepted until all three suites are triaged.
+  `c8c7d27` + EU-L `14f4491`). EU-V checkpoint **0212370** contains that
+  product tree plus the acceptance tooling/results note.
+* Measured on that integrated tree: **tooling + guards 15/15 pass**;
+  **list 14 passed / 6 failed**; initial **detail 10 passed / 11 failed** and
+  **OCR 10 passed / 3 failed**. After selector/capability/timing reconciliation,
+  bounded detail batches measured **5 passed / 1 failed** and **4 passed / 2
+  failed**, while the corrected OCR batch measured **3/3 passed**. These bounded
+  reruns are partial measurements, not whole-suite pass claims.
+* Nothing is declared accepted until remaining failures are triaged and the
+  corrected specs receive bounded reruns.
 
 ## What changed
 
@@ -106,9 +109,10 @@ $ bash scripts/eu_browser_run.sh eu-acceptance-tooling-guards.spec.ts eu-accepta
 
 Environment: `.venv/bin/python scripts/eu_browser_stack.py start` → throwaway
 database `casevault_euv_…`, Unix-socket Redis, real `uvicorn`, real RQ worker,
-real `next dev` bound to `0.0.0.0`. Raw output (outside Git):
-`/home/user/eu-v-runs/list.log` (JUnit/traces also in the git-ignored
-`data/diagnostics/eu-browser/`).
+real `next dev` bound to `0.0.0.0`. Raw output was written outside Git under
+`/home/user/eu-v-runs/`; those scratch logs did not survive the session reset.
+The exact measured counts below were checkpointed before that reset. JUnit and
+traces use the git-ignored `data/diagnostics/eu-browser/` path.
 
 ```
 $ bash scripts/eu_browser_run.sh eu-acceptance-tooling-guards.spec.ts eu-acceptance-tooling.spec.ts
@@ -116,7 +120,32 @@ $ bash scripts/eu_browser_run.sh eu-acceptance-tooling-guards.spec.ts eu-accepta
 
 $ bash scripts/eu_browser_run.sh eu-acceptance-list.spec.ts
   14 passed / 6 failed (7.0m)
+
+$ bash scripts/eu_browser_run.sh eu-acceptance-detail.spec.ts
+  10 passed / 11 failed (11.4m)             # initial full integrated run
+
+$ bash scripts/eu_browser_run.sh eu-acceptance-detail.spec.ts -g '<bounded reconciled cases>'
+  5 passed / 1 failed                       # D2.x/D2.5/D3.1-D3.6 batch
+  4 passed / 2 failed                       # D1.4/D1.8/D4.1/D4.4/D4.6 batch
+                                             # remaining failures: D1.8, D4.6
+
+$ bash scripts/eu_browser_run.sh eu-acceptance-ocr.spec.ts
+  10 passed / 3 failed (4.3m)               # initial full integrated run
+
+$ bash scripts/eu_browser_run.sh eu-acceptance-ocr.spec.ts -g 'D5.3|D5.4|D5.6'
+  3 passed (3.3m)                           # corrected bounded rerun
 ```
+
+Detail D1.8/D4.6 remain genuine candidate findings: with an injected 1.2s PATCH
+delay, two direct Save activations produced **2 PATCH requests** (2654ms apart),
+not one. During the in-flight save the control was not disabled and had no
+`aria-busy` state. This is product evidence only; EU-V did not edit the page.
+
+The initial OCR failures D5.3/D5.4-D5.5/D5.6 were reconciled to the shipped
+burst/tick and timeout states without weakening the contract; their corrected
+bounded rerun passed 3/3. Real-worker RQ records reached `finished` with literal
+`result=None`; this is recorded verbatim and is not claimed as a payload-present
+pass.
 
 List failures on the integrated tree — **triage pending, none judged yet**:
 

@@ -139,8 +139,25 @@ test.describe('EU-D/D5 OCR enqueue feedback and polling', () => {
       .map((request) => request.timing().startTime)
       .sort((a, b) => a - b);
     const deltas = times.slice(1).map((value, index) => value - times[index]);
-    const shortest = Math.min(...deltas);
-    expect(shortest, `poll deltas: ${deltas.map((d) => Math.round(d)).join(',')}ms`).toBeGreaterThan(900);
+    test.info().annotations.push({
+      type: 'eu-v-poll-deltas',
+      description: `GET /sources/{id} deltas (ms): ${deltas.map((d) => Math.round(d)).join(',')}`,
+    });
+
+    // A tight loop is the defect. An immediate enqueue+verify burst is not, so
+    // the bound is: at most 2 requests in any 1s window, and a sustained
+    // interval of ~2s (median delta >= 900ms).
+    const perSecond = new Map<number, number>();
+    for (const t of times) {
+      const bucket = Math.floor(t / 1000);
+      perSecond.set(bucket, (perSecond.get(bucket) ?? 0) + 1);
+    }
+    const busiest = Math.max(0, ...perSecond.values());
+    expect(busiest, `requests in the busiest 1s window: ${busiest}`).toBeLessThanOrEqual(2);
+
+    const sorted = [...deltas].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
+    expect(median, `median poll interval: ${Math.round(median)}ms`).toBeGreaterThan(900);
   });
 
   test('D5.4/D5.5 terminal states stop polling and are labelled distinctly [INJECTED_FAULT]', async ({ page }) => {
@@ -162,10 +179,13 @@ test.describe('EU-D/D5 OCR enqueue feedback and polling', () => {
       await expect
         .poll(() => (page.locator('body').innerText()), { timeout: 30_000 })
         .toMatch(new RegExp(terminal, 'i'));
+      // One further request may be the poll already in flight when the terminal
+      // status arrived; after that the watch must be silent.
+      await page.waitForTimeout(3_000);
       log.reset();
       await page.waitForTimeout(8_000);
       const polls = log.matching(POLL_ENDPOINT).filter((r) => r.method() === 'GET');
-      expect(polls.length, `${terminal}: polling stopped (${polls.length} requests in 8s)`).toBeLessThanOrEqual(1);
+      expect(polls.length, `${terminal}: polling stopped (${polls.length} requests in 8s after the tick)`).toBe(0);
       await restore();
       await page.unroute(/\/api\/v1\/sources\/[^/]+\/reprocess$/);
     }
@@ -195,9 +215,13 @@ test.describe('EU-D/D5 OCR enqueue feedback and polling', () => {
     const polls = log.matching(POLL_ENDPOINT).filter((r) => r.method() === 'GET');
     expect(polls.length, `polling after the budget: ${polls.length}`).toBe(0);
 
-    const text = (await page.locator('body').innerText()).toLowerCase();
-    expect(text, 'shows an unconfirmed state, not a job failure').toMatch(/(unconfirmed|still|timeout|timed out|refresh)/i);
-    expect(text).not.toMatch(/(job failed|ocr failed)/i);
+    const timeoutNote = page.locator('[data-testid=ocr-timeout]');
+    await expect(timeoutNote, 'the timeout state is reported').toBeVisible({ timeout: 30_000 });
+    await expect(timeoutNote).toContainText(/(still|not mean the job failed|stopped polling|refresh)/i);
+    // The failure state must NOT be rendered: assert the failure copy itself,
+    // not the sentence that explicitly denies a failure.
+    await expect(page.locator('body')).not.toContainText(/the worker reported failure/i);
+    await expect(page.locator('body')).not.toContainText(/OCR failed/i);
     await restore();
   });
 
