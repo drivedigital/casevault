@@ -1,3 +1,7 @@
+> **Current owner instruction: ON HOLD.** Do not start local integration tests.
+> Earlier release/checklist below is historical until integrator explicitly supplies
+> a renewed go-ahead, exact checkpoint and checklist.
+
 # EU-M — integrated local testing checkpoint
 
 Released by integrator 2026-09-12. This supersedes the earlier wait for a

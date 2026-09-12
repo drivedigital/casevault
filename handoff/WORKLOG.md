@@ -909,3 +909,15 @@ Separate review/PR required for shared fixture/gate and operational tools; see
 LOCAL_OPS_REVIEW.md. No real backup, recovery, webhook or Mac-state proof claimed.
 EU-M evidence checkpoint remains a040e9f with e3e0b76 checklist; local-ops proposal
 must not be folded into verifier scope or treated as evidence acceptance.
+
+## 2026-09-12 — final review patches recovered from dev-logs54001f0
+
+Reviewed cumulative EU-D/EU-L patches; reconstructed only in isolated temp indexes.
+Product targets already integrated; older shared docs excluded. Imported only
+EU-D-LIST-REVIEW and EU-L-OCR-REVIEW archival notes with caveats. Neither is a
+completed checkpoint review. Corrected OCR plan: TXT upload is inline, explicit
+ocr_source job required; status=failed payload can accompany RQ FINISHED. Details
+in REVIEW_PATCH_INTAKE.md. EU-V2c360a1 has further reported full/partial counts,
+not independently validated; diagnostic-first requirement stands. EU-M remains
+ON HOLD under latest owner instruction; prior release text is superseded.
+No product changes, full patch replay, dev-logs merge, or acceptance claim.

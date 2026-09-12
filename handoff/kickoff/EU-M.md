@@ -1,3 +1,7 @@
+> **Current owner instruction: ON HOLD.** Do not start local integration tests.
+> Earlier release/checklist below is historical until integrator explicitly supplies
+> a renewed go-ahead, exact checkpoint and checklist.
+
 # EU-M — local Mac/browser acceptance (report-only)
 
 **Assignee:** new local tester/agent (owner confirmed). Two phases; no product edits.
