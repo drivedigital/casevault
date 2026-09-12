@@ -114,3 +114,13 @@ exact commands/results, blockers, and next-owner notes. Closed/merged PRs are no
 containers for new work: open a new PR. Freeze branch after handoff until review.
 Hub/API changes require integrator approval. No new chronology/proof-graph/OCR
 engine work until this closure wave is signed off.
+
+## Authorized integration amendment — 2026-09-11
+EU-D may additionally change **only** the `getSource` method in shared
+`apps/web/lib/api.ts` to accept an optional AbortSignal and forward it through
+existing apiFetch. Existing callers/default behavior must remain compatible.
+This is to implement genuine OCR request cancellation/bounds; no other shared
+client/types changes approved. Other agents keep that file read-only.
+EU-V's isolated pinned Playwright install approach is approved in principle,
+subject to safe cleanup/platform/credential corrections recorded in
+handoff/EVIDENCE_UI_REVIEW.md; no manifest or CI changes authorized.

@@ -845,3 +845,17 @@ bounded OCR polling, native Mac exact reproduction, synthetic-only proof, toolin
 approval and strict hub ownership. No dependency/CI/product edits in this planning
 change. Suggested agent reuse recorded; owner confirmation of actual sessions
 still needed. Wave 3/OCR engine remains unauthorized.
+
+## 2026-09-11 — EU-D/L/V integration review, revisions required
+
+Fetched all three PR heads; reconciled stale restored Git metadata safely.
+EU-L and EU-D candidate full strict gates independently passed 119 tests plus
+migrations/ruff/web. Targeted actual-browser fault-injection probes nevertheless
+found pending-drop duplicate upload (L), unbounded file-body wait and late preview
+object-URL leak after unmount (D). D OCR timeout also lacks real fetch abort.
+EU-V preparation has reproduced managed-browser ESM resolver failure and startup
+DB-leak path, plus unsafe node_modules removal and DSN output/platform issues.
+All candidate merges aborted, no product code integrated. Fix requests posted to
+PRs 17/18/19. Detailed proof and scope approvals: EVIDENCE_UI_REVIEW.md. EU-V final
+acceptance tests remain future work after corrected D+L merge; local native PDF
+proof remains separate. Preview servers stopped; scratch dependencies only.
