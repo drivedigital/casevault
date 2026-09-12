@@ -1,6 +1,6 @@
 # Current coordination status
 
-Updated 2026-09-12; documentation audit of integration `0788ccc`.
+Updated 2026-09-12; EU-V short-batch review after documentation audit008b249.
 This is the entry point for current assignments and proof. Historical worklogs,
 archived briefs and agent notes are evidence, not current authorization. The latest
 explicit owner instruction and current scoped brief take precedence; contracts
@@ -12,7 +12,7 @@ remain binding. Update this page when assignments, holds or merge status change.
   `a040e9f739ec3741cd28ee99756d256ea8b78d43`; subsequent integration changes are docs.
 - EU-D #18 merged `c8c7d27`; EU-L #17 merged `a040e9f`. Both original sessions are
   closed; do not assign remote work or push their branches from another session.
-- EU-V #19 **open, unmerged**, latest inspected `2c360a1`. Only active verifier.
+- EU-V #19 **open, unmerged**, latest inspected `3c405cf`. Only active verifier.
 - Local-ops proposal `0159466` on `codex/local-ops-safety` remains unmerged,
   approval-blocked follow-up not implemented. Never bypass the approval block.
 - `dev-logs` contains reports/cumulative patches, not a merge source. Notes from
@@ -23,8 +23,8 @@ remain binding. Update this page when assignments, holds or merge status change.
 
 | ID | Owner | Next action | Exit evidence |
 |---|---|---|---|
-| V-DIAG | EU-V | Restore approved isolated prerequisites (15-min cap), fix L1.5 background-refetch setup, one tooling smoke + L1.5 once (5-min batch cap); stop/report | Exact product/spec SHA, command, outcome, corrected assertion and saved log references; push PR19, no merge |
-| V-LIST | EU-V, after diagnostic review | Classify remaining saved list failures, repair invalid specs without weakening requirements | Per-case product/spec/blocked classification plus valid bounded reruns; not just revised counts |
+| V-DIAG | EU-V / integrator | Short batch complete at3c405cf; correction source-reviewed, not independently rerun | Reported T1 1 pass + L1.5 1 pass; earlier selector/focus attempts retained separately |
+| V-LIST | EU-V | Next: L2.5 query/filter retry and L3.2–L3.4 row badge only; work30min, tests5min, cases60s, retries0/max-failures1 | Actual uploaded-ID correlation, observed failure + retry recovery, preserved controls/accessibility/no raw trace; checkpoint existing PR19 then stop |
 | V-OCR | EU-V, after diagnostic review | Correct result-reader, enums and exact uploaded-ID correlation; establish real integrated OCR proof | Explicit Reprocess job ID -> decoded ocr_source payload -> SQL state/pages -> UI; TXT complete/PDF skipped |
 | V-DETAIL | EU-V, after diagnostic review | Triage saved detail failures, especially save-pending candidate | Dispatch AND completion times, action sequence and pending state before calling duplicate PATCH a product bug |
 | REVIEW-D/L | Integrator | Limitation notes recovered; no completed independent review | Fresh review requires new accessible session/own branch and explicit scope; do not recycle closed sessions |
@@ -62,3 +62,13 @@ remain binding. Update this page when assignments, holds or merge status change.
   [evidence integration review](EVIDENCE_UI_REVIEW.md): detailed audit records.
 - Contracts: `docs/contracts/evidence_ui_closure.md` (active closure),
   `wave2_intake_core.md` and `sprint3_evidence.md` (shipped interfaces/history).
+
+## Latest bounded verifier checkpoint
+
+3c405cf changes only EU-V list spec and note. Corrected L1.5 uses Include success
+invalidation -> observed background GET failure -> same cached row + stale chip.
+T1 reported1 pass (1.9s), corrected L1.5 reported1 pass (4.1s). Two wrong title
+selectors executed no tests; earlier focus-trigger draft failed. No fresh whole-list
+count, independent rerun or full acceptance inferred. Five other original list
+failure groups, detail and real-worker payload proof remain unresolved. Next batch
+request: PR19 comment5648897894. EU-M hold unchanged.

@@ -11,8 +11,10 @@ WORKLOG.md preserves historical merge/gate evidence. No new feature wave is auth
 - [x] Independent D+L gate119/no skips and browser43/2 worker-only skips recorded.
 - [x] Closed-session D/L review notes recovered from dev-logs54001f0; limitation
   reports only, not completed independent reviews or code to replay.
-- [~] EU-V PR19 diagnostic-first: restore approved environment, fix background
-  refetch case L1.5, one smoke + one case, checkpoint/stop before any long rerun.
+- [x] EU-V PR19 short batch3c405cf: T1 + corrected background-refetch L1.5
+  each reported1 pass; integrator source-reviewed only, no full acceptance.
+- [~] EU-V next bounded batch: L2.5 filter/query retry + L3.2–L3.4 row-badge
+  feedback/recovery, exact source identity; checkpoint/stop before expansion.
 - [ ] EU-V six list-failure groups classified with valid setup/locators/assertions.
 - [ ] EU-V detail save-race candidate proven or refuted using actual overlap timing.
 - [ ] EU-V integrated OCR job/payload/SQL/UI evidence using correct RQ result API,

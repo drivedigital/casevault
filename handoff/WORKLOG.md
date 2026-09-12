@@ -943,3 +943,14 @@ Audit validation: all25 relative Markdown links checked in the initial changed-d
 set resolved; final added STATUS.md link also verified. `git diff --check` clean.
 Scope check confirms documentation/PR template only; CI YAML, scripts, Makefile,
 product code and manifests untouched. Runtime risks remain open backlog items.
+
+## 2026-09-12 — EU-V short diagnostic complete, not final acceptance
+
+Reviewed PR19 head3c405cf; only list spec/note changed since2c360a1. Corrected
+L1.5 observes mutation-triggered background GET failure and requires exact retained
+row/stale chip. Agent reports T1 1 pass + L1.5 1 pass; earlier zero-test selectors
+and failed focus draft remain separate. No independent runtime rerun this turn.
+Original list14/6 is not retrospectively15/5; five other failure groups and detail/
+OCR proof remain open. Next bounded L2.5 + row-badge L3.2–3.4 assigned on PR19
+comment5648897894 (30min work/5min tests/no retries). No product or verifier merge;
+EU-M hold remains. Status/backlog/roster updated; documentation diff-check only.
