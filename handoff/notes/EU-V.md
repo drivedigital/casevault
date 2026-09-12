@@ -136,10 +136,11 @@ $ bash scripts/eu_browser_run.sh eu-acceptance-ocr.spec.ts -g 'D5.3|D5.4|D5.6'
   3 passed (3.3m)                           # corrected bounded rerun
 ```
 
-Detail D1.8/D4.6 remain genuine candidate findings: with an injected 1.2s PATCH
-delay, two direct Save activations produced **2 PATCH requests** (2654ms apart),
-not one. During the in-flight save the control was not disabled and had no
-`aria-busy` state. This is product evidence only; EU-V did not edit the page.
+Detail D1.8/D4.6 remain candidate findings: with an injected 1.2s PATCH delay,
+two direct Save activations produced **2 PATCH requests** 2654ms apart. That gap
+does not establish that the requests overlapped; dispatch and completion timing
+must be captured before classification. During the first request the control was
+not disabled and had no `aria-busy` state. EU-V did not edit the page.
 
 The initial OCR failures D5.3/D5.4-D5.5/D5.6 were reconciled to the shipped
 burst/tick and timeout states without weakening the contract; their corrected
@@ -147,12 +148,50 @@ bounded rerun passed 3/3. Real-worker RQ records reached `finished` with literal
 `result=None`; this is recorded verbatim and is not claimed as a payload-present
 pass.
 
-List failures on the integrated tree — **triage pending, none judged yet**:
+### Bounded L1.5 correction — 2026-09-12
+
+Revisions preserved: product **a040e9f739ec3741cd28ee99756d256ea8b78d43**;
+verifier base **2c360a19dce9a03bc1c16dbeeae630715658cd42**; review intake
+**0788cccc91e777afa83bbd40b59e16cd57d8be98**. Integration review was read,
+not merged or replayed. Setup used only disposable/ignored paths (`.venv`, root
+`node_modules`, `data/temp`, `data/diagnostics`, `/home/user/eu-v-runs`) and made
+no product, manifest, lockfile, CI, or local-ops patch.
+
+```text
+$ timeout 900 bash -c 'set -euo pipefail; python3 -m venv .venv;
+  .venv/bin/pip install --quiet --upgrade pip;
+  .venv/bin/pip install --quiet -r requirements-dev.txt pgserver redislite;
+  npm ci --ignore-scripts --no-audit --no-fund;
+  .venv/bin/python scripts/agent_pg.py start; bash scripts/eu_browser_setup.sh;
+  .venv/bin/python scripts/eu_browser_stack.py start'
+  exit 0; Chromium 152.0.7977.0; disposable DB/Redis/API/worker/web ready
+
+$ bash scripts/eu_browser_run.sh --grep '^T1 ' ... eu-acceptance-tooling.spec.ts
+$ bash scripts/eu_browser_run.sh --grep 'T1 list page' ... eu-acceptance-tooling.spec.ts
+  first two selector attempts: exit 1, no tests found (no test executed)
+  corrected title selector: exit 0, T1 1 passed (1.9s)
+
+$ bash scripts/eu_browser_run.sh --grep 'L1.5 retained' --retries=0 --workers=1 \
+    --reporter=line eu-acceptance-list.spec.ts
+  focus-trigger draft: exit 1, L1.5 0/1; no GET /sources observed in 20s
+  corrected mutation-triggered background refetch: exit 0, L1.5 1 passed (4.1s)
+```
+
+The accepted L1.5 spec first proves the exact synthetic source row is loaded,
+injects failure only for `GET /api/v1/sources`, then performs a successful Include
+mutation. The product's query invalidation triggers an observed background GET
+without navigation/reload. The test requires that same ID-linked row to remain
+visible, a list error with out-of-date feedback, and the row-local
+`Saved result — may be out of date` chip. Assertions were not weakened. Raw logs
+remain outside Git under `/home/user/eu-v-runs/`.
+
+List failures on the initial integrated-tree run — L1.5 is now corrected and
+passes its bounded rerun; the others remain pending:
 
 | Case | Mode | Observed |
 |---|---|---|
 | L1.2 empty state (fresh workspace) | REAL_API | Empty-state copy/params under review |
-| L1.5 retained stale rows labelled | INJECTED_FAULT | No stale label observed after a failed refetch |
+| L1.5 retained stale rows labelled | INJECTED_FAULT | Initial reload-based spec invalid; corrected real background-refetch case passed 1/1 |
 | L2.5 retry preserves query/filters | INJECTED_FAULT | Filters not preserved as expected after a row-action failure |
 | L3.2/L3.3/L3.4 row badge failure | INJECTED_FAULT | Row-level badge failure feedback not matched |
 | L4.7 duplicate warnings retained | REAL_API | Duplicate banner locator not matched |
@@ -169,11 +208,12 @@ only as history: list 10 passed / 10 failed, detail 1 passed / 20 failed, OCR
 
 ### Real-worker proof shape (contract §Proof and safety)
 
-`REAL_WORKER` cases assert **all three**: the RQ job record reaches `finished`
-with the payload recorded verbatim (`eu-v-job-payload` annotation: the OCR job's
-`result` field is the literal `None` — the worker returns nothing, so the payload
-is recorded, not assumed), the **committed** `sources.ocr_status` and
-`source_pages` rows read independently through SQL, and the UI's terminal state.
+`REAL_WORKER` cases require **all three**: the RQ job record reaches `finished`
+with its structured payload read through the supported RQ result API, the
+**committed** `sources.ocr_status` and `source_pages` rows read independently
+through SQL, and the UI's terminal state. The earlier raw Redis reader observed
+literal `result=None`; this is an unresolved result-reading limitation, not proof
+that the worker returned nothing and not a payload-present pass.
 Two sequential Reprocess requests per fixture type. Upload-time processing is
 proved separately from explicit reprocess (D5.12).
 

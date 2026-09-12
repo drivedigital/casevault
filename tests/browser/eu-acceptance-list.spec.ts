@@ -70,18 +70,37 @@ test.describe('EU-L/L1 distinct list states', () => {
   });
 
   test('L1.5 retained stale rows are labelled [INJECTED_FAULT]', async ({ page }) => {
-    declareMode('INJECTED_FAULT', 'list loads, then the refetch fails');
-    await seedSource(page, 'text');
+    declareMode('INJECTED_FAULT', 'list loads, then a successful row mutation triggers a failing background refetch');
+    const { id } = await seedSource(page, 'text');
     await page.goto('/evidence');
-    await expect(rows(page).first()).toBeVisible();
+    const retainedRow = page.locator('table tbody tr', { has: page.locator(`a[href="/evidence/${id}"]`) });
+    await expect(retainedRow, 'the specific seeded source is loaded before the fault').toBeVisible();
 
+    const requests = recordRequests(page);
     const restore = await injectFailure(page, /\/api\/v1\/sources(\?|$)/, { status: 500 });
-    await page.reload();
-    const body = page.locator('body');
-    await expect(body).toContainText(/(failed|error|unable|could not|stale)/i, { timeout: 20_000 });
-    if (await rows(page).count()) {
-      await expect(body, 'retained rows must be labelled stale').toContainText(/stale/i);
-    }
+    requests.reset();
+
+    // A successful row mutation invalidates the existing sources query and
+    // makes React Query refetch it in the background. This preserves the
+    // in-memory data; a page reload would discard it and cannot prove stale-row
+    // retention.
+    await retainedRow.getByRole('button', { name: /^include$/i }).click();
+    await expect
+      .poll(
+        () => requests.matching(/\/api\/v1\/sources(\?|$)/).filter((request) => request.method() === 'GET').length,
+        { timeout: 20_000 },
+      )
+      .toBeGreaterThan(0);
+
+    const staleAlert = page.getByRole('alert').filter({ hasText: /out of date/i });
+    await expect(staleAlert, 'the failed background refetch is visible with stale-data feedback').toContainText(
+      /(failed|error|unable|could not|out of date)/i,
+    );
+    await expect(retainedRow, 'the specific previously loaded source remains visible').toBeVisible();
+    await expect(retainedRow.getByTestId('stale-chip'), 'the retained source is explicitly labelled stale').toContainText(
+      /saved result.*may be out of date/i,
+    );
+
     await restore();
   });
 });
