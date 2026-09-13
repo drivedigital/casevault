@@ -2,6 +2,7 @@
 
 import { secondaryButtonClass } from "@/components/field";
 import { ApiError } from "@/lib/api";
+import { mapListError } from "@/lib/evidence-list-errors";
 
 // -----------------------------------------------------------------------------
 // EU-L shared list primitives — loading/empty/error states, alerts and retry.
@@ -9,9 +10,18 @@ import { ApiError } from "@/lib/api";
 // 2026-09-11 integration amendment notes on honest uncertainty copy.
 //
 // Failure states must never render like an empty list, and every failure gets
-// an explicit, labelled retry. Error text comes from the API's curated
-// `detail` string (ApiError.message); describeError() never renders anything
-// else, so raw server traces can never reach the UI.
+// an explicit, labelled retry.
+//
+// ERROR-DISCLOSURE BOUNDARY (EU-ERR fix): an API error's `detail` is
+// UNTRUSTED transport payload — a 500 (or anything between browser and
+// server) can carry a traceback, SQL statement or internal path in it, which
+// EU-V's L3.2–L3.4 injected-500 browser case observed rendered verbatim.
+// describeError() therefore maps every thrown value through the deliberate
+// allowlist boundary in lib/evidence-list-errors.ts: known curated validation
+// outcomes keep actionable feedback; everything else gets a generic
+// actionable message that never echoes response-body text. Callers keep
+// attribution (file/row/operation), retry and the outcomeKnown() uncertainty
+// logic, which is unchanged.
 // -----------------------------------------------------------------------------
 
 /** HTTP status if the error came from a real server response, else null.
@@ -29,10 +39,11 @@ export function outcomeKnown(error: unknown): boolean {
   return status !== null && status < 500;
 }
 
-/** User-safe message for a thrown value (API `detail` or generic fallback). */
+/** User-safe message for a thrown value. Untrusted error text (server
+ *  `detail`, statusText, browser network errors, anything unexpected) is
+ *  never echoed; see lib/evidence-list-errors.ts for the exact mapping. */
 export function describeError(error: unknown): string {
-  if (error instanceof Error && error.message) return error.message;
-  return "Something went wrong. Please try again.";
+  return mapListError(error).message;
 }
 
 /** Small labelled retry control. `label` names WHAT is being retried so
