@@ -90,17 +90,53 @@ spec additionally reads list/detail data with **in-page relative** `fetch("/api/
 | v2 rerun (revision 2) | 2026-09-13 00:10:19→00:10:49 | same command on the v2 helper bytes | **0** | **3 passed (29.7s)** |
 | v4 rerun (v3 helper, first attempt, **brand-new empty database**) | 2026-09-13 02:19:55→02:20:55 | same command on the v3 helper bytes, `RUN_STAMP=v4-1789265995` | **1** | **1 failed / 2 passed (59.7s)** — tests 2 and 3 passed; test 1 failed because the product's first page load raced its own identity bootstrap (finding below), not because of the helper; raw runner log `/tmp/pv-gate/logs/rerun-v4.txt` was deleted with the disposable tree at teardown, the retained evidence is `/tmp/pv-gate-evidence/api-500-first-boot.txt` |
 | **v5 rerun (v3 helper, this revision)** | **2026-09-13 02:28:28→02:28:56** | same command, `RUN_STAMP=v5-1789266508`; identity bootstrap already committed (one synthetic upload first) | **0** | **3 passed (28.0s)** — test 1 `7.9s`, test 2 `17.0s`, test 3 `2.6s`; raw log `/tmp/pv-gate-evidence/rerun-v3-helper.txt` |
+| **v6 ordered re-verification** | **2026-09-13 04:01:56→04:02:29** | checks first, then the 3 tests, same command, `RUN_STAMP=v6-1789272116`, on delivered bytes `ee30a4c` | **0** | **checks 7/7 (exit 0), then 3 passed (32.9s)** — test 1 `10.2s`, test 2 `18.4s`, test 3 `3.2s`; logs `/tmp/pv-gate-evidence/negative-checks.txt`, `/tmp/pv-gate-evidence/rerun-v6-ordered.txt`; worker shows 3 ingest + 4 ocr `Job OK`, 0 exceptions |
 
 Per-test times v5 are the v3 helper's: each ground-truth read is a bounded async child
 instead of a blocking exec, so it is slower than v1 by design. Neither rerun retried a
 timeout, neither re-clicked a button, and no run exceeded 5 minutes.
+
+### v6 ordered re-verification (fresh isolated environment, delivered bytes)
+
+The environment was rebuilt from scratch for v6, because the sandbox re-cloned the
+checkout and cleared `/tmp`, the venv and `node_modules` between revisions. Rebuilt
+identically in kind: own cluster `/tmp/pv-gate/pgdata` with `pv_gate` at alembic `0004`
+(sibling `casevault`/`casevault_test` dropped so only the disposable DB existed), Redis
+6.2.14 built from the source tarball on `127.0.0.1:6390`, RQ worker (all 7 queues), API
+`0.0.0.0:8110`, Next dev `0.0.0.0:3110`, storage `/tmp/pv-gate/storage`. Two substitutions
+were forced by this sandbox and are recorded for honesty: Python deps came from PyPI rather
+than `.venv` as before (same pins resolved: Python 3.11.2, fastapi 0.141.1, SQLAlchemy
+2.0.52, redis-py 7.4.1, rq 2.12.0 — identical to the versions in the earlier revision), and
+the Chromium/NSS bundle was re-extracted from the same `@sparticuz/chromium@152.0.0` tarball
+(Chromium `152.0.7977.0`, verified by `--version` with `LD_LIBRARY_PATH=/tmp/nss-libs/lib`).
+Nothing about the product, the helper or the tests changed: the run executed the exact bytes
+of `ee30a4c` (bridge `8c65a636…a47`, checks `9dac5693…709`, spec `f65c61e8…c24`), verified by
+sha256 before and after the run.
+
+Order executed, as requested: (1) `tests/browser/pv-gate-negative-checks.mjs` → **7/7 PASS,
+exit 0**; (2) the three PV tests → **3 passed (32.9 s), exit 0**. As in v5, one synthetic
+warm-up upload preceded the tests so the identity bootstrap was committed; that is declared
+here because the first-boot race (finding below) is a known real failure mode on an empty
+database and the gate's purpose is the download/OCR/edit paths, not that race.
+
+Ordered-teardown checks for v6: after stopping the four services, ports 8110/3110/6390 had
+no listener and no `uvicorn`/`run_worker.py`/`redis-server`/`next dev` process remained
+(this revision the server child did not survive its manager, unlike revision 3);
+`agent_pg.py stop` → `postgres stopped`, `status → not running`; `/tmp/pv-gate` removed and
+confirmed absent. Retained outside Git: `/tmp/pv-gate-evidence/negative-checks.txt` and
+`/tmp/pv-gate-evidence/rerun-v6-ordered.txt`. Note that the sandbox refresh also cleared the
+revision-3 evidence files (`api-500-first-boot.txt`, `rerun-v3-helper.txt`,
+`downloads-listing.txt`, `storage-sample/`); the first-boot finding keeps its substance in
+this note (constraint name, both ids, stack lines, UI copy) and in PR #20 comment
+`5650251710`.
 
 ### Helper-level guard checks (v3, not part of the 3-test gate)
 
 `tests/browser/pv-gate-negative-checks.mjs`, executed `2026-09-13` against the v3 helper
 bytes: **7/7 PASS, exit 0**, `max_output_bytes=1048576`; every failure carried a fixed
 code and bounded numeric/OS fields only, and the synthetic sentinel never appeared in any
-message (`/tmp/pv-gate-evidence/negative-checks.txt`):
+message (`/tmp/pv-gate-evidence/negative-checks.txt`). Re-confirmed identically in the v6
+ordered run above (same 7 codes, same bounds, no sentinel):
 
 | Check | Observed |
 |---|---|
