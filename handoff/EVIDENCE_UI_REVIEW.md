@@ -1,3 +1,6 @@
+> Current assignments/proof/holds: [STATUS.md](STATUS.md). EU-M is ON HOLD;
+> earlier local-checkpoint releases below are historical. EU-V remains unmerged.
+
 > Latest (2026-09-12): **D+L merged at a040e9f**. EU-V final acceptance
 > pending; new EU-M agent has a substantive pinned testing checkpoint in
 > `handoff/EU_M_CHECKPOINT.md`. Older holds/findings below are historical.

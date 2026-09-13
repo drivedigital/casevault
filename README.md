@@ -10,15 +10,20 @@ multi-agent analysis, and strict confidentiality defaults.
 > (uploads, OCR output, exports, logs, diagnostics, backups) is **git-ignored
 > and must never be committed**. API keys live in `.env.local` only. The
 > default AI-sharing policy is `no_ai` — no case material leaves this machine
-> unless you explicitly opt in per matter. See `data/README.md`.
+> unless you explicitly opt in per matter. See `handoff/RECOVERY.md`.
 
-**Status: Phase 2 (evidence ingestion).** Workspace bootstrap (local
-identity mode), matter CRUD with overlay proceeding links, actor registry
-with aliases/dossiers, matter role assignment, and the evidence repository
-(upload → local storage → sha256 dedupe → extracted text → source viewer →
-matter linking) are live on real Postgres-backed pages. Chronology,
-claims, and the other analytical modules remain planned placeholders — see
-`handoff/BACKLOG.md` and the spec stack in `docs/specs/`.
+**Status: integrated evidence + intake core; evidence UI acceptance pending.**
+Workspace/matters/actors, evidence upload/viewer/linking, ledger CRUD/CSV and
+proposal review/trusted-facts UI are implemented. PDF/image OCR remains a stub;
+chronology, claims and advanced intelligence are future work.
+
+**Start here:** [current status and tasks](handoff/STATUS.md),
+[agent policy](handoff/AGENT_POLICY.md), [recovery runbook](handoff/RECOVERY.md),
+[verification workflows](handoff/VERIFICATION_WORKFLOWS.md).
+**Limited synthetic owner preview is authorized** under
+[the pinned checklist and mandatory isolation preflight](handoff/OWNER_PREVIEW.md).
+Full acceptance and real-data testing remain held. Generic setup below does not
+override that safety scope.
 
 Database migrations run with Alembic: after `make infra-up`,
 `cd apps/api && ../../.venv/bin/python -m alembic upgrade head`.
@@ -68,7 +73,8 @@ curl http://localhost:8100/health            # {"status":"ok",...}
 curl http://localhost:8100/api/v1/health     # {"status":"ok",...}
 make check-env                               # validates .env.local
 make test-db                                # create casevault_test once (needs make infra-up)
-make test && make lint                       # smoke tests + linters
+# Tests require explicit, verified disposable targets; see handoff/TESTING.md.
+make lint                                   # linters only
 ```
 
 Single-node setup works: `make web` + `make api` + `make ping-job` prove the
@@ -76,17 +82,20 @@ scaffold even before Docker is running.
 
 ## Workflow (remote agent ⇄ local tester)
 
-Branches: `main` (stable) · `feature/<topic>` (development) ·
-`feature/<topic>-logs` (locally-generated diagnostics).
-
-- The remote agent ends every turn by updating `handoff/WORKLOG.md`,
-  `BACKLOG.md`, `TESTING.md`, committing, pushing, and listing what to test.
-- The local tester runs the app with real evidence and reports results.
-- To send diagnostics, run `python scripts/collect_logs.py --note "..."`;
-  with `--push` it creates the `<feature>-logs` branch (secrets redacted,
-  warnings if a file looks like evidence text). Details: `handoff/TESTING.md`.
-- Backups: `make backup` (Postgres dump + `data/` archive into
-  `data/backups/`). Backups contain real evidence — handle accordingly.
+- PRs target `arena/01a0899f-casevault`; `main` is not a release target for this wave.
+- Arena agents work/push only their own assigned branch and authorized write set.
+  Integrator reviews/merges; no self-merge. Closed sessions export notes; new
+  sessions use their own branches, never take over retired ones.
+- Current tasks/holds live in `handoff/STATUS.md`. Historical notes are not fresh
+  assignments or proof of current acceptance.
+- Use synthetic fixtures and isolated DB/storage/queues. No real-case tests or
+  backup/restore operations without explicit owner authorization.
+- Review/redact diagnostic reports before approved transfer. Do not use the
+  collector's automatic `--push`/branch-creation path; never commit `data/`.
+- **Backup warning:** the integrated script still exposes full database URLs
+  and can report completion without a dump. Do not rely on `make backup` as
+  validated recovery or send its output to shared logs. Proposed local-ops
+  hardening is unmerged. See `handoff/RECOVERY.md`.
 
 ## Repository layout
 

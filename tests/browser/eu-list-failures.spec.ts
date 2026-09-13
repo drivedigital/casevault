@@ -270,7 +270,10 @@ test("INJECTED 4xx upload rejection states the proven outcome plainly", async ({
   const errorBox = page.getByTestId("upload-error");
   await expect(errorBox).toBeVisible({ timeout: 30_000 });
   await expect(errorBox).toContainText(`Upload failed for “${name}”`);
-  await expect(errorBox).toContainText("synthetic injected rejection");
+  // EU-ERR amendment (PR21 review): untrusted detail is not echoed — a 4xx
+  // rejection shows the generic status-attributed message instead.
+  await expect(errorBox).toContainText("The server rejected this request (HTTP 422).");
+  await expect(errorBox).not.toContainText("synthetic injected rejection");
   // Known outcome: the copy MAY say "was not added" and must NOT hedge.
   await expect(errorBox).toContainText("was not added to the evidence list");
   expect(await errorBox.textContent()).not.toContain("not known whether");
@@ -370,7 +373,10 @@ test("INJECTED row mutation response loss shows an honest uncertain alert; retry
   const rowError = page.getByTestId(`row-error-${created.id}`);
   await expect(rowError).toBeVisible({ timeout: 30_000 });
   await expect(rowError).toContainText(`Couldn’t include “${titleOf(name)}”`);
-  await expect(rowError).toContainText("synthetic injected row-update failure");
+  // EU-ERR amendment (PR21 review): raw injected detail must not be echoed —
+  // a 5xx shows the generic server-error message; uncertainty copy below.
+  await expect(rowError).toContainText("The server had a problem with this request");
+  await expect(rowError).not.toContainText("synthetic injected row-update failure");
   // Response-loss honesty: no false "row is unchanged" claim.
   await expect(rowError).toContainText("not known whether the change was saved");
   await expect(rowError).toContainText("Refresh the list first");
@@ -419,7 +425,10 @@ test("INJECTED 4xx row rejection states the proven outcome plainly (row unchange
   await row.getByTestId(`include-${created.id}`).click();
   const rowError = page.getByTestId(`row-error-${created.id}`);
   await expect(rowError).toBeVisible({ timeout: 30_000 });
-  await expect(rowError).toContainText("synthetic injected rejection");
+  // EU-ERR amendment (PR21 review): untrusted detail is not echoed — a 4xx
+  // rejection shows the generic status-attributed message instead.
+  await expect(rowError).toContainText("The server rejected this request (HTTP 400).");
+  await expect(rowError).not.toContainText("synthetic injected rejection");
   await expect(rowError).toContainText("The row is unchanged");
   expect(await rowError.textContent()).not.toContain("not known whether");
 

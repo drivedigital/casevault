@@ -1,122 +1,88 @@
-# Backlog
+# Backlog — current as of 2026-09-12
 
-Prioritized feature/bug/debt list. Buckets per PRD §16; sprint mapping per
-the Roadmap. Update priorities every turn.
+Legend: [x] implemented/integrated (not necessarily final browser/native acceptance),
+[~] active, [ ] pending, [HOLD] explicitly paused. STATUS.md owns current assignments;
+WORKLOG.md preserves historical merge/gate evidence. No new feature wave is authorized.
 
-Legend: `[ ]` todo · `[~]` in progress · `[x]` done
+## Now — evidence closure and safe delivery
 
-## P0 — Foundations (Sprint 0)
+- [x] EU-D detail lifecycle/downloads/errors/abortable OCR watch merged c8c7d27.
+- [x] EU-L list/error/keyboard affordance and upload/row retry guards merged a040e9f.
+- [x] Independent D+L gate119/no skips and browser43/2 worker-only skips recorded.
+- [x] Closed-session D/L review notes recovered from dev-logs54001f0; limitation
+  reports only, not completed independent reviews or code to replay.
+- [x] EU-V PR19 short batch3c405cf: T1 + corrected background-refetch L1.5
+  each reported1 pass; integrator source-reviewed only, no full acceptance.
+- [x] EU-V e7fe31e bounded list batch reported1 pass/1 fail; no acceptance.
+- [ ] EU-ERR: fix list raw error-detail disclosure with focused regression (fresh brief ready).
+- [~] EU-V next: supported RQ result reader + bounded async polling, then real
+  TXT/PDF explicit OCR proof; original badge regression waits for product fix.
+- [ ] EU-V six list-failure groups classified with valid setup/locators/assertions.
+- [ ] EU-V detail save-race candidate proven or refuted using actual overlap timing.
+- [ ] EU-V integrated OCR job/payload/SQL/UI evidence using correct RQ result API,
+  shipped enums and uploaded IDs; explicit OCR reprocess, not TXT inline ingest.
+- [ ] Final combined browser acceptance after valid bounded reruns; no additive
+  pass counts across partial runs and no silent missing/skipped acceptance cases.
+- [~] Limited EU-M synthetic owner preview authorized at a040e9f after mandatory
+  isolation preflight; OWNER_PREVIEW.md is exact checklist. Full acceptance held.
+- [~] PV-GATE319120e located inside PR20/61da3b4; bridge deadline/redaction/
+  cleanup-report corrections requested, scoped3-test rerun after correction.
+- [~] OCR-PLAN PR20/61da3b4 reviewed; note-only revisions requested for safety/
+  concurrency/state/CI gates. No engine implementation or dependency approval.
+- [ ] Fresh independent review sessions only if assigned with access confirmed.
+  Retired D/L sessions must not be reused; fresh sessions own fresh assigned branches.
 
-- [x] local-safe `.gitignore`
-- [x] env strategy + `.env.example` (secrets local-only)
-- [x] handoff docs seeded
-- [x] diagnostic collection script (`scripts/collect_logs.py`)
-- [x] branch conventions documented (README §Workflow)
-- [x] evidence-storage directory strategy (`data/`, git-ignored)
-- [x] CI workflow + secret scanning (`.github/workflows/ci.yml`)
-- [x] workspace backup script (`scripts/backup_workspace.py`)
-- [x] Docker infra verified on the local machine (macOS run 2026-09-09 — all green)
-- [x] Alembic baseline migration — landed as 0001 + 0002 in Phase 1
+## Operational safety — separate proposal, not merged
 
-## P1 — Core product value (Sprints 1–6)
+- [ ] Review local-ops0159466: preserve embedded socket test targets safely while
+  refusing application fallbacks/overrides; add HTTP webhook validation tests.
+- [HOLD] Local-ops follow-up edits until normal approval is available; no bypass.
+- [ ] Backup safety corrections: no DSN disclosure, complete validated dump/archive,
+  private permissions, no success on missing dump. Actual restore drill unperformed.
+- [ ] Destructive gate/fixture target protection enforced in code (currently only
+  operational precautions; docs alone do not fix unsafe application fallbacks).
+- [ ] Diagnostic collector safe export/redaction workflow; automatic --push not used.
+- [ ] Webhook/macOS LaunchAgent end-to-end behavior independently verified when
+  separately authorized; machine setup reports are not evidence-UI acceptance.
+- [x] Recovery/verification runbooks and current status consolidated; historical
+  hard-reset/force-push and automatic bundle-push instructions removed from entry points.
 
-- [x] workspace shell (dashboard + current-workspace bootstrap, Phase 1)
-- [x] matter CRUD (Migration 0001 + API + UI incl. archive)
-- [x] proceeding/overlay matter model (matter_type + two-direction links)
-- [x] actor registry (Migration 0002 + API + UI: search, aliases, dossier, roles)
-- [ ] workspace switcher UI (multi-workspace; deferred — single workspace today)
-- [ ] collaborator invitations / auth surface (deferred — local identity mode)
-- [x] source upload + local storage service (Migration 003, Sprint 3)
-- [~] OCR worker — pipeline + job states done; Tesseract/OCRmyPDF engine integration remains
-- [x] VLM description worker (stub registered; provider wiring later)
-- [x] sha256 duplicate detection (flagged `duplicate` + duplicate_of pointer)
-- [x] evidence repository + source viewer pages (/evidence, /evidence/[id])
-- [x] source ↔ matter linking (both directions in UI)
-- [ ] source ledger UI (Migration 004 `ledger_entries`)
-- [ ] proposal review inbox (Migration 004 `proposals`, `fact_assertions`)
-- [ ] chronology table + event model (Migration 005)
-- [ ] claim chart v1 (Migration 006)
+## Integrated foundations and core product
 
-## P2 — Intelligence (Sprints 7–14)
+- [x] Local-first ignore/env conventions, workspace bootstrap, matters/proceeding
+  overlays, actors/aliases/roles, migrations0001–0002.
+- [x] Evidence sources/storage/dedupe/pages/linking, migration0003.
+- [x] Excerpt CRUD + per-source reprocess (W2-EV); text ingests inline.
+- [x] Ledger CRUD/filter/CSV/bulk API and /ledger UI.
+- [x] Proposal review/trusted facts/linking/generation API and /ai-review UI.
+- [x] Unified intake schema migration0004 (not a second proposals migration0005).
+- [x] W2-G worker import fix; W2-J intake verifier reconciled15174cd.
+- [x] WS-D evidence verifier57e5ae6; W2-W worker model/RQ compatibilityf9e6a1c.
+- [x] CI python/web/secrets/intake/evidence jobs; latest verified push0788ccc green.
+- [x] Scaffold backup/diagnostic tools exist; **not** validated backup/recovery assurance.
 
-- [ ] proof-graph link tables + side panel
-- [ ] claim template library (NY-first)
-- [ ] gap detection v1 (rule-based, explainable)
-- [ ] hybrid search (Postgres FTS + pgvector)
-- [ ] contradiction detection
-- [ ] relief matrix
-- [ ] research library + authority linking
-- [ ] multi-agent review (AI council)
-- [ ] MCP connector framework + first adapter
+## Deferred core gaps — not assigned
 
-## P3 — Leverage and polish (Sprints 15+)
+- [ ] Real PDF/image OCR engine (current skipped stub); VLM/provider wiring.
+- [ ] GET /sources pagination and server-side filter parity (status/OCR/flags);
+  search currently title-only; source array client shape stays frozen until approved.
+- [ ] Streaming uploads instead of whole-file buffering (100MB guard exists).
+- [ ] Source metadata update endpoint; verify need against existing schema before scope.
+- [ ] Storage interface/S3 adapter; no second storage implementation replay.
+- [ ] Workspace switcher, auth/invitations, multi-user permissions/hardening.
+- [ ] Verification-task scheduler, ledger-to-claims links.
+- [ ] Chronology/event model, claim chart; no migration reserved by this backlog.
 
-- [ ] PDF export (chronology, claim chart)
-- [ ] drafting studio + paragraph support inspector
-- [ ] graph view improvements
-- [ ] performance tuning
-- [ ] collaboration refinement (invitations surface, per-object approvals)
-- [ ] advanced filters and bulk actions
+## Deferred intelligence and output
 
-## Bugs
+- [ ] Proof graph, claim templates, gap detection, hybrid search/pgvector.
+- [ ] Contradiction analysis, relief/research libraries, multi-agent review, MCP adapters.
+- [ ] Drafting, PDF exports, graph UI, performance, collaboration, advanced bulk UX.
 
-- (none logged yet — see KNOWN_ISSUES.md for scaffold limitations)
+No main release, archive/branch deletion, real-evidence test, dependency/CI expansion,
+or OCR-engine work follows automatically from checking an implementation item done.
 
-## Open product decisions
-
-Tracked in `handoff/DECISIONS.md` (auth mode, embedding table design,
-rollback depth, polymorphic comment FKs, confidence/strength enum split).
-
-## Sprint 3 follow-ups (from the Wave 1 integration review, 2026-09-10)
-
-- [x] Sprint 3 evidence ingestion integrated (`2e440d6`) — sources API, local
-      storage, dedupe, `/evidence` + source viewer, pipeline stubs (17 tests)
-- [ ] Independent end-to-end verification of the merged evidence flow
-      (`scripts/pipeline_smoke.py` + CI job) — the shipped tests are the
-      author's own; this is the WS-D role
-- [ ] Pagination on `GET /sources` (currently returns a plain array; large
-      matters will need limit/offset + total)
-- [ ] `source_excerpts` API (table exists since 0003; Sprint 4/5 need the
-      create/list endpoints) and `PUT /sources/{id}/metadata`
-- [ ] Per-source `POST /sources/{id}/reprocess` (today: `make process-jobs`
-      or the RQ `ingest` queue drains everything queued)
-- [ ] Streaming uploads: read to `data/temp/` in chunks instead of buffering
-      up to 100 MB in memory
-- [ ] Storage refactor to the interface first promised in the contract
-      (`integrations/storage` + ABC) when the S3-compatible adapter lands
-- [ ] Filter parity on `GET /sources`: source_status, ocr_status,
-      included/excluded (list currently filters q + matter + type + review
-      status)
-
-## Wave 2 — intake core (Sprints 4 + 5, in progress from 2026-09-10)
-
-- [x] W2-E spine: migration `0004` + models + router stubs — merged `f0aa9e2`
-- [x] W2-F ledger API (CRUD, filters, CSV import/export, bulk ops) — merged `4ce4555`
-- [ ] W2-G intake API (proposal review, trusted facts, links, generation job)
-- [x] W2-H `/ledger` UI (+ nav entry) — merged `e62daae`
-- [x] W2-I `/ai-review` inbox + accepted-facts tab — merged `0ba7a0c` (UI wired to W2-G endpoints once they land)
-- [ ] W2-J end-to-end verification + CI intake job — commit parked on `01a089cd`; rebase after W2-G
-- [x] W2-EV evidence follow-ups (excerpts API, per-source reprocess) — merged 2026-09-10
-- [x] W2 integration so far: E → F → H → I merged, gate re-run after each
-- [ ] W2-G intake API — the wave's last functional workstream
-- [ ] WS-D verification rebase (stale reprocess assertion) → merge, taking its
-      gitleaks `GITHUB_TOKEN` CI fix with it
-- [ ] WS-B disposition: close, or rework into the storage-interface refactor
-      (no second storage implementation, no duplicate job names)
-- [ ] `GET /sources` filter parity (source_status, ocr_status, included,
-      excluded) — the deviation WS-D's smoke still documents
-- [ ] After W2: scheduler for `verification_task` proposals, ledger→claims
-      linking, pagination for `GET /sources`
-
-## Coordination (added 2026-09-10)
-
-- [x] parallel-build plan + Sprint 3 interface freeze (`handoff/PARALLEL_PLAN.md`,
-      `docs/contracts/sprint3_evidence.md`) — contract later aligned to the
-      shipped code (see the delta table in that doc)
-- [x] agent sandbox Postgres harness (`scripts/agent_pg.py`, no Docker needed)
-- [x] wave gate (`scripts/verify_all.sh`) — migrations up/down/up + pytest +
-      ruff + web on a fresh database
-- [~] Wave 1: Sprint 3 delivered by the other session, integrated here; the
-      A/B/C fan-out for it is superseded
-- [ ] Wave 2 fan-out (Sprint 4 ledger `0004`, Sprint 5 proposals/facts
-      `0005`) — freeze both contracts before spawning sessions
+Latest review: BATCH_REVIEW_2026_09_12.md. EU-ERR PR21/b78fa82 awaiting narrow
+safe-text expectation alignment; EU-V5e925be decoded OCR proof reported, remaining
+helper/coverage corrections and full acceptance pending. OCR-PLAN2b6688a is the
+original proposal, not resolution of prior design gates. No merge in this batch.

@@ -896,3 +896,115 @@ Owned temporary API/web/DB/storage cleaned. EU-V final acceptance unblocked on
 pinned D+L SHA; EU-D inactive, EU-L complete. Owner started a new local EU-M:
 substantive integrated checkpoint and report-only checklist EU_M_CHECKPOINT.md
 now supersede timing hold. No feature/worker/dependency edits assigned to tester.
+
+## 2026-09-12 — EU-V interruption handling; local-ops proposal isolated
+
+Owner reports AI-service-busy interruptions; endorsed EU-M continuation guidance
+on PR19 (comment 5647767837). Verifier checkpoint3499164 is based on e3e0b76;
+final acceptance still pending, measured results only, preserve existing runs.
+Fetched local-ops proposal0159466 on codex/local-ops-safety, no merge/branch switch.
+Independent external-tree unit run13 passed (synthetic/mocked only). Confirmed
+new guard rejects embedded PG socket URL, breaking supported strict-gate path.
+Separate review/PR required for shared fixture/gate and operational tools; see
+LOCAL_OPS_REVIEW.md. No real backup, recovery, webhook or Mac-state proof claimed.
+EU-M evidence checkpoint remains a040e9f with e3e0b76 checklist; local-ops proposal
+must not be folded into verifier scope or treated as evidence acceptance.
+
+## 2026-09-12 — final review patches recovered from dev-logs54001f0
+
+Reviewed cumulative EU-D/EU-L patches; reconstructed only in isolated temp indexes.
+Product targets already integrated; older shared docs excluded. Imported only
+EU-D-LIST-REVIEW and EU-L-OCR-REVIEW archival notes with caveats. Neither is a
+completed checkpoint review. Corrected OCR plan: TXT upload is inline, explicit
+ocr_source job required; status=failed payload can accompany RQ FINISHED. Details
+in REVIEW_PATCH_INTAKE.md. EU-V2c360a1 has further reported full/partial counts,
+not independently validated; diagnostic-first requirement stands. EU-M remains
+ON HOLD under latest owner instruction; prior release text is superseded.
+No product changes, full patch replay, dev-logs merge, or acceptance claim.
+
+## 2026-09-12 — documentation / task / workflow / recovery audit
+
+Audited integration0788ccc against actual files, PR19 head2c360a1 and hosted CI.
+Added STATUS.md single current-state entry point, RECOVERY.md interruption/stale
+metadata/closed-session/patch/data-safety runbook, VERIFICATION_WORKFLOWS.md exact
+coverage and destructive-target caveats. Updated README, policy, kickoff roster,
+backlog, testing, issues/decisions and PR template; historical records labelled.
+Removed active hard-reset/force-push and automatic diagnostic-push recipes. Corrected
+stale evidence404, excerpts/reprocess, ledger/inbox and0004/0005 planning claims.
+EU-M hold and diagnostic-first EU-V task preserved; no reactivation of closed D/L.
+Confirmed GitHub run34720445577 at0788ccc: all five jobs success (push event; no
+browser/native or future-commit assurance). Documented actual integrated backup
+DSN/missing-dump hazards and test DB fallback; no runtime safety code changed and
+local-ops proposal remains unmerged. Documentation completeness does not mean
+acceptance/recovery drill complete. Content/link/diff checks only; no test stack,
+real backup, destructive gate or local integration run requested/performed.
+
+Audit validation: all25 relative Markdown links checked in the initial changed-doc
+set resolved; final added STATUS.md link also verified. `git diff --check` clean.
+Scope check confirms documentation/PR template only; CI YAML, scripts, Makefile,
+product code and manifests untouched. Runtime risks remain open backlog items.
+
+## 2026-09-12 — EU-V short diagnostic complete, not final acceptance
+
+Reviewed PR19 head3c405cf; only list spec/note changed since2c360a1. Corrected
+L1.5 observes mutation-triggered background GET failure and requires exact retained
+row/stale chip. Agent reports T1 1 pass + L1.5 1 pass; earlier zero-test selectors
+and failed focus draft remain separate. No independent runtime rerun this turn.
+Original list14/6 is not retrospectively15/5; five other failure groups and detail/
+OCR proof remain open. Next bounded L2.5 + row-badge L3.2–3.4 assigned on PR19
+comment5648897894 (30min work/5min tests/no retries). No product or verifier merge;
+EU-M hold remains. Status/backlog/roster updated; documentation diff-check only.
+
+## 2026-09-12 — verify OCR boundary; release limited owner preview, new briefs
+
+Rechecked actual a040e9f process_source and ocr_source: PDF/image branch explicitly
+sets skipped with no OCR engine wired; preview/queue success is not extraction.
+User-supplied3c405cf is same previously reviewed EU-V short-batch head, PR19 open.
+Clarified implementation scope: evidence lifecycle complete, actual PDF/image OCR
+not implemented. Renewed limited synthetic owner-preview release/checklist added
+OWNER_PREVIEW.md, exact producta040e9f, mandatory disposable-target preflight; no
+real evidence, destructive gate, backup/restore, unmerged scripts or acceptance
+claim. Full acceptance held; EU-V continues bounded list work in parallel.
+Prepared two disjoint fresh-session briefs PV-GATE (focused preview proof) and
+OCR-PLAN (design only), <=45min each, own assigned branches/new PRs/no self-merge.
+No agent-launch tool available here: sessions not spawned, owner relay required.
+No product, dependency, CI or runtime safety changes; no local tests executed.
+
+## 2026-09-12 — EU-V e7fe31e reviewed; disclosure fix separated from verification
+
+PR19 e7fe31e reports exact bounded batch exit1: L2.5 pass, L3.2–3.4 fail (24.5s).
+Filter/query preservation after actual failed PATCH/retry verified by author;
+accessible badge error/recovery also worked but injected traceback/SQL rendered.
+Source review confirms list describeError returns arbitrary Error.message. No
+independent browser rerun here or real-data leak claim. seedSource now anchors
+actual POST response ID; other dependent suites not rerun. PR19 stays unmerged.
+Prepared EU-ERR third fresh-agent brief for narrow error mapping + regression,
+not launched here. EU-V next bounded task is RQ reader/async wait + two real OCR
+fixture cases, not product fixes or full suite. OCR-PLAN PR20 head61da3b4 exists,
+design review pending; PV-GATE report not yet observed. Limited synthetic owner
+preview remains allowed with warning; real-data/full acceptance remain held.
+Restored metadata reconciled to2b7381e after backup and temp-index exact comparison.
+
+## 2026-09-12 — OCR-PLAN reviewed; PV-GATE artifact requested
+
+Reviewed full design-only PR20/61da3b4. Direction native-text-first accepted in
+principle, but concurrency guard can be defeated by API requeue, parser limits
+not enforceable as described, retained-page/count and mixed-coverage semantics
+inconsistent, public exception reasons unsafe, and CI/test migration underspecified.
+Changes requested comment5649440419; note-only<=45min, no merge/engine approval.
+Details OCR_PLAN_REVIEW.md. Fetched all heads/open+recent PRs and dev-logs; PV-GATE
+submission not visible. Requested PR URL/commit SHA rather than inventing results.
+No runtime tests or product changes; limited synthetic preview remains unchanged.
+
+
+## 2026-09-12 — EU-ERR/OCR-PLAN/PV-GATE/EU-V batch review
+
+Reviewed EU-ERRb78fa82, original OCR-PLAN2b6688a, PV319120e+61da3b4 and EU-V5e925be.
+PV found in combined PR20 chain (corrects prior missing-artifact report); OCR note
+unchanged from prior review. Comments posted21/5649550926,19/5649551022,20/5649551113.
+EU-ERR narrow old-test alignment authorized; preserve no-raw-detail policy. PV
+bridge unbounded sync/diagnostic output needs fixes. V supported result decode is
+improved with author-reportedTXT/PDF passes; restore image coverage and child safety.
+No product merge/runtime rerun; details BATCH_REVIEW_2026_09_12.md. Limited synthetic
+preview unchanged; final acceptance/engine approvals pending. Single PR20 writer
+required; no retired/session branch takeover or concurrent push/rebase.

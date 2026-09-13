@@ -1,3 +1,7 @@
+> Current task: diagnostic-first per ../STATUS.md and PR19. Existing PR only;
+> no long suite before short-batch review, no product fixes or self-merge.
+> Original broader acceptance scope follows for reference. EU-M is ON HOLD.
+
 # EU-V — independent evidence browser acceptance
 
 **Recommended assignee:** former WS-D verifier. Start planning now; final proof

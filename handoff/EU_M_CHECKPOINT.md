@@ -1,3 +1,8 @@
+> **Latest: limited synthetic owner preview authorized.** Follow
+> `handoff/OWNER_PREVIEW.md` (product a040e9f, mandatory isolation preflight).
+> Full acceptance/real-data testing remains held. Earlier holds and broader
+> checklists below are historical; this preview release is the only go-ahead.
+
 # EU-M — integrated local testing checkpoint
 
 Released by integrator 2026-09-12. This supersedes the earlier wait for a

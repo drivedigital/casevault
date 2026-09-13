@@ -1,3 +1,8 @@
+> **Latest: limited synthetic owner preview authorized.** Follow
+> `handoff/OWNER_PREVIEW.md` (product a040e9f, mandatory isolation preflight).
+> Full acceptance/real-data testing remains held. Earlier holds and broader
+> checklists below are historical; this preview release is the only go-ahead.
+
 # EU-M — local Mac/browser acceptance (report-only)
 
 **Assignee:** new local tester/agent (owner confirmed). Two phases; no product edits.
