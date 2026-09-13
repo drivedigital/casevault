@@ -1,3 +1,10 @@
+> First-start warning (2026-09-13): PV-GATE observed an intermittent bootstrap
+> uniqueness race on an empty database, causing sources/matters500. Later passes
+> used an already committed identity and do not clear this defect. Record any first
+> failure BEFORE a refresh; do not silently warm up or retry uploads to make a test
+> pass. One observational refresh may be reported separately, but is not a guaranteed
+> fix. Stop/report persistent failure or uncertain upload outcome. BOOT-ID fix pending.
+
 > Updated2026-09-12: list error disclosure fixed in a21ea34 (independent25 browser
 > regressions passed). Detail-page error passthrough remains a separate known risk.
 > Synthetic data only; keep diagnostics private. Real-data/full acceptance held.

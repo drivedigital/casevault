@@ -1,4 +1,9 @@
-# OCR-PLAN — implementation-ready local PDF/image extraction design
+> Integrator disposition2026-09-13: accepted as a design exploration record ONLY.
+> NOT a frozen implementation contract. Author “resolved” claims below are proposals;
+> unresolved gates in REVIEW_REVISIONS.md remain binding. No engine/dependency/CI
+> approval. Planning session parked; do not revise or implement without new scope.
+
+# OCR-PLAN — local PDF/image extraction design proposal
 
 Date: 2026-09-12 · Session branch: `arena/01a097ea-casevault` (fresh session) · Status: DESIGN ONLY
 **REVISION 2 (2026-09-12, same PR20): integrator design review returned "changes

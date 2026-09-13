@@ -1024,3 +1024,15 @@ output caps and small negative checks +3-case rerun. PR20 title/body corrected.
 OWNER_PREVIEW pin advanced to a21ea34 under unchanged synthetic isolation limits;
 old PV proof retains old SHA, detail error disclosure remains a known separate gap.
 Full acceptance/engine/local-ops gates unchanged. See REVIEW_REVISIONS.md.
+
+
+## 2026-09-13 — continuation: PV merge, V progress, first-boot finding
+
+Recovered reverted local metadata631b85a after backup and EXACT temporary-index tree
+match to origin31101e3; mixed reset only, no work lost. Reviewed PVb86db71 and independently
+ran7 negative checks (all pass); merged PR20 as4bf4e2f, product unchangeda21ea34. OCR proposal
+explicitly not frozen. Source-correlated PV first-boot UniqueViolation; warmed3pass32.9s is
+conditional, not cold-start clearance. BOOT-ID narrow fresh-agent brief ready, not launched.
+EU-V7893901 reports2list4.5s+3worker22.1s passes on0b6c613/a21ea34; next pending2detail then
+conditional1keyboard scope posted5651803847. PV merge comment5651801542. No full acceptance,
+engine work or real-data approval. Details CONTINUATION_REVIEW.md; preview warning updated.

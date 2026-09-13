@@ -1,39 +1,38 @@
 # Current coordination status
 
-Updated 2026-09-12 (America/Chicago). Latest disposition: REVIEW_REVISIONS.md.
+Updated 2026-09-13. Latest disposition: CONTINUATION_REVIEW.md.
 Historical updates below are not current assignments or authorization.
 
 ## Product and branches
 
-- Integration: `arena/01a0899f-casevault`; product **a21ea3481351cb1b19ea3488e4dde4cc2644bfd1**.
-- EU-ERR PR21/7ac87d7 merged as a21ea34 after independent strict119/no skips +
-  focused25 browser/no skips. EU-ERR complete, no further task assigned.
-- EU-D PR18/c8c7d27 and EU-L PR17/a040e9f remain merged; original sessions closed.
-- EU-V PR19/575d771 open: corrections accepted, bounded post-fix tests authorized.
-- PR20/d1a504f combines OCR-PLAN R2/ba93aac and PV-GATE/cb91e9e. Still open.
-  OCR task accepted as proposal ONLY and parked. PV sole remaining branch writer.
-- Local-ops0159466 unmerged, approval-blocked. No bypass, branch deletion, main
-  release, engine/dependency/CI implementation or real-data acceptance authorized.
+- Integration: arena/01a0899f-casevault. Product pin remains **a21ea3481351cb1b19ea3488e4dde4cc2644bfd1**.
+- PR20/b86db71 merged as4bf4e2f (PV verifier + OCR proposal ONLY; no product changes).
+  PV/OCR complete and parked. No OCR engine/dependency/CI approval; design gates remain.
+- EU-ERR PR21 merged a21ea34 after independent119 Python +25 browser/no skips.
+  Original EU-D/L sessions closed; never reuse their branches.
+- EU-V PR19 open, head7893901. Reports2 list pass4.5s +3 worker pass22.1s at
+  test0b6c613/producta21ea34; accepted bounded evidence, NOT final acceptance.
+- Local-ops0159466 still unmerged/approval-blocked; no bypass or destructive real-data work.
 
 ## Current assignments
 
 | Owner | Next action | Required proof |
 |---|---|---|
-| EU-V | Merge exact a21ea34 into existing PR19 branch; run2 list cases; ONLY if pass,3 real-worker TXT/PDF/image cases | comment5649648897 / REVIEW_REVISIONS.md commands, exact test SHA, no disclosure, retry/accessibility, payload+SQL/pages+UI, cleanup; no full suite |
-| PV-GATE | Fixed-code bridge errors (no excerpts), output caps/stdin handling, negative probes +3-case rerun | comment5649650869, <=30min work/5min browser; PV paths only, sole PR20 writer |
-| OCR-PLAN | Park; no further edits/implementation | Proposal accepted, ownership/IPC/state/Darwin/contract gates still open |
-| EU-ERR | Complete | Independent119+25 gate, merged a21ea34 |
-| Owner/EU-M | Limited synthetic preview at a21ea34 only under OWNER_PREVIEW.md | Isolation preflight, native/manual results, exact SHA, owned cleanup; no approval-block workaround |
-| Integrator | Review bounded followups; track separate detail-error disclosure and remaining acceptance | No claimed full acceptance from partial runs |
+| EU-V | Correct/run D1.8/D4.6 detail pending proof; only if pass, correct/run visible-keyboard L4.1 | PR19comment5651803847; <=45min work, batches<=5min, no full suite |
+| BOOT-ID (fresh session NOT launched) | Owner to launch kickoff/BOOT-ID.md | First-boot identity concurrency regression + narrow backend fix; no shared data/warm-up-as-fix |
+| PV-GATE / OCR-PLAN / EU-ERR | Complete and parked | No further writes; OCR remains proposal only |
+| Owner/EU-M | Optional limited synthetic preview at a21ea34 under OWNER_PREVIEW.md | First-boot race caveat, exact SHA, native observations, owned cleanup; no real data |
+| Integrator | Review bounded checkpoints; gate bootstrap fix when delivered | Full acceptance and separate detail-error disclosure still unresolved |
 
-## Current measured proof
+## Current proof and new limitation
 
-Candidate7ac87d7 and merged product a21ea34 are tree-identical over runtime/test
-paths. Independent strict119 passed/no skips (22.69s) plus migrations/Ruff/web
-checks; focused25 browser passed/no skips (28.2s). Initial Chromium missing-library
-launch failure separately recorded. Owned API/web/PG stopped, scratch data removed.
-EU-V corrected OCR runs and PV3-case runs remain author-reported at their original
-SHAs; no native PDF or Mac proof inferred. Full EU-V acceptance still incomplete.
+See CONTINUATION_REVIEW.md. Independently ran PV negative checks7/7 atb86db71; author
+v6 browser3pass32.9s was on a040e9f with identity already committed. Original v4 fresh
+DB1fail/2pass59.7s exposed intermittent uq_users__email bootstrap race. Source-correlated
+in current product; not independently reproduced. Warm-up/reload is not a proven fix.
+Older independent strict119+focused25 browser passes remain at7ac87d7/a21ea34. No new
+full-suite, native PDF, Mac or engine proof. Current metadata recovered after exact tree
+comparison/backups; working files preserved, origin31101e3 was intact.
 
 ## Historical proof and dated updates (superseded for assignments)
 

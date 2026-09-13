@@ -1,3 +1,7 @@
+> Current2026-09-13: BOOT-ID.md prepared for one fresh owner-launched session,
+> NOT started here. EU-V next bounded scope is PR19comment5651803847. PR20 merged;
+> PV/OCR/EU-ERR complete, no further branch writes. STATUS.md is authoritative.
+
 > Current assignments: EU-ERR complete/merged a21ea34; EU-V575d771 authorized
 > bounded post-fix tests via PR19comment5649648897; OCR-PLAN parked (proposal only);
 > PV-GATE sole writer on combined PR20 for correction comment5649650869. See STATUS.md.

@@ -1,3 +1,9 @@
+> NEW2026-09-13: first-boot identity select/insert race can yield uq_users__email
+> UniqueViolation and sources/matters500 (PV v4 observed; source-correlated, not
+> independently reproduced). Warmed v5/v6 passes do not fix fresh-install behavior.
+> BOOT-ID brief ready, not launched. PV diagnostic correction accepted/merged4bf4e2f;
+> earlier statements below saying that helper still echoes diagnostics are superseded.
+
 > Updated2026-09-12: list error disclosure fixed/merged in a21ea34 after independent
 > strict119+focused25browser checks. EU-V original badge rerun still pending.
 > Detail helper arbitrary error-message passthrough remains a separately tracked
