@@ -1,3 +1,8 @@
+> Current2026-09-12: EU-ERR merged a21ea34, independently119+25 green. EU-V575d771
+> corrections accepted, bounded2 list then conditional3 OCR cases authorized. OCR R2
+> accepted as proposal/parked; PV sole PR20 writer fixing diagnostic echo. Details
+> REVIEW_REVISIONS.md / STATUS.md override historical task labels below.
+
 # Backlog — current as of 2026-09-12
 
 Legend: [x] implemented/integrated (not necessarily final browser/native acceptance),

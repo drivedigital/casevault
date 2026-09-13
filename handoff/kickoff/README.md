@@ -1,3 +1,7 @@
+> Current assignments: EU-ERR complete/merged a21ea34; EU-V575d771 authorized
+> bounded post-fix tests via PR19comment5649648897; OCR-PLAN parked (proposal only);
+> PV-GATE sole writer on combined PR20 for correction comment5649650869. See STATUS.md.
+
 # Current assignments — 2026-09-12
 
 Read [current status](../STATUS.md), [policy](../AGENT_POLICY.md), and

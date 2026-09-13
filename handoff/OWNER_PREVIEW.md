@@ -1,6 +1,6 @@
-> Known limitation added2026-09-12: injected server traceback/SQL can appear
-> in list error feedback. Use synthetic data only, keep diagnostic details private,
-> and record this open issue; real-data/full acceptance remains held.
+> Updated2026-09-12: list error disclosure fixed in a21ea34 (independent25 browser
+> regressions passed). Detail-page error passthrough remains a separate known risk.
+> Synthetic data only; keep diagnostics private. Real-data/full acceptance held.
 
 # Limited owner preview — explicit release, 2026-09-12
 
@@ -10,8 +10,9 @@ acceptance, real-evidence use and operational backup/restore work remain held.
 EU-V PR19 is unmerged; no final release or OCR-engine completion is implied.
 
 ## Exact product and purpose
-Test a040e9f739ec3741cd28ee99756d256ea8b78d43 from integration
-arena/01a0899f-casevault. Later integration changes so far are documentation only.
+Test a21ea3481351cb1b19ea3488e4dde4cc2644bfd1 from integration
+arena/01a0899f-casevault. This includes the reviewed list-error fix. Older PV
+proof stays attributed to a040e9f, not relabelled to this new product SHA.
 Do not merge EU-V or local-ops0159466 into the preview. Record git rev-parse HEAD
 and local diff; if newer docs are present verify product paths match this SHA.
 Purpose: owner sees integrated evidence/ledger/review workflow and records native

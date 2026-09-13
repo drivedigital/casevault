@@ -1008,3 +1008,19 @@ improved with author-reportedTXT/PDF passes; restore image coverage and child sa
 No product merge/runtime rerun; details BATCH_REVIEW_2026_09_12.md. Limited synthetic
 preview unchanged; final acceptance/engine approvals pending. Single PR20 writer
 required; no retired/session branch takeover or concurrent push/rebase.
+
+
+## 2026-09-12 — revised reviews, independent gate and EU-ERR merge
+
+Reviewed EU-ERR7ac87d7, EU-V575d771, combined OCR/PVd1a504f. Independently ran
+strict119/no skips22.69s + migration/Ruff/web gate and25 browser/no skips28.2s
+on exact PR21 candidate archive. Initial browser missing-library launch failed;
+private tooling corrected, no product/test edits. PR21 merged a21ea34; exact
+runtime/test tree matches candidate. Owned API/web/PG stopped, data removed.
+PR21comment5649648819, EU-V bounded run authorization5649648897, PR20review5649650869.
+OCR proposal accepted only as exploration and parked; PV sole remaining writer,
+needs fixed-code errors (synthetic JSON password/trace sentinel survived sanitizer),
+output caps and small negative checks +3-case rerun. PR20 title/body corrected.
+OWNER_PREVIEW pin advanced to a21ea34 under unchanged synthetic isolation limits;
+old PV proof retains old SHA, detail error disclosure remains a known separate gap.
+Full acceptance/engine/local-ops gates unchanged. See REVIEW_REVISIONS.md.

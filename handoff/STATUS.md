@@ -1,39 +1,41 @@
 # Current coordination status
 
-Updated 2026-09-12; EU-V short-batch review after documentation audit008b249.
-This is the entry point for current assignments and proof. Historical worklogs,
-archived briefs and agent notes are evidence, not current authorization. The latest
-explicit owner instruction and current scoped brief take precedence; contracts
-remain binding. Update this page when assignments, holds or merge status change.
+Updated 2026-09-12 (America/Chicago). Latest disposition: REVIEW_REVISIONS.md.
+Historical updates below are not current assignments or authorization.
 
 ## Product and branches
 
-- Integration: `arena/01a0899f-casevault`. Product checkpoint:
-  `a040e9f739ec3741cd28ee99756d256ea8b78d43`; subsequent integration changes are docs.
-- EU-D #18 merged `c8c7d27`; EU-L #17 merged `a040e9f`. Both original sessions are
-  closed; do not assign remote work or push their branches from another session.
-- EU-V #19 **open, unmerged**, latest inspected `e7fe31e`. Only active verifier.
-- Local-ops proposal `0159466` on `codex/local-ops-safety` remains unmerged,
-  approval-blocked follow-up not implemented. Never bypass the approval block.
-- `dev-logs` contains reports/cumulative patches, not a merge source. Notes from
-  `54001f0` were selectively archived at `0788ccc`; no product patch replay.
-- No main release, branch deletion or OCR-engine implementation authorized.
-  Two fresh-session briefs prepared (not launched here): PV-GATE preview verification
-  and OCR-PLAN design-only. Limited owner preview released under OWNER_PREVIEW.md.
+- Integration: `arena/01a0899f-casevault`; product **a21ea3481351cb1b19ea3488e4dde4cc2644bfd1**.
+- EU-ERR PR21/7ac87d7 merged as a21ea34 after independent strict119/no skips +
+  focused25 browser/no skips. EU-ERR complete, no further task assigned.
+- EU-D PR18/c8c7d27 and EU-L PR17/a040e9f remain merged; original sessions closed.
+- EU-V PR19/575d771 open: corrections accepted, bounded post-fix tests authorized.
+- PR20/d1a504f combines OCR-PLAN R2/ba93aac and PV-GATE/cb91e9e. Still open.
+  OCR task accepted as proposal ONLY and parked. PV sole remaining branch writer.
+- Local-ops0159466 unmerged, approval-blocked. No bypass, branch deletion, main
+  release, engine/dependency/CI implementation or real-data acceptance authorized.
 
-## Tasks / acceptance blockers
+## Current assignments
 
-| ID | Owner | Next action | Exit evidence |
-|---|---|---|---|
-| V-DIAG | EU-V / integrator | Short batch complete at3c405cf; correction source-reviewed, not independently rerun | Reported T1 1 pass + L1.5 1 pass; earlier selector/focus attempts retained separately |
-| V-LIST | EU-V | Next: L2.5 query/filter retry and L3.2–L3.4 row badge only; work30min, tests5min, cases60s, retries0/max-failures1 | Actual uploaded-ID correlation, observed failure + retry recovery, preserved controls/accessibility/no raw trace; checkpoint existing PR19 then stop |
-| V-OCR | EU-V, after diagnostic review | Correct result-reader, enums and exact uploaded-ID correlation; establish real integrated OCR proof | Explicit Reprocess job ID -> decoded ocr_source payload -> SQL state/pages -> UI; TXT complete/PDF skipped |
-| V-DETAIL | EU-V, after diagnostic review | Triage saved detail failures, especially save-pending candidate | Dispatch AND completion times, action sequence and pending state before calling duplicate PATCH a product bug |
-| REVIEW-D/L | Integrator | Limitation notes recovered; no completed independent review | Fresh review requires new accessible session/own branch and explicit scope; do not recycle closed sessions |
-| M-PREVIEW | Owner/EU-M | **Limited synthetic preview authorized** at a040e9f after isolation preflight in OWNER_PREVIEW.md; full acceptance/real-data work held | Exact SHA, native browser/download and explicit Reprocess observations, redacted report, owned cleanup |
-| PV-GATE | Fresh agent, not launched | kickoff/PV-GATE.md: independent bounded preview verification, <=45min | Focused tests/report, exact job/payload/SQL/UI correlation; new PR, no merge |
-| OCR-PLAN | Fresh agent, not launched | kickoff/OCR-PLAN.md: local PDF/image extraction design only, <=45min | Engine/packaging recommendation, safety/acceptance matrix and proposed write sets; note-only PR |
-| OPS | Local-ops author/integrator | Separate proposal review; wait for normal approval path | Socket-safe test guard, webhook tests, full gate; no real backup/restore claim from mocks |
+| Owner | Next action | Required proof |
+|---|---|---|
+| EU-V | Merge exact a21ea34 into existing PR19 branch; run2 list cases; ONLY if pass,3 real-worker TXT/PDF/image cases | comment5649648897 / REVIEW_REVISIONS.md commands, exact test SHA, no disclosure, retry/accessibility, payload+SQL/pages+UI, cleanup; no full suite |
+| PV-GATE | Fixed-code bridge errors (no excerpts), output caps/stdin handling, negative probes +3-case rerun | comment5649650869, <=30min work/5min browser; PV paths only, sole PR20 writer |
+| OCR-PLAN | Park; no further edits/implementation | Proposal accepted, ownership/IPC/state/Darwin/contract gates still open |
+| EU-ERR | Complete | Independent119+25 gate, merged a21ea34 |
+| Owner/EU-M | Limited synthetic preview at a21ea34 only under OWNER_PREVIEW.md | Isolation preflight, native/manual results, exact SHA, owned cleanup; no approval-block workaround |
+| Integrator | Review bounded followups; track separate detail-error disclosure and remaining acceptance | No claimed full acceptance from partial runs |
+
+## Current measured proof
+
+Candidate7ac87d7 and merged product a21ea34 are tree-identical over runtime/test
+paths. Independent strict119 passed/no skips (22.69s) plus migrations/Ruff/web
+checks; focused25 browser passed/no skips (28.2s). Initial Chromium missing-library
+launch failure separately recorded. Owned API/web/PG stopped, scratch data removed.
+EU-V corrected OCR runs and PV3-case runs remain author-reported at their original
+SHAs; no native PDF or Mac proof inferred. Full EU-V acceptance still incomplete.
+
+## Historical proof and dated updates (superseded for assignments)
 
 ## Measured proof versus reported proof
 
