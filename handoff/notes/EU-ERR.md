@@ -151,3 +151,70 @@ inspection `describeError` renders nothing on those success flows.
 - Raw logs kept outside Git: `/tmp/eu-err-repro-before.log`,
   `/tmp/eu-err-after-*.log`, `/tmp/eu-err-final-both.log`,
   `/tmp/eu-err-eul-impact.log`.
+
+---
+
+# Review amendment — 2026-09-12, PR21 comment5649550926 + fcaef0e
+
+Integrator approved a narrow write-set extension and requested corrections on
+this same PR. All completed; detail-page scope remains out (separately tracked).
+
+## What changed (revision)
+
+- `apps/web/lib/evidence-list-errors.ts`: NETWORK_MESSAGE no longer claims the
+  server "could not be reached" — a failed fetch can also mean response loss
+  after the server received (and possibly committed) a mutation. New copy:
+  "The request failed before a usable answer arrived — the server may not have
+  been reached, or its response may have been lost. Check the connection and
+  try again." Callers' outcome-uncertainty wording untouched. Header/interface
+  comments made consistent: exactly ONE server-derived substring may be echoed
+  (the digit-only `\d{1,4}` limit run from the anchored 413 pattern, as the MB
+  limit); all prior "no free text captured/rendered" phrasing now says the
+  same thing instead of contradicting the digit echo. TypeError comment states
+  the response-loss case explicitly.
+- `tests/browser/eu-list-failures.spec.ts` (AUTHORIZED extension — only the
+  three expectations named in my note; no other assertion/fixture touched):
+  - L273 (upload 422): raw-detail expectation →
+    `The server rejected this request (HTTP 422).` + explicit
+    `not.toContainText("synthetic injected rejection")`.
+  - L373 (row PATCH 500): raw-detail expectation →
+    `The server had a problem with this request` + explicit no-echo of the
+    injected text; attribution/uncertainty/refresh-first/retry assertions
+    below it unchanged.
+  - L422 (row 400): raw-detail expectation →
+    `The server rejected this request (HTTP 400).` + explicit no-echo;
+    "The row is unchanged" + read-back unchanged.
+- `tests/browser/eu-error-disclosure.spec.ts` (my file): network assertion
+  updated to the corrected copy substring.
+- Branch additionally merged integration `fcaef0e` (docs-only authorization
+  commit) per AGENT_POLICY §3.2; no conflicts, no other files changed.
+
+## Proof (revision)
+
+```
+npm run web:lint      ✔ No ESLint warnings or errors
+npm run web:typecheck ✔ clean
+npm run web:build     ✔ succeeded
+
+npx playwright test --config=playwright.config.ts          # eu-error specs
+  7 passed (8.8s)                                          # 0 failed, 0 skipped
+npx playwright test --config=playwright.eu-list.config.ts  # eu-list + failures
+  18 passed (25.5s)                                        # 0 failed, 0 skipped
+```
+
+Exact counts: 25 passed / 0 failed / 0 skipped (7 eu-error + 5 eu-list
+positive + 13 eu-list negative incl. the three amended expectations).
+Remaining failures: none. Environment identical to the first round
+(disposable embedded Postgres, uvicorn :8100 scratch storage, Next dev :3000,
+isolated npm-Chromium harness). Raw logs: `/tmp/eu-err-rev-euerror.log`,
+`/tmp/eu-err-rev-eulist.log`.
+
+## What the next agent must know (revision)
+
+- The digit-echo exception is the allowlist's ONLY server-derived output; keep
+  it that way. The network message must stay outcome-uncertain (response-loss
+  is possible after commit) — do not reintroduce "server unreachable" claims.
+- The three eu-list-failures expectations now pin the SAFE behaviour; if the
+  mapping copy ever changes, those three strings (`The server rejected this
+  request (HTTP 4xx).` / `The server had a problem with this request`) must be
+  updated together with `lib/evidence-list-errors.ts`.
