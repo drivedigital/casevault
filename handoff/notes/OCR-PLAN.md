@@ -1,6 +1,14 @@
 # OCR-PLAN — implementation-ready local PDF/image extraction design
 
 Date: 2026-09-12 · Session branch: `arena/01a097ea-casevault` (fresh session) · Status: DESIGN ONLY
+**REVISION 2 (2026-09-12, same PR20): integrator design review returned "changes
+requested" with six implementation-design gates (`handoff/OCR_PLAN_REVIEW.md`,
+PR20 comment 5649440419). Section "R2" below is the authoritative delta — it
+supersedes contradicting lines in §1–§6 and records which gates are resolved in
+design vs explicitly unresolved. Prior rationale is preserved unchanged where
+not superseded. Reviewer authorization for this revision: note-only follow-up
+≤45min, same PR, no self-merge/force-push, no implementation; unresolved
+decisions are marked as design gates rather than given invented guarantees.**
 Authorized by: `handoff/kickoff/OCR-PLAN.md` (2026-09-12). Write set used: **only this file**.
 No code, dependencies, schemas, tests, CI, shared contracts or local-ops files were modified.
 No packages were installed. No live case documents, external document services, or
@@ -26,6 +34,236 @@ closure; OCR polling/UI semantics; "no new OCR engine work until closure
 signed off" — this note is design, not engine work).
 
 ---
+
+## R2. Revision 2 — gate-by-gate resolution of the integrator design review
+
+Reviewer: integrator, `handoff/OCR_PLAN_REVIEW.md` + PR20 comment 5649440419
+(reviewed head `61da3b4`). Direction accepted in principle: native PDF text
+first, honest skipped for unimplemented scanned/image OCR, immutable originals,
+per-page provenance, OCR fallback later. Six gates follow.
+
+| Gate | Topic | Status in this revision |
+|---|---|---|
+| G-1 | Cross-entry-point concurrency ownership | **Resolved in design** (advisory-lock ownership + attempt-conditioned commit); requires one explicitly requested API write-set extension; residual limits stated |
+| G-2 | Enforceable runtime/memory/time containment | **Partially resolved**: time = enforceable on Linux+Darwin via killable extractor child; Linux memory = rlimits in child; **Darwin memory cap = UNRESOLVED design gate G-2a** |
+| G-3 | Derived-state consistency (page_count, latest-attempt vs last-success, mixed/truncated coverage) | **Resolved in design** (last-success dataset frozen on any non-swap outcome; mixed → `skipped`/`partial_no_text_layer`; truncation surfaced); public truncation field needs a small **contract amendment request G-3b** |
+| G-4 | Exception-string passthrough | **Resolved**: enumerated public reasons only; `str(exc)` removed everywhere; diagnostics to worker logs + exception class name only |
+| G-5 | Existing-test/CI compatibility + required fixtures | **Resolved as plan**: impacted tests enumerated with owners; present/absent engine modes; fail-closed `OCR_REQUIRE_DEPS=1`; mixed/scanned + concurrency + hard-bound regressions are acceptance-required before implementation, not deferrable |
+| G-6 | Factual labels, primary sources, pin, timebox contradictions, typo | **Resolved**: primary upstream docs/license/pin added (`pypdf==6.18.1` proposal); blank-vs-scanned declared indistinguishable in slice A; contract-amendment need conceded; timebox wording fixed; "OCR-IMPR" typo fixed |
+
+### R2-G1 — one cross-entry-point ownership mechanism (supersedes §3.3)
+
+The §3.3 status-column claim is withdrawn: `ocr_status` is mutable by the API
+(`reprocess` sets `queued` even while an extraction runs) and separate
+ingest/OCR column guards do not serialize the two job entry points writing the
+same `source_pages` rows. Replacement design — ownership independent of display
+statuses:
+
+1. **Ownership = one Postgres session-level advisory lock per source**, taken
+   by BOTH `ingest_source` and `ocr_source` as their first step, in the job's
+   own DB session: `SELECT pg_try_advisory_lock(hashtext('casevault-ocr:' ||
+   :source_id))`. Lock not acquired → return `{"status": "already_running"}`
+   (enumerated) and do nothing. One mechanism, both entry points, no second
+   writer to `source_pages` can hold it concurrently.
+2. **Hard-crash release/recovery is structural**: session advisory locks are
+   released by Postgres when the holding connection dies — a killed/OOM'd
+   worker needs no reaper, TTL, or stale-lock cleanup. Liveness signal =
+   lock availability, never the status columns.
+3. **Attempt-conditioned commit**: the reprocess endpoint allocates
+   `attempt_next = attempt_last + 1` inside its existing pre-enqueue
+   transaction using `SELECT … FOR UPDATE` on the `sources` row (row-lock
+   makes the counter increment atomic). The job captures `attempt` at claim,
+   and its final swap transaction re-checks, under `FOR UPDATE`, that
+   `attempt` is still its own before COMMIT; if a newer request superseded it,
+   it **discards** the extracted pages and returns `{"status": "superseded"}`
+   with the last-success dataset untouched. Counter storage: first entry in
+   `source_metadata.metadata_json["ocr"]["attempt"]` (JSONB read-modify-write
+   is safe only under the row lock — the API owns increments, jobs own
+   claim/verify).
+4. **Explicitly requested write-set extension (integrator must approve — not
+   implied as unnecessary)**: `reprocess_source` in
+   `apps/api/app/services/source_service.py` gains the attempt-allocation
+   block (≈5 lines, behavior otherwise unchanged). If the integrator refuses
+   the API change, fallback: jobs allocate `attempt = current + 1` themselves
+   under the advisory lock; semantics remain correct (unique attempts,
+   superseded detection), but a second rapid reprocess can be refused as
+   `already_running` instead of queueing behind the first — stated tradeoff.
+5. Status columns (`processing_status`/`ocr_status`) become display hints
+   written by the lock holder only; they are never consulted for mutual
+   exclusion. Residual limits, stated not hidden: advisory locks protect one
+   Postgres database only (multi-DB shard splits would need a new design);
+   lock key uses `hashtext` (32-bit collision across distinct sources is
+   theoretically possible — acceptably rare, and collision only causes
+   mutual exclusion between unrelated sources, never data corruption [H]);
+   RQ retries after `already_running` are left to RQ's own retry policy and
+   are safe because claim is re-evaluated.
+
+### R2-G2 — enforceable containment (supersedes the enforcement rows of §3.5)
+
+Byte/page/char caps and a post-call clock cannot bound what happens *inside*
+`PdfReader`/`extract_text` (decompression bombs, allocations, a single hung
+call). Enforcement primitive: **the parser never runs in the worker process.**
+
+- `ocr_extract.extract()` spawns a disposable child via
+  `multiprocessing.get_context("spawn").Process` (matches the `run_worker.py`
+  spawn posture on darwin; avoids fork-in-worker hazards on Linux too).
+  Input = original bytes + bounds via pipe/pickle; output = structured result
+  or process death. **The child never receives `DATABASE_URL`/`REDIS_URL`,
+  never opens DB/Redis connections, creates no temp files in slice A** —
+  cleanup surface is therefore one process handle.
+- **Time (both platforms)**: parent `child.join(time_budget)`; on expiry
+  `terminate()`, grace wait, then `kill()`. This enforces the time bound even
+  inside a single parser call — the bound is a kill, not a check. Outcome:
+  `failed`/`time_budget_exceeded`, no swap (old dataset preserved because the
+  swap transaction had not started — see R2-G3).
+- **Memory (Linux)**: child sets `resource.setrlimit(RLIMIT_AS, cap)` and
+  `RLIMIT_CPU` (≤ time budget) before importing pypdf; allocation/decompression
+  bombs die inside the child (`MemoryError`/signal), parent survives and maps
+  to `failed`/`resource_limit` (enumerated). RLIMIT values are the
+  implementation's own defaults (proposed: AS = 4× max in-memory working set
+  of a capped document, final numbers in the implementation contract), not an
+  optional local OS setting.
+- **Memory (Darwin) = UNRESOLVED design gate G-2a**: `RLIMIT_AS` is not
+  reliably enforced on macOS [H — known platform limitation; must be verified
+  on the owner's Mac]. Proposed enforceable fallback, to be verified before
+  implementation acceptance: parent-side RSS watchdog polling the child
+  (`/proc/<pid>` on Linux; on darwin sample child RSS and kill on exceed —
+  mechanism to be chosen from a verified primitive, e.g. `psutil` as another
+  guarded optional dep or `resource.getrusage(RUSAGE_CHILDREN)` deltas).
+  Until verified, the honest claim is: **on macOS, per-job wall-clock and CPU
+  bounds are hard-enforced; the memory ceiling is best-effort**, and the
+  old-results preservation guarantee (R2-G3) is what bounds the damage.
+- **Cleanup**: `finally:` → child not alive → `kill()`; sessions closed in
+  parent only. On timeout/OOM the previous derived dataset is preserved
+  (nothing was swapped); a killed job's `ocr_status='running'` display hint is
+  reconciled by the next claim attempt because ownership is the lock, not the
+  column (R2-G1.2) — G-3/Q3's stale-running reconciler is thereby folded into
+  the ownership mechanism.
+
+### R2-G3 — last-success dataset vs latest-attempt (supersedes §3.4 page-cap line and matrix row 8)
+
+- **Definitions.** *Last-success dataset* = `source_pages` rows +
+  `sources.page_count` + `sources.ocr_status` as written by the last COMMITTED
+  swap. *Latest-attempt* = metadata only:
+  `metadata_json["ocr"]["last_attempt"] = {attempt, outcome, reason,
+  pages_total_seen, pages_with_text, pages_truncated, at}`.
+- **Rule: anything that is not a successful full swap writes NO pages, NO
+  `page_count`, and NO `ocr_status` terminal value that describes extracted
+  content** — it writes only `last_attempt` (plus a terminal status when the
+  failure itself is the newest truth: `failed`, or `skipped` for
+  password/limit outcomes of a *first* run). Specifically the §4 row-8
+  behavior "page_count still set to the true count" is **withdrawn**: on
+  page-limit skip, `page_count` and pages stay exactly as the last swap left
+  them; the true PDF page count lives in `last_attempt.pages_total_seen`.
+  `page_count` changes only in the same transaction as the pages it
+  describes — the contradiction the review identified no longer exists.
+- **Mixed native+scanned** (slice A: some pages have a text layer, some do
+  not): pages that extracted text ARE written (useful text is not withheld),
+  but the document outcome is `ocr_status='skipped'` with
+  `reason='partial_no_text_layer'` — **never `complete`**, so "one good page"
+  can never dress up as full extraction. `last_attempt` records
+  `pages_with_text` vs `pages_total_seen`. Matrix row 4 is corrected
+  accordingly.
+- **Truncated pages** (output-char cap): per-page provenance flag plus
+  `last_attempt.pages_truncated > 0`, and the page's `ocr_text` visibly ends
+  with an ellipsis marker. **G-3b contract-amendment request**: today
+  `SourcePageOut` has no truncation field and `layout_json` is not served, so
+  plain UI surfacing needs one of (a) additive `SourcePageOut.truncated`
+  boolean, or (b) a `page_label` convention. Requested: option (a) as an
+  additive 1.x contract change the integrator schedules; until approved,
+  truncation is surfaced in `last_attempt` + `ocr_text` marker and the note
+  does NOT claim UI-visible truncation.
+- **Blank vs scanned (G-6)**: slice A has no rasterizer, so a zero-text
+  result cannot distinguish a blank digital PDF from an image-only scan —
+  both map to `no_text_layer` with `pages_with_text: 0`. This is a stated
+  limit; distinguishing becomes possible only in Design B (raster+image
+  heuristics). No claim is made that provenance distinguishes them.
+
+### R2-G4 — enumerated public reasons; no exception passthrough (supersedes §3.2 reason wording and §1.1.4 observation's tolerance)
+
+- Public/machine-reason vocabulary (metadata `ocr.last_attempt.reason`, job
+  payload `reason`, and UI-visible text) is a fixed enum: `no_text_layer`,
+  `partial_no_text_layer`, `ocr_not_configured`, `password_protected`,
+  `page_limit_exceeded`, `time_budget_exceeded`, `resource_limit`,
+  `stored_bytes_changed`, `parse_error`, `already_running`, `superseded`.
+  Parser exceptions must be assumed to embed document/path/credential
+  content; **`str(exc)` is never persisted, returned, or logged at info**.
+- Diagnostics: full exception detail goes only to worker logs (job-id
+  correlated, redaction-checked by the verifier), plus the exception *class
+  name* in `last_attempt.exception_class`. The existing `ocr_source` payload
+  behavior (`"reason": str(exc)` today [S]) is listed as an intentional
+  behavior change of this design: failure-path payload `reason` becomes
+  enumerated-or-null. That is a shared-surface change and is called out in
+  the contract-amendment list (R2-G6c), not silently made.
+
+### R2-G5 — existing tests, CI modes, and acceptance-required fixtures
+
+Enumerated impacted expectations (verified by reading the tests this session):
+
+| Test (owner) | Current expectation | With pypdf present |
+|---|---|---|
+| `tests/api/test_phase2_sources.py` L61–79 (WS-D legacy → integrator-owned) | fake `%PDF-1.4 fake` bytes → `process_source` → `status=="complete"`, `ocr_status=="skipped"`, `page_count is None`, `pages==[]` | unparseable bytes → `failed`/`parse_error` → **assertions break** |
+| `tests/integration/test_evidence_e2e.py` L38–51 + downstream PDF case (WS-D) | hand-crafted **valid** 2-page synthetic PDF (real xref/pages/text) treated as stub-skipped | becomes the digital-text happy path (`complete`, 2 pages) → **inverted expectations break** |
+| `tests/browser/eu-detail.spec.mjs` L413–428 "honest empty (pdf, no OCR engine)" (EU-D, session closed) | PDF upload → OCR tab shows "No pages extracted yet" | pages now exist → **breaks** |
+| PNG cases in `test_phase2_sources.py` L83ff | `ocr_status=="skipped"` | stays `skipped` (`ocr_not_configured`) → compatible |
+
+Coverage modes (disjoint ownership, no silent skips):
+
+- **Engine-absent mode** (default today, must keep passing unchanged except
+  the stub reason prose → enumerated `ocr_not_configured`; no enumerated test
+  asserts the old prose [S — verified by reading the assertions above]):
+  current behavior contract preserved.
+- **Engine-present mode**: OCR-IMPL's new unit tests + OCR-VERIFY's
+  integration tests, gated behind `OCR_REQUIRE_DEPS=1` (same fail-closed
+  pattern as `EVIDENCE_REQUIRE_DEPS` [S]) so required engine proof **cannot
+  silently skip**; without the flag they skip visibly as optional-tier.
+- **CI**: the integrator-owned one-pip-line change installs
+  `workers/requirements-ocr.txt` in the `evidence`/`python` job **and** the
+  impacted-test edits below are part of the same reviewed change — not
+  distributed silently.
+- **Required before implementation acceptance (not deferrable, per review)**:
+  mixed/scanned fixture behavior (row 4, 2), concurrency regression (two
+  concurrent `ocr_source` calls → exactly one extracts, other returns
+  `already_running`), hard-bound regressions (time-budget kill of a
+  deliberately slow child → `time_budget_exceeded`, old pages preserved;
+  page-cap skip → dataset untouched). These live in OCR-IMPL's owned test
+  files; existing suites are edited only as listed above, by approval.
+- **Requested existing-test edits (integrator to assign/own or explicitly
+  grant)**: the three broken-expectation rows above get explicit
+  engine-present branches (or the integrator schedules them); OCR-IMPL does
+  not touch them silently (policy hard rule 8).
+
+### R2-G6 — labels, primary sources, pin, wording
+
+- **Pin proposal**: `pypdf==6.18.1` (exact) or `pypdf>=6.18.1,<7` —
+  primary source [S]: PyPI metadata `license_expression: BSD-3-Clause`,
+  `requires_python: >=3.9`, trove classifiers 3.9→**3.14** (upstream
+  *declares* 3.14; our own 3.14 verification is still required and remains
+  listed unverified). AES-encrypted fixture needs `pypdf[crypto]` extra
+  (RC4 is core) — matrix row 7 updated. Primary links added to References;
+  third-party comparisons demoted to secondary background.
+- **Contract amendment list (conceded — JSONB capacity is not a waiver)**:
+  (a) R2-G1 API attempt-allocation extension; (b) R2-G3b additive
+  `SourcePageOut.truncated`; (c) job payload `reason` enumerated-or-null +
+  additive payload keys; (d) enumerated reason vocabulary as a shared
+  vocabulary; (e) existing-test edits above. Proposal: additive 1.x of the
+  new OCR contract; nothing in shipped `sprint3_evidence.md` is edited.
+- **Wording fixes**: "OCR-IMPR" typo → "OCR-IMPL". The §5.5 hour figures are
+  effort estimates for *future implementer/verifier sessions* to aid
+  scoping — they are not this session's bound and do not authorize
+  multi-hour work in a 45-min-bounded session; this revision consumed the
+  reviewer's ≤45min note-only bound. "Normative for the implementing wave"
+  (§3 header) is downgraded to **proposal pending contract freeze**; title
+  word "implementation-ready" retained only as the brief's deliverable name,
+  with all unresolved gates explicit in the R2 table.
+- **Explicitly unverified (unchanged from R1, restated under review rule)**:
+  no package install, no engine run, no accuracy/security benchmark, no
+  Linux/Darwin runtime test of the child-process design, no pypdf
+  exception-content audit, no 3.14 runtime check. These stay gates until a
+  properly authorized implementation/verification session runs them.
+
+---
+
 
 ## 1. Audit of `process_source`, `ocr_source` and the status/page/metadata APIs
 
@@ -143,7 +381,10 @@ optional imports:
 
 - `pypdf` [S: BSD-3-Clause, pure Python, requires Python ≥ 3.9, current line
   6.x, zero system dependencies; per multiple 2026 comparisons its extraction
-  is "basic" — multi-column/unusual encodings can garble]. For
+  is "basic" — multi-column/unusual encodings can garble]. **R2 pin proposal:
+  `pypdf==6.18.1` (primary PyPI metadata: `license_expression: BSD-3-Clause`,
+  `requires_python: >=3.9`, classifiers 3.9–3.14 — upstream-declared, our own
+  3.14 check still required).** For
   `SourceType.pdf`: cheap `PdfReader` open → real `page_count` (fixes the NULL
   today) → per-page `extract_text()`.
 - Per-page outcome recorded in provenance (§3.2): `method=pdf_native_text`
@@ -223,6 +464,10 @@ implementation wave.
 
 ## 3. Safety specification (normative for the implementing wave)
 
+> **R2 downgrade:** proposal pending contract freeze — not normative. Where
+> R2 (above) supersedes this section, the R2 text wins; conflicts are marked
+> inline.
+
 ### 3.1 Immutable originals
 
 - The job reads bytes only via `LocalStorage.read(source.storage_path)`
@@ -258,6 +503,10 @@ implementation wave.
   sanitize defensively]).
 
 ### 3.3 Repeat / idempotency semantics
+
+> **R2 superseded:** the status-column claim below is withdrawn — replaced by
+> R2-G1 (advisory-lock ownership + attempt-conditioned commit). Retained only
+> as the original rationale.
 
 - **Claim guard:** replace the unconditional `ocr_status='running'` with a
   conditional claim: `UPDATE sources SET ocr_status='running' WHERE id=:id AND
@@ -316,6 +565,11 @@ implementation wave.
 
 ### 3.5 Bounds (worker-read env, defaults; no API config edits)
 
+> **R2 superseded in part:** the caps stay as policy inputs, but enforcement
+> now comes from the killable extractor child + Linux rlimits (R2-G2); the
+> "behavior on exceed" for page limits is corrected by R2-G3 (dataset
+> untouched, no true `page_count` write). Retained as the original rationale.
+
 | Bound | Env (proposed) | Default | Behavior on exceed |
 |---|---|---|---|
 | Pages per document | `CASEVAULT_OCR_MAX_PAGES` | 200 | `skipped` / `page_limit_exceeded`; `page_count` still set to the true count |
@@ -349,13 +603,16 @@ A-matrix cases 1–9 meanwhile]. All fixtures synthetic, generic names
 | 1 | digital-text PDF, 2 pages, known strings | `process_source` (ingest) | `complete` | 2 rows, page_text matches | `ingest_method='worker_pdf_native'`, per-page `method=pdf_native_text` |
 | 2 | scanned PDF (image-only) | `ocr_source` | `skipped` / `no_text_layer` | 0 rows; `page_count` = true count | provenance `pages_with_text: 0` |
 | 3 | PNG and JPEG | `ocr_source` | `skipped` / `ocr_not_configured` | 0 rows; `page_count=1` | no exception, payload `status=complete` (stage completed, OCR skipped) |
-| 4 | mixed: page 1 text + page 2 image-only | `ocr_source` | `complete` | 2 rows; page 1 text present, page 2 `ocr_text` NULL/empty | page-level methods differ (`pdf_native_text` vs `none`) |
-| 5 | blank valid PDF (no content streams with text) | `ocr_source` | `skipped` / `no_text_layer` | 0 rows | distinct from failed; `pages_with_text: 0` |
+| 4 | mixed: page 1 text + page 2 image-only | `ocr_source` | `skipped` / `partial_no_text_layer` (R2-G3; R1 said `complete` — withdrawn) | 2 rows; page 1 text present, page 2 `ocr_text` NULL/empty | page-level methods differ (`pdf_native_text` vs `none`); `last_attempt.pages_with_text=1` of 2 |
+| 5 | blank valid PDF (no content streams with text) | `ocr_source` | `skipped` / `no_text_layer` | 0 rows | **indistinguishable from scanned in slice A** (R2-G3/G-6); `pages_with_text: 0` |
 | 6 | corrupt: valid fixture byte-truncated / `%PDF` header garbage (mirrors current test style [S]) | both | `failed` / `parse_error` | **previous page state unchanged** (atomicity) | `processing_status='failed'` for ingest path; RQ job state vs payload asymmetry documented (§1.1.4) |
-| 7 | encrypted (pypdf-supported cipher — RC4 natively; AES only if `cryptography` present [H]; random synthetic password) | `ocr_source` | `skipped` / `password_protected` | 0 rows | **not** `failed` |
-| 8 | huge-by-count: synthetic PDF declared/crafted > `MAX_PAGES` (test override env, e.g. cap=2) | `ocr_source` | `skipped` / `page_limit_exceeded` | 0 rows; true page_count recorded | cap is env-overridable in tests |
+| 7 | encrypted (pypdf-supported cipher — RC4 natively; AES only if `cryptography` present [S: requires the `pypdf[crypto]` extra per primary PyPI metadata]; random synthetic password) | `ocr_source` | `skipped` / `password_protected` | 0 rows | **not** `failed` |
+| 8 | huge-by-count: synthetic PDF declared/crafted > `MAX_PAGES` (test override env, e.g. cap=2) | `ocr_source` | `skipped` / `page_limit_exceeded` | 0 rows written; **`page_count`/pages left exactly as the last swap left them (R2-G3)** | true count only in `last_attempt.pages_total_seen`; cap is env-overridable in tests |
 | 9 | repeat reprocess ×2 on fixture 1 | `ocr_source` twice | `complete` both times | exactly 2 rows after each run (no duplicates) | identical text; new page UUIDs; `attempt` 1→2; `sources.sha256` unchanged; **original-byte equality**: `GET /sources/{id}/file` bytes hash == upload hash; excerpts (pre-created on page 1) still present |
-| 10 | claim race: source already `running`, second `ocr_source` call | | second returns `already_running`, no second page rebuild | | guard regression test |
+| 10 | claim race: source already locked by a live extraction, second `ocr_source`/`ingest_source` call (R2-G1) | both entry points | second returns `already_running`, no second page rebuild, no status-column dependency | dataset unchanged | ownership via advisory lock, not status columns; **acceptance-required concurrency regression** |
+| 11 | slow extractor child > time budget (stubbed slow parse in child) | `ocr_source` | `failed` / `time_budget_exceeded` | previous pages preserved (no swap started) | parent kills child (`terminate`→`kill`); acceptance-required hard-bound regression (R2-G2) |
+| 12 | allocation bomb / huge decompression stream (crafted, Linux-only assertions) | `ocr_source` | `failed` / `resource_limit` | previous pages preserved | child rlimit death contained; darwin memory bound = open gate G-2a, explicitly not claimed |
+| 13 | rapid double reprocess (second request while first queued/running) | API + jobs | attempt increments; if a newer attempt supersedes an in-flight one → `superseded`, last-success dataset intact (R2-G1.3) | dataset consistency | attempt-conditioned commit proof |
 
 **Cross-surface agreement (every applicable row):** RQ job payload (read via
 `Job.fetch(id).return_value()` — RQ 2.x result keys, not the legacy hash [S
@@ -371,6 +628,13 @@ questions (§1.1) and both must be checked explicitly.
 ## 5. Delivery plan — write sets, compatibility, sequencing
 
 ### 5.1 Disjoint write sets (for integrator to freeze in a new contract)
+
+> **R2 addition:** two explicitly requested write-set extensions, per the
+> review rule "request shared surface changes explicitly instead of implying
+> they are unnecessary": (1) the R2-G1 attempt-allocation block in
+> `reprocess_source` (`apps/api/app/services/source_service.py`); (2) the
+> enumerated existing-test edits in R2-G5 (three rows, engine-present
+> branches). Both are integrator-owned unless explicitly granted.
 
 **OCR-IMPL (implementer, fresh session):**
 `workers/pipeline/ocr_extract.py` (new), `workers/pipeline/jobs.py`
@@ -394,17 +658,19 @@ keeps engine tests in CI green rather than skipped); any
 `apps/web/lib/types.ts` additions (none needed); DECISIONS entries for
 dependency approvals; contract freeze for the wave.
 
-### 5.2 API/schema compatibility — no contract version bump required [H → confirm]
+### 5.2 API/schema compatibility — additive 1.x contract amendment requested [R2-revised]
 
-- Zero endpoint, response-shape, status-vocabulary, or queue-name changes
-  (policy hard rule 6 surfaces untouched). `ReprocessOut`, `SourceOut`,
-  `SourcePageOut` unchanged; job function signatures unchanged
-  (`ocr_source(source_id, workspace_id, database_url)`); job payload may gain
-  additive keys (`engine`, `pages_with_text`) — additive, existing keys
-  stable. Metadata keys additive per §3.2. **If** the integrator prefers a
-  formal additive note, a 1.x additive line in the new OCR contract covers it;
-  nothing in `docs/contracts/sprint3_evidence.md` §5 is contradicted — it
-  already prescribes exactly this optional-import shape [S].
+> **R2 revision:** R1's "no contract version bump required" is **withdrawn** —
+> metadata-shape compatibility does not waive contract review. Explicit
+> amendment list (all additive; proposal: version 1.x of the new OCR
+> contract, nothing in shipped `sprint3_evidence.md` edited): (a) API
+> attempt-allocation in `reprocess_source` (R2-G1.4); (b) additive
+> `SourcePageOut.truncated` boolean (R2-G3/G-3b); (c) job payload `reason`
+> becomes enumerated-or-null plus additive payload keys (R2-G4 — a shared
+> failure-path vocabulary change); (d) enumerated reason vocabulary adopted
+> as shared vocabulary; (e) the R2-G5 existing-test edits. Endpoints,
+> response *shapes* (other than (b)/(c)), status vocabularies, and queue
+> names remain unchanged; job function signatures unchanged.
 
 ### 5.3 Migration need — none (verified, not assumed)
 
@@ -431,9 +697,12 @@ revision is created; nobody touches `alembic/` (policy hard rule 4).
 ### 5.5 Review/merge sequence and bounded work packages
 
 Sequence: integrator freezes this design as contract (with any edits) →
-dependency approval → OCR-IMPR fresh session → strict gate → review → merge →
+dependency approval → OCR-IMPL fresh session → strict gate → review → merge →
 OCR-VERIFY session → integrated proof → integrator full gate. Work packages
-(bounded engineering effort, **not** calendar promises):
+(bounded engineering effort, **not** calendar promises; these are scoping
+estimates for *future* implementer/verifier sessions, not this session's
+45-minute note bound, and not authorizations to exceed any session's own
+brief):
 
 | WP | Owner | Content | Bound |
 |---|---|---|---|
@@ -496,6 +765,16 @@ limited owner preview (per kickoff); nothing here changes product code.
 
 ## Proof (what this session actually did)
 
+**Revision 2 (2026-09-12):** sandbox restore between turns reset the local
+branch to base while the working file survived untracked; verified my
+working note byte-identical to pushed `2b6688a`
+(`git show 2b6688a:handoff/notes/OCR-PLAN.md | diff -` → identical), then
+`git pull --ff-only` to the shared-branch tip `61da3b4` (PV-GATE commits
+`319120e`/`61da3b4` preserved untouched — no rewrite of another delivery's
+commits) and re-applied the note. This revision is note-only per PR20
+comment 5649440419; no package installs, no engine runs, no tests executed
+in this revision either.
+
 - Read (source-reviewed [S]): STATUS, AGENT_POLICY, both active/shipped
   contracts, kickoff roster, OCR-PLAN brief, `workers/pipeline/jobs.py`,
   `workers/run_worker.py`, `workers/run_process.py`, `workers/queues.py`,
@@ -517,6 +796,31 @@ limited owner preview (per kickoff); nothing here changes product code.
   benchmarks, no environment changes, no writes outside this file.
 
 ### References (accessed 2026-09-12)
+
+**Primary upstream (authoritative for license/version claims — R2-G6):**
+
+- pypdf — PyPI metadata (version 6.18.1, `license_expression: BSD-3-Clause`,
+  `requires_python: >=3.9`, classifiers 3.9–3.14, `[crypto]` extra for AES):
+  https://pypi.org/pypi/pypdf/json (release: https://pypi.org/project/pypdf/6.18.1/)
+- pypdf — source/license/changelog/docs:
+  https://github.com/py-pdf/pypdf (LICENSE: BSD-3-Clause) ·
+  https://pypdf.readthedocs.io/en/stable/ ·
+  https://pypdf.readthedocs.io/en/latest/meta/CHANGELOG.html ·
+  text extraction guide: https://pypdf.readthedocs.io/en/stable/user/extract-text.html
+- Tesseract OCR — upstream repo/license (Apache-2.0):
+  https://github.com/tesseract-ocr/tesseract · docs:
+  https://tesseract-ocr.github.io/
+- OCRmyPDF — install/requirements (17.x):
+  https://ocrmypdf.readthedocs.io/en/latest/installation.html ·
+  language packs: https://ocrmypdf.readthedocs.io/en/latest/languages.md link in
+  https://github.com/ocrmypdf/OCRmyPDF/blob/main/docs/languages.md ·
+  packager matrix: https://github.com/ocrmypdf/OCRmyPDF/blob/main/docs/maintainers.md
+- pypdfium2 — PyPI (licensing Apache-2.0/BSD-3-Clause, bundled binaries):
+  https://pypi.org/project/pypdfium2/
+- pytesseract — upstream repo/license (Apache-2.0):
+  https://github.com/madmaze/pytesseract
+
+**Secondary background (not authoritative for license/version claims):**
 
 - pypdf vs PyMuPDF/licensing/extraction-quality comparisons:
   https://www.file2markdown.ai/blog/pypdf-vs-pymupdf ,
