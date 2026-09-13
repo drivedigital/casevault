@@ -40,3 +40,10 @@ report blocker rather than improvise a framework. Run web lint/typecheck/build
 and applicable focused regressions. Integrator independently gates/merges and asks
 EU-V to rerun its original failing case on the merged SHA. Open NEW focused PR
 into arena/01a0899f-casevault; no self-merge/force-push or unrelated changes.
+
+## Review amendment — 2026-09-12, PR21 comment5649550926
+Additionally authorized: tests/browser/eu-list-failures.spec.ts ONLY for the three
+raw injected-detail expectations identified in EU-ERR's note. Assert safe messages
+and no raw-detail echo, preserving all other semantics. No other inherited tests
+may be modified. Run all eu-error and eu-list cases plus web checks. Correct network
+response-loss copy and inconsistent digit comments. Detail errors remain out of scope.

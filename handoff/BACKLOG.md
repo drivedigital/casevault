@@ -25,7 +25,8 @@ WORKLOG.md preserves historical merge/gate evidence. No new feature wave is auth
   pass counts across partial runs and no silent missing/skipped acceptance cases.
 - [~] Limited EU-M synthetic owner preview authorized at a040e9f after mandatory
   isolation preflight; OWNER_PREVIEW.md is exact checklist. Full acceptance held.
-- [~] PV-GATE owner-reported ready; PR/commit artifact not yet visible to integrator.
+- [~] PV-GATE319120e located inside PR20/61da3b4; bridge deadline/redaction/
+  cleanup-report corrections requested, scoped3-test rerun after correction.
 - [~] OCR-PLAN PR20/61da3b4 reviewed; note-only revisions requested for safety/
   concurrency/state/CI gates. No engine implementation or dependency approval.
 - [ ] Fresh independent review sessions only if assigned with access confirmed.
@@ -80,3 +81,8 @@ WORKLOG.md preserves historical merge/gate evidence. No new feature wave is auth
 
 No main release, archive/branch deletion, real-evidence test, dependency/CI expansion,
 or OCR-engine work follows automatically from checking an implementation item done.
+
+Latest review: BATCH_REVIEW_2026_09_12.md. EU-ERR PR21/b78fa82 awaiting narrow
+safe-text expectation alignment; EU-V5e925be decoded OCR proof reported, remaining
+helper/coverage corrections and full acceptance pending. OCR-PLAN2b6688a is the
+original proposal, not resolution of prior design gates. No merge in this batch.
