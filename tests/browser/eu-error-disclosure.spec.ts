@@ -180,7 +180,7 @@ test("INJECTED network failure on matter badge: honest network message, no brows
 
   const badgeText = (await badgeError.textContent()) ?? "";
   expect(badgeText, "network message is honest and actionable").toContain(
-    "Network error — the server could not be reached",
+    "the server may not have been reached, or its response may have been lost",
   );
   expect(badgeText, "raw browser error text must not be rendered").not.toContain("Failed to fetch");
   expect(badgeText).not.toMatch(LEAK_DETECTOR);

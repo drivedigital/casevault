@@ -18,15 +18,20 @@
 //      allowlist of the curated sentences the API actually emits on these
 //      surfaces (apps/api/app/services/source_service.py). Each maps to UI
 //      copy authored HERE, so even an allowlisted response contributes no
-//      server-controlled characters to the DOM. The size-limit pattern's only
-//      free part is a digit run (`\d{1,4}`) used as an allowlist shape check —
-//      no free text is captured, matched or rendered.
+//      server-controlled characters to the DOM — with exactly ONE exception:
+//      the digit-only limit run (`\d{1,4}`) captured by the anchored 413
+//      size-limit pattern is echoed back as the MB limit. Digits cannot carry
+//      markup or arbitrary server text; no other capture is echoed.
 //   2. Everything else — 5xx bodies, unknown/arbitrary 4xx details, statusText
 //      fallbacks, programmer errors, injected or malformed payloads — gets a
 //      generic, actionable message that may cite the HTTP status (a safe,
 //      non-attacker-controlled integer) but never any response-body text.
 //   3. Connection-level failures get their own honest message; the raw
-//      browser text ("Failed to fetch") is not shown.
+//      browser text ("Failed to fetch") is not shown. A failed fetch is NOT
+//      proof the server was never reached: the connection can also drop
+//      after the server received (and possibly committed) a mutation, so the
+//      message reports uncertainty instead of claiming the server was
+//      unreachable. Callers add the outcome-uncertainty copy for mutations.
 //
 // Failure states remain failures (never empty/success); callers keep their
 // attribution (which file/row/operation), accessible retry controls, pending
@@ -48,9 +53,10 @@ export type ListErrorKind =
 
 export interface MappedListError {
   kind: ListErrorKind;
-  /** User-safe, actionable message. Authored in this file; never embeds
-   *  server/network-provided text (digits parsed from the allowlisted
-   *  size-limit sentence are the only exception). */
+  /** User-safe, actionable message. Authored in this file. The ONLY
+   *  server-derived content it may contain is the digit-only MB limit
+   *  captured by the anchored 413 allowlist pattern; no other server- or
+   *  network-provided text is ever embedded. */
   message: string;
   /** HTTP status when a real server response produced the error, else null. */
   status: number | null;
@@ -61,7 +67,8 @@ const GENERIC_MESSAGE = "Something went wrong. Please try again.";
 const SERVER_ERROR_MESSAGE =
   "The server had a problem with this request. Please try again.";
 const NETWORK_MESSAGE =
-  "Network error — the server could not be reached. Check the connection and try again.";
+  "The request failed before a usable answer arrived — the server may not have " +
+  "been reached, or its response may have been lost. Check the connection and try again.";
 const TIMEOUT_MESSAGE =
   "The request timed out before the server answered. Please try again.";
 
@@ -70,8 +77,9 @@ const TIMEOUT_MESSAGE =
 const EMPTY_UPLOAD_DETAIL = "Uploaded file is empty.";
 
 /** The curated oversize-upload sentence emitted by the same service
- *  (HTTP 413): `File exceeds the {N} MB upload limit.` — anchored, and the
- *  ONLY free part is the numeric limit, which we echo as digits. */
+ *  (HTTP 413): `File exceeds the {N} MB upload limit.` — anchored; the only
+ *  captured part is the digit-only limit run, which may be echoed as the MB
+ *  limit (the single exception in trust rule 1). */
 const SIZE_LIMIT_DETAIL = /^File exceeds the (\d{1,4}) MB upload limit\.$/;
 
 /** Known validation outcome → fixed UI copy authored here. */
@@ -119,9 +127,12 @@ export function mapListError(error: unknown): MappedListError {
   if (isTimeout(error)) {
     return { kind: "timeout", message: TIMEOUT_MESSAGE, status: null };
   }
-  // fetch() rejects with a TypeError when the request cannot be issued at
-  // all (API down, DNS, offline). Label it honestly instead of rendering the
-  // browser's raw "Failed to fetch".
+  // fetch() rejects with a TypeError when the request fails at the
+  // connection level — the API may be down, DNS may fail, OR the connection
+  // may drop mid-flight after the server received (and possibly committed)
+  // the request. Label it honestly instead of rendering the browser's raw
+  // "Failed to fetch", and do NOT claim the server was unreachable; the
+  // outcome-uncertainty copy for mutations lives in the callers.
   if (error instanceof TypeError) {
     return { kind: "network", message: NETWORK_MESSAGE, status: null };
   }
