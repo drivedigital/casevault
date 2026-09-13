@@ -348,6 +348,57 @@ $ node "$EU_V_PLAYWRIGHT_CLI" test --list \
   exit 0; 3 tests listed: text, pdf, image
 ```
 
+### Integrated EU-ERR regression checkpoint — 2026-09-13
+
+Exact product **a21ea3481351cb1b19ea3488e4dde4cc2644bfd1** was merged
+into the existing verifier branch without manual product edits, preserving
+`575d771`. Test SHA before execution:
+**0b6c6139180d64664fb4b654fd211b2f6cfc470b**. Verification command
+`git diff --exit-code a21ea34 -- apps workers packages` exited 0, proving the
+product/worker/package tree exactly matches the supplied checkpoint.
+
+Batch 1 (required gate):
+
+```text
+$ timeout 300 bash scripts/eu_browser_run.sh \
+    --grep "L2.5|L3.2/L3.3/L3.4" --retries=0 --workers=1 \
+    --max-failures=1 --reporter=line eu-acceptance-list.spec.ts
+  exit 0; 2 passed (4.5s)
+```
+
+L2.5 passed exact-ID PATCH failure/retry and preserved query/filter controls.
+L3.2/L3.3/L3.4 passed exact-row accessible error/retry, no raw traceback/SQL,
+and successful badge recovery. Because both passed, batch 2 was authorized and
+run:
+
+```text
+$ timeout 300 bash scripts/eu_browser_run.sh \
+    --grep "real worker run for (text|pdf|image)" --retries=0 --workers=1 \
+    --max-failures=1 --reporter=line eu-acceptance-ocr.spec.ts
+  exit 0; 3 passed (22.1s)
+```
+
+Each type completed two sequential explicit Reprocess requests with distinct job
+IDs, supported-RQ decoded payload, exact source ID, SQL state/pages and UI label:
+
+* TXT source `63e9c11b-…`, jobs `943d99e1-…` and `b8af4057-…`: both RQ
+  FINISHED; payload `ocr_source`/complete/`ocr_status=complete`/page_count 1;
+  SQL complete/1 page containing `CASEVAULT SYNTHETIC FIXTURE`; UI `OCR
+  complete`.
+* PDF source `35456c89-…`, jobs `39fe8da1-…` and `4ab96a65-…`: both RQ
+  FINISHED; payload `ocr_source`/complete/`ocr_status=skipped`/page_count null;
+  SQL skipped/0 pages; UI `OCR skipped`.
+* Image source `5e1bac7e-…`, jobs `177680a5-…` and `efa989e2-…`: both RQ
+  FINISHED; payload `ocr_source`/complete/`ocr_status=skipped`/page_count null;
+  SQL skipped/0 pages; UI `OCR skipped`.
+
+PDF/image results establish worker orchestration and honest stub state, **not
+extraction**. Raw logs/correlation output are outside Git at
+`/home/user/eu-v-runs/integrated-a21ea34-20260913T035747Z/`. Cleanup: stack stop
+exit 0, PostgreSQL stop exit 0, disposable database/storage removed, and no
+owned service remains. No full suite, D5.12, or other acceptance case ran;
+those cases remain **NOT RUN** in this checkpoint.
+
 ### Real-worker proof shape (contract §Proof and safety)
 
 `REAL_WORKER` cases require **all three**: the RQ job record reaches `finished`
