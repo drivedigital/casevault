@@ -6,22 +6,30 @@
 //   API 202 {queued, job_id}  ->  RQ job (decoded with rq's OWN API)  ->
 //   sources / source_pages / source_metadata rows  ->  UI text
 //
-// Deliberate properties (integrator review 2026-09-12, comment 5649551113):
+// Deliberate properties:
 //   * RQ jobs are decoded with `rq.job.Job.fetch()` / `get_status()` /
 //     `.result` — rq's supported deserialization — never by hand-parsing raw
 //     redis payload bytes. The decoded payload records which API was used.
 //   * NO synchronous child process: `execFileSync` would block the Node event
 //     loop, so a Playwright timeout could never interrupt a stuck read. Every
-//     read runs in an async `spawn` child with (a) a hard wall-clock timeout
-//     that SIGKILLs the child, (b) explicit cancellation propagation through
-//     an AbortSignal, and (c) the child in the parent's process group so it
-//     cannot outlive the runner as an orphan.
-//   * The Python side bounds its own I/O: Postgres `connect_timeout` plus
-//     `statement_timeout`/`lock_timeout`, and redis socket connect/read
-//     timeouts, so a hung server cannot hold the child open either.
-//   * Child stdout/stderr are NEVER copied into errors verbatim: only a
-//     bounded (<=240 char) excerpt with credential-shaped text redacted, so a
-//     misconfigured URL or a row leaked by a traceback cannot enter a log.
+//     read runs in an async `spawn` child with a hard wall-clock timeout that
+//     SIGKILLs the child, explicit AbortSignal cancellation, and bounded
+//     stdout/stderr accumulation (cap => SIGKILL + fixed failure).
+//   * THE PYTHON SIDE BOUNDS ITS OWN I/O: Postgres `connect_timeout` plus
+//     `statement_timeout`/`lock_timeout`/`idle_in_transaction_session_timeout`
+//     and redis socket connect/read timeouts, so a hung server cannot hold the
+//     child open either.
+//   * ERRORS CARRY FIXED REASON CODES AND BOUNDED NUMERIC STATUS ONLY. Child
+//     output is NEVER part of a thrown error, not even a regex-"redacted"
+//     excerpt: the integrator demonstrated (comment 5649650869) that a
+//     sanitizer cannot remove arbitrary diagnostics — a synthetic
+//     `{"password": "SYNTHETIC_SENTINEL"}` or plain trace text survives any
+//     credential-shaped regex. Code + exit/signal/byte counts are safe to log;
+//     the payloads are not. `PV_GATE_BRIDGE_PRIVATE_DIAGNOSTICS=<file>` is an
+//     explicit opt-in that writes raw child output to a mode-0600 local file
+//     for private debugging only — it is unset by default and never used by
+//     the tests (`tests/browser/pv-gate-negative-checks.mjs` asserts that no
+//     sentinel reaches an error message).
 //   * The stored-file read validates containment inside LOCAL_STORAGE_ROOT
 //     (resolved, symlink-aware) before reading any bytes.
 //   * Nothing here has a default that could silently point at a real case
@@ -29,6 +37,7 @@
 //     set explicitly, otherwise the helper throws before touching anything.
 
 import { spawn } from "node:child_process";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -38,9 +47,50 @@ export const REPO = REPO_ROOT;
 
 /** Hard bound for one ground-truth read. Override with PV_GATE_BRIDGE_TIMEOUT_MS. */
 export const BRIDGE_TIMEOUT_MS = Number(process.env.PV_GATE_BRIDGE_TIMEOUT_MS ?? 20_000);
-/** Server-side bound for SQL statements and the redis socket (seconds). */
+/** Cap on accumulated stdout/stderr per child (bytes); exceeding it kills the child. */
+export const MAX_OUTPUT_BYTES = Number(
+  process.env.PV_GATE_MAX_OUTPUT_BYTES ?? 1_048_576,
+);
+/** Server-side bound for SQL statements and the redis socket (milliseconds/seconds). */
 const SQL_TIMEOUT_MS = Number(process.env.PV_GATE_SQL_TIMEOUT_MS ?? 5_000);
 const REDIS_SOCKET_TIMEOUT_S = Number(process.env.PV_GATE_REDIS_TIMEOUT_S ?? 3);
+
+/**
+ * Fixed public failure codes. Every error thrown by this helper is exactly one
+ * of these plus bounded numeric/status fields — never child output.
+ */
+export const BRIDGE_CODES = Object.freeze({
+  ENV_MISSING_DB: "PVGATE_BRIDGE_ENV_MISSING_DB",
+  ENV_MISSING_REDIS: "PVGATE_BRIDGE_ENV_MISSING_REDIS",
+  CANCELLED_BEFORE_START: "PVGATE_BRIDGE_CANCELLED_BEFORE_START",
+  START_FAILED: "PVGATE_BRIDGE_CHILD_START_FAILED",
+  CHILD_TIMEOUT: "PVGATE_BRIDGE_CHILD_TIMEOUT",
+  CHILD_CANCELLED: "PVGATE_BRIDGE_CHILD_CANCELLED",
+  CHILD_EXIT_NONZERO: "PVGATE_BRIDGE_CHILD_EXIT_NONZERO",
+  CHILD_SIGNAL: "PVGATE_BRIDGE_CHILD_SIGNAL",
+  STDIN_ERROR: "PVGATE_BRIDGE_CHILD_STDIN_ERROR",
+  STDOUT_OVERFLOW: "PVGATE_BRIDGE_STDOUT_OVERFLOW",
+  STDERR_OVERFLOW: "PVGATE_BRIDGE_STDERR_OVERFLOW",
+  INVALID_JSON: "PVGATE_BRIDGE_INVALID_JSON",
+  EMPTY_OUTPUT: "PVGATE_BRIDGE_EMPTY_OUTPUT",
+});
+
+/** Error type carrying only a fixed reason code and bounded numeric status. */
+export class BridgeError extends Error {
+  constructor(code, detail = {}) {
+    const parts = Object.entries(detail)
+      .filter(([, value]) => typeof value === "number" && Number.isFinite(value))
+      .map(([key, value]) => `${key}=${value}`);
+    const codeOnly = Object.entries(detail)
+      .filter(([, value]) => typeof value === "string" && /^[A-Z][A-Z0-9_]{1,31}$/.test(value))
+      .map(([key, value]) => `${key}=${value}`);
+    const suffix = [...codeOnly, ...parts].join(" ");
+    super(`[pv-gate-bridge] ${code}${suffix ? ` (${suffix})` : ""}`);
+    this.name = "BridgeError";
+    this.code = code;
+    this.detail = Object.freeze({ ...detail });
+  }
+}
 
 /** Absolute path of the interpreter used for ground-truth reads. */
 export function pythonBin() {
@@ -50,37 +100,101 @@ export function pythonBin() {
 function requireEnv(name) {
   const value = process.env[name];
   if (!value) {
-    throw new Error(
-      `[pv-gate-bridge] ${name} is not set. Point it at the DISPOSABLE PV-GATE ` +
-        `database/queue explicitly; this helper refuses to guess.`,
+    throw new BridgeError(
+      name === "PV_GATE_DATABASE_URL" ? BRIDGE_CODES.ENV_MISSING_DB : BRIDGE_CODES.ENV_MISSING_REDIS,
     );
   }
   return value;
 }
 
 /**
- * Redact credential-shaped text and bound the length. Used for any child
- * output that could reach a log or an error message.
+ * Test-only fault injection. Unset (the default) for every real run; set only by
+ * tests/browser/pv-gate-negative-checks.mjs to exercise the failure paths with
+ * synthetic payloads. It replaces the program the child would run.
  */
-export function sanitize(text, limit = 240) {
-  let out = String(text ?? "");
-  out = out.replace(/([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^/@\s]+@/g, "$1***@"); // user:pass@host
-  out = out.replace(
-    /\b(password|passwd|secret|token|api[_-]?key|authorization)\b\s*[=:]\s*\S+/gi,
-    "$1=***",
-  );
-  out = out.replace(/\s+/g, " ").trim();
-  return out.length > limit ? `${out.slice(0, limit)}…[truncated]` : out;
+function faultProgram() {
+  const fault = (process.env.PV_GATE_FAULT ?? "").trim();
+  if (!fault) return null;
+  switch (fault) {
+    case "json_sentinel":
+      // Valid-first-line, invalid-last-line output containing sentinels.
+      return [
+        "print('plain synthetic trace text {\"password\": \"SYNTHETIC_SENTINEL\"}')",
+        "print('TRAILING NOT JSON SYNTHETIC_SENTINEL')",
+      ].join("\n");
+    case "stderr_sentinel":
+      return [
+        "import sys",
+        "sys.stdout.write('SYNTHETIC_SENTINEL stdout trace\\n')",
+        "sys.stderr.write('SYNTHETIC_SENTINEL stderr trace\\n')",
+        "sys.exit(3)",
+      ].join("\n");
+    case "overflow_stdout":
+      return [
+        "import sys, time",
+        `sys.stdout.write('B' * ${MAX_OUTPUT_BYTES + 65_536})`,
+        "sys.stdout.flush()",
+        "time.sleep(60)",
+      ].join("\n");
+    case "stdin_epipe":
+      // Padding only: the program is written to a child that (in the negative
+      // check) is NOT a python interpreter reading stdin — a program larger
+      // than the pipe buffer makes the parent's write hit a closed pipe, which
+      // must surface as the fixed STDIN_ERROR failure.
+      return `# ${"P".repeat(MAX_OUTPUT_BYTES + 65_536)}`;
+    default:
+      throw new BridgeError("PVGATE_BRIDGE_UNKNOWN_FAULT", { fault_name: "UNKNOWN_FAULT" });
+  }
 }
 
 /**
+ * Opt-in, private raw diagnostics. Default: child output is discarded on
+ * failure (never thrown, never logged). When PV_GATE_BRIDGE_PRIVATE_DIAGNOSTICS
+ * names a file, a bounded excerpt is appended there with mode 0600 for local
+ * debugging only.
+ */
+function writePrivateDiagnostics(entry) {
+  const target = process.env.PV_GATE_BRIDGE_PRIVATE_DIAGNOSTICS;
+  if (!target) return;
+  try {
+    mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
+    appendFileSync(target, `${JSON.stringify(entry)}\n`, { mode: 0o600 });
+  } catch {
+    /* diagnostics must never break a read */
+  }
+}
+
+// Children currently spawned by this module. Killed best-effort when the runner
+// exits. See the orphan note in runPython(): this is a mitigation, not a promise.
+const liveChildren = new Set();
+process.once("exit", () => {
+  for (const child of liveChildren) {
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      /* process already gone */
+    }
+  }
+});
+
+/**
  * Run one bounded Python ground-truth read.
+ *
+ * Orphan behaviour, stated exactly (integrator review 2026-09-12): children are
+ * spawned in the parent's process group and `detached:false` does NOT by itself
+ * guarantee that a child dies if this parent dies — a hard SIGKILL of the runner
+ * can leave a short-lived re-parented process (no portable pdeathsig is
+ * available in this stack). What this module actually provides: SIGKILL on
+ * timeout/cancel/output-overflow/stdin-error, a best-effort kill in the `exit`
+ * handler, and server-side timeouts inside the child so an orphan cannot hold a
+ * database or redis connection open indefinitely. No hard no-orphan guarantee
+ * is claimed or implied.
  *
  * @param {string} source  Python program text (piped on stdin, no temp file).
  * @param {{signal?: AbortSignal}} [opts]
  * @returns {Promise<string>} the child's stdout
  */
-function runPython(source, opts = {}) {
+async function runPython(source, opts = {}) {
   const env = {
     ...process.env,
     PYTHONUNBUFFERED: "1",
@@ -90,90 +204,154 @@ function runPython(source, opts = {}) {
     PV_GATE_SQL_TIMEOUT_MS: String(SQL_TIMEOUT_MS),
     PV_GATE_REDIS_TIMEOUT_S: String(REDIS_SOCKET_TIMEOUT_S),
   };
+  const program = faultProgram() ?? source;
 
   return new Promise((resolve, reject) => {
     if (opts.signal?.aborted) {
-      reject(new Error("[pv-gate-bridge] read cancelled before it started"));
+      reject(new BridgeError(BRIDGE_CODES.CANCELLED_BEFORE_START, {}));
       return;
     }
 
-    const child = spawn(pythonBin(), ["-"], {
-      env,
-      stdio: ["pipe", "pipe", "pipe"],
-      // Same process group: the child cannot survive as an orphan of the runner.
-      detached: false,
-    });
+    const startedAt = Date.now();
+    const child = spawn(pythonBin(), ["-"], { env, stdio: ["pipe", "pipe", "pipe"] });
+    liveChildren.add(child);
 
     let stdout = "";
     let stderr = "";
+    let stdoutTotal = 0;
+    let stderrTotal = 0;
+    let osCode = null;
     let settled = false;
-    let killReason = null;
+    let killCode = null;
 
-    const timer = setTimeout(() => {
-      killReason = `hard timeout after ${BRIDGE_TIMEOUT_MS}ms`;
-      child.kill("SIGKILL");
-    }, BRIDGE_TIMEOUT_MS);
-
-    const onAbort = () => {
-      killReason = "cancelled";
-      child.kill("SIGKILL");
+    const kill = (code) => {
+      killCode ??= code;
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        /* already gone */
+      }
     };
+
+    const timer = setTimeout(() => kill(BRIDGE_CODES.CHILD_TIMEOUT), BRIDGE_TIMEOUT_MS);
+    const onAbort = () => kill(BRIDGE_CODES.CHILD_CANCELLED);
     if (opts.signal) opts.signal.addEventListener("abort", onAbort, { once: true });
 
     const cleanup = () => {
       clearTimeout(timer);
       if (opts.signal) opts.signal.removeEventListener("abort", onAbort);
+      liveChildren.delete(child);
     };
 
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk;
+    const finish = (code, detail) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      // Bounded numeric status + fixed-shape OS codes only — never output text.
+      const enriched = {
+        elapsed_ms: Date.now() - startedAt,
+        stdout_bytes: stdout.length,
+        stderr_bytes: stderr.length,
+        stdout_total_bytes: stdoutTotal,
+        stderr_total_bytes: stderrTotal,
+        ...(osCode ? { os_code: osCode } : {}),
+        ...detail,
+      };
+      writePrivateDiagnostics({
+        at: new Date().toISOString(),
+        code,
+        ...enriched,
+        // Bounded excerpt, private file only (never part of the error).
+        stdout_excerpt: stdout.slice(0, 2048),
+        stderr_excerpt: stderr.slice(0, 2048),
+      });
+      reject(new BridgeError(code, enriched));
+    };
+
+    // Bounded accumulation: memory never exceeds MAX_OUTPUT_BYTES per stream; the
+    // byte counter keeps counting, and crossing the cap kills the child.
+    const accumulate = (stream, chunk) => {
+      const limit = MAX_OUTPUT_BYTES;
+      if (stream === "stdout") {
+        stdoutTotal += chunk.length;
+        if (stdout.length < limit) stdout += chunk.subarray(0, limit - stdout.length).toString("utf8");
+        if (stdoutTotal > limit) kill(BRIDGE_CODES.STDOUT_OVERFLOW);
+      } else {
+        stderrTotal += chunk.length;
+        if (stderr.length < limit) stderr += chunk.subarray(0, limit - stderr.length).toString("utf8");
+        if (stderrTotal > limit) kill(BRIDGE_CODES.STDERR_OVERFLOW);
+      }
+    };
+
+    child.stdout.on("data", (chunk) => accumulate("stdout", chunk));
+    child.stderr.on("data", (chunk) => accumulate("stderr", chunk));
+
+    // A stdin failure (EPIPE on an early-exiting child, etc.) is a fixed failure,
+    // never a silent hang and never an echoed system message.
+    child.stdin.on("error", (err) => {
+      osCode = typeof err?.code === "string" && /^[A-Z][A-Z0-9_]{1,31}$/.test(err.code) ? err.code : "STDIN_ERROR";
+      kill(BRIDGE_CODES.STDIN_ERROR);
     });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk;
-    });
+
     child.on("error", (err) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(new Error(`[pv-gate-bridge] cannot start ${pythonBin()}: ${sanitize(err.message)}`));
+      osCode = typeof err?.code === "string" && /^[A-Z][A-Z0-9_]{1,31}$/.test(err.code) ? err.code : "START_FAILED";
+      const errno = typeof err?.errno === "number" ? err.errno : undefined;
+      finish(BRIDGE_CODES.START_FAILED, { ...(errno === undefined ? {} : { errno }) });
     });
+
     child.on("close", (code, signal) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      if (killReason) {
-        reject(
-          new Error(
-            `[pv-gate-bridge] ground-truth read ${killReason} (child ${signal ?? code}); ` +
-              `no partial result is reported. stderr: ${sanitize(stderr) || "(none)"}`,
-          ),
-        );
+      if (killCode) {
+        finish(killCode, {
+          ...(code === null || code === undefined ? {} : { exit_code: code }),
+          ...(signal ? { signal_name: signal } : {}),
+        });
         return;
       }
       if (code !== 0) {
-        reject(
-          new Error(
-            `[pv-gate-bridge] ground-truth read failed (exit ${code}). ` +
-              `stderr: ${sanitize(stderr) || "(none)"} | stdout: ${sanitize(stdout) || "(none)"}`,
-          ),
+        finish(
+          code === null && signal ? BRIDGE_CODES.CHILD_SIGNAL : BRIDGE_CODES.CHILD_EXIT_NONZERO,
+          {
+            ...(code === null ? {} : { exit_code: code }),
+            ...(signal ? { signal_name: signal } : {}),
+          },
         );
         return;
       }
+      if (stdout.trim() === "") {
+        // One bounded grace turn: an EPIPE from our own stdin write may still be
+        // pending on the event loop, and misreporting it as "empty output" would
+        // hide the real failure. The timer always fires, so this cannot hang.
+        setTimeout(() => finish(killCode ?? BRIDGE_CODES.EMPTY_OUTPUT, {}), 25);
+        return;
+      }
+      settled = true;
+      cleanup();
       resolve(stdout);
     });
 
-    // The program itself carries no secrets; env vars are inherited, not echoed.
-    child.stdin.end(source);
+    try {
+      child.stdin.end(program, (err) => {
+        if (!err) return;
+        osCode = typeof err?.code === "string" && /^[A-Z][A-Z0-9_]{1,31}$/.test(err.code) ? err.code : "STDIN_ERROR";
+        kill(BRIDGE_CODES.STDIN_ERROR);
+      });
+    } catch (err) {
+      osCode = typeof err?.code === "string" && /^[A-Z][A-Z0-9_]{1,31}$/.test(err.code) ? err.code : "STDIN_ERROR";
+      kill(BRIDGE_CODES.STDIN_ERROR);
+    }
   });
 }
 
+/** Parse the child's last stdout line as JSON without ever echoing its content. */
 function parseJson(out) {
-  const text = String(out ?? "").trim();
-  const lastLine = text.split("\n").filter(Boolean).pop() ?? "";
+  const text = String(out ?? "");
+  const lines = text.split("\n").filter((line) => line.trim() !== "");
+  const lastLine = lines[lines.length - 1] ?? "";
+  if (!lastLine) throw new BridgeError(BRIDGE_CODES.EMPTY_OUTPUT, { stdout_bytes: text.length });
   try {
     return JSON.parse(lastLine);
   } catch {
-    throw new Error(`[pv-gate-bridge] expected a JSON line, got: ${sanitize(text)}`);
+    throw new BridgeError(BRIDGE_CODES.INVALID_JSON, { stdout_bytes: text.length });
   }
 }
 
