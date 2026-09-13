@@ -34,6 +34,11 @@
 //   PV_GATE_RUN_STAMP       optional run id (default: timestamp)
 //   PV_GATE_DOWNLOAD_DIR    default /tmp/pv-gate-downloads
 //   PV_GATE_PYTHON          default <repo>/.venv/bin/python
+//   PV_GATE_BRIDGE_TIMEOUT_MS  hard bound per ground-truth read (default 20s)
+//
+// Cancellation: every test gets an AbortController; `afterEach` aborts it, which
+// SIGKILLs any in-flight bounded ground-truth child (the bridge never uses a
+// synchronous exec, so a Playwright timeout can always interrupt a stuck read).
 //
 // Run: see handoff/notes/PV-GATE.md (isolated pinned Playwright 1.63 tooling).
 
@@ -54,6 +59,22 @@ test.beforeAll(() => {
   // Raw synthetic bytes stay outside the repository.
   mkdirSync(DOWNLOAD_DIR, { recursive: true });
 });
+
+// Per-test cancellation token for the ground-truth bridge (see the header).
+let bridgeAbort = null;
+
+test.beforeEach(() => {
+  bridgeAbort = new AbortController();
+});
+
+test.afterEach(() => {
+  bridgeAbort?.abort();
+  bridgeAbort = null;
+});
+
+function bridgeOpts() {
+  return bridgeAbort ? { signal: bridgeAbort.signal } : {};
+}
 
 // --------------------------------------------------------------- fixtures --
 
@@ -231,7 +252,7 @@ test("PV-GATE 1 — real-browser upload, detail open without download, explicit 
     expect(row.sha256).toBe(fixture.sha256);
     expect(row.file_size_bytes).toBe(fixture.size);
 
-    const state = sqlSourceState(up.body.id);
+    const state = await sqlSourceState(up.body.id, bridgeOpts());
     expect(state.source.sha256, "SQL sha256 == fixture sha256").toBe(fixture.sha256);
     expect(state.source.file_size_bytes).toBe(fixture.size);
     expect(state.stored_file.sha256, "bytes on disk == fixture bytes").toBe(fixture.sha256);
@@ -323,7 +344,7 @@ test("PV-GATE 2 — Reprocess OCR twice per type: 202 job_id -> rq-decoded resul
   for (const run of runs) {
     const id = run.up.body.id;
     const fixture = run.up.fixture;
-    const before = sqlSourceState(id);
+    const before = await sqlSourceState(id, bridgeOpts());
     const beforePageIds = before.pages.map((p) => p.id).join(",");
 
     await openStatusTab(page, id);
@@ -354,16 +375,17 @@ test("PV-GATE 2 — Reprocess OCR twice per type: 202 job_id -> rq-decoded resul
         uiOutcome = (await doneNote.innerText()).replace(/\s+/g, " ").trim();
       }
     } catch {
-      const db = sqlSourceState(id);
+      // A cancelled read must not mask the terminal-state failure.
+      const db = await sqlSourceState(id, bridgeOpts()).catch(() => null);
       throw new Error(
         `UNCONFIRMED ${run.label}: UI reached no terminal OCR note within ${OCR_JOB_TIMEOUT_MS}ms ` +
-          `for job ${body.job_id}. No retry was enqueued. SQL says ocr_status=${db.source.ocr_status}, ` +
-          `page_count=${db.source.page_count}.`,
+          `for job ${body.job_id}. No retry was enqueued. SQL says ` +
+          (db ? `ocr_status=${db.source.ocr_status}, page_count=${db.source.page_count}.` : "unavailable."),
       );
     }
 
     // (4) rq's own decoding of THAT job id ---------------------------------
-    const job = decodeRqJob(body.job_id);
+    const job = await decodeRqJob(body.job_id, bridgeOpts());
     expect(job.status, `${run.label}: RQ status`).toBe("finished");
     expect(job.func_name).toBe("workers.pipeline.jobs.ocr_source");
     expect(job.origin, `${run.label}: job ran on the ocr queue`).toBe("ocr");
@@ -375,7 +397,7 @@ test("PV-GATE 2 — Reprocess OCR twice per type: 202 job_id -> rq-decoded resul
     expect(job.result.page_count, `${run.label}: result page_count`).toBe(run.expectPageCount);
 
     // (5) exact-ID SQL state (never RQ FINISHED alone) ----------------------
-    const after = sqlSourceState(id);
+    const after = await sqlSourceState(id, bridgeOpts());
     expect(after.source.ocr_status).toBe(run.expectOcr);
     expect(after.source.page_count).toBe(run.expectPageCount);
     expect(after.pages.length).toBe(run.expectPages);
@@ -420,7 +442,7 @@ test("PV-GATE 2 — Reprocess OCR twice per type: 202 job_id -> rq-decoded resul
   // Visible end state must match the database for both types (OCR tab).
   for (const run of [runs[0], runs[2]]) {
     const id = run.up.body.id;
-    const db = sqlSourceState(id);
+    const db = await sqlSourceState(id, bridgeOpts());
     await page.goto(`/evidence/${id}`);
     await page.getByRole("button", { name: "OCR", exact: true }).click();
     const tabText = (await page.getByTestId("ocr-tab").innerText()).replace(/\s+/g, " ");
@@ -464,7 +486,7 @@ test("PV-GATE 3 — minimal Status edit/save, reload persistence and return-to-l
   expect(patch.status()).toBe(200);
   await expect(page.getByTestId("save-ok")).toBeVisible({ timeout: 20_000 });
 
-  let db = sqlSourceState(id);
+  let db = await sqlSourceState(id, bridgeOpts());
   expect(db.source.title, "SQL title persisted").toBe(editedTitle);
   expect(db.source.source_status, "SQL status persisted").toBe("public_record");
 
@@ -486,7 +508,7 @@ test("PV-GATE 3 — minimal Status edit/save, reload persistence and return-to-l
     page.getByRole("button", { name: "Include", exact: true }).click(),
   ]);
   expect(resp.status()).toBe(200);
-  db = sqlSourceState(id);
+  db = await sqlSourceState(id, bridgeOpts());
   expect([db.source.included_flag, db.source.excluded_flag]).toEqual([true, false]);
 
   [resp] = await Promise.all([
@@ -494,7 +516,7 @@ test("PV-GATE 3 — minimal Status edit/save, reload persistence and return-to-l
     page.getByRole("button", { name: "Exclude", exact: true }).click(),
   ]);
   expect(resp.status()).toBe(200);
-  db = sqlSourceState(id);
+  db = await sqlSourceState(id, bridgeOpts());
   expect([db.source.included_flag, db.source.excluded_flag]).toEqual([false, true]);
 
   // return-to-list smoke: the list shows the edited title for that exact id
