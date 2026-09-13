@@ -112,3 +112,13 @@ hard parser bounds/crash cleanup, retained-page consistency/mixed coverage, safe
 reasons and existing-test/CI compatibility. See OCR_PLAN_REVIEW.md; comment5649440419.
 No merge or package approval. PV-GATE is owner-reported ready but submission not
 visible in fetched refs/PRs/dev-logs; PR URL or commit SHA requested. No PV run claimed.
+
+## Four-deliverable review (supersedes older artifact-availability statements)
+
+See BATCH_REVIEW_2026_09_12.md. EU-ERR PR21/b78fa82 needs three authorized safe-text
+regression updates and network-copy correction before gate/merge. EU-V PR19/5e925be
+now reports decoded TXT/PDF sequential OCR proof; helper/coverage followups remain.
+PV-GATE319120e is bundled in PR20 head61da3b4 with original OCR-PLAN2b6688a, not
+missing. PV needs bounded/redacted bridge and note corrections; OCR design is NOT
+revised since original review. PR20 must accurately disclose combined scope; only
+one writer on that assigned branch. No PR merged or runtime tests rerun this turn.

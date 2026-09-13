@@ -995,3 +995,16 @@ Changes requested comment5649440419; note-only<=45min, no merge/engine approval.
 Details OCR_PLAN_REVIEW.md. Fetched all heads/open+recent PRs and dev-logs; PV-GATE
 submission not visible. Requested PR URL/commit SHA rather than inventing results.
 No runtime tests or product changes; limited synthetic preview remains unchanged.
+
+
+## 2026-09-12 — EU-ERR/OCR-PLAN/PV-GATE/EU-V batch review
+
+Reviewed EU-ERRb78fa82, original OCR-PLAN2b6688a, PV319120e+61da3b4 and EU-V5e925be.
+PV found in combined PR20 chain (corrects prior missing-artifact report); OCR note
+unchanged from prior review. Comments posted21/5649550926,19/5649551022,20/5649551113.
+EU-ERR narrow old-test alignment authorized; preserve no-raw-detail policy. PV
+bridge unbounded sync/diagnostic output needs fixes. V supported result decode is
+improved with author-reportedTXT/PDF passes; restore image coverage and child safety.
+No product merge/runtime rerun; details BATCH_REVIEW_2026_09_12.md. Limited synthetic
+preview unchanged; final acceptance/engine approvals pending. Single PR20 writer
+required; no retired/session branch takeover or concurrent push/rebase.
