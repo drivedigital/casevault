@@ -33,7 +33,7 @@ fixture bytes, imported). Isolated pinned tooling reused outside the repo
 | First-run tree | `2b7381e59ac187eda038c8bb1b458798f5a3f534` + untracked PV test files | where run v1 executed (tests were untracked at that moment) |
 | Test commit (v1 helper) | `319120e` | first commit containing the tests + note; spec `dafeb82b…c6d`, bridge `a459d123…c8` |
 | Delivery note | `61da3b4` | v2 note revision (this file, pre-review-response) |
-| **Rerun commit (v2 helper)** | to be `HEAD` of this push (parent `61da3b4`) | spec `f65c61e8…24`, bridge `11bccbaf…2e`; run v2 executed on exactly these bytes |
+| **Rerun commit (v2 helper)** | `cb91e9e458a3acd5cadc7b99874a79df8d8c5c1d` (parent `ba93aac` → `61da3b4`) | spec `f65c61e8…24`, bridge `11bccbaf…2e`; run v2 executed on exactly these bytes (commit created after the run, then rebased onto the concurrent OCR-PLAN revision — same tree content) |
 | Integration head at review | `fcaef0e` | integrator review commit (docs only) |
 
 Product/test separation, stated precisely: `git diff --name-only a040e9f <tree> -- tests`
@@ -192,13 +192,18 @@ None in the closure contract. Two measured, non-blocking observations for the in
   full-suite rerun, not a substitute for the pending L2.5/L3.x list work or the detail/OCR
   proof owned by EU-V.
 - PR/branch ownership: `arena/01a097ea-casevault` carries two workstreams — OCR-PLAN
-  (`2b6688a`, note-only, its own review open) and PV-GATE (`319120e`, `61da3b4`, this
-  revision). GitHub refuses a second PR from the same head branch, so the delivered PR (20)
-  is the combined artifact and its title/body inventory is a shared-surface matter. This
-  session wrote only `tests/browser/pv-gate-*` and `handoff/notes/PV-GATE.md`; it did not
-  touch the OCR-PLAN note, did not rewrite branch history, and does not claim sole delivery
-  ownership — the integrator/owner should name the single writer for PR20 if the two
-  workstreams are to be delivered separately.
+  (note-only, its own review open) and PV-GATE. GitHub refuses a second PR from the same head
+  branch, so the delivered PR (20) is the combined artifact and its title/body inventory is a
+  shared-surface matter. **Observed during this revision: the OCR-PLAN session pushed
+  `ba93aac` ("OCR-PLAN revision 2", `handoff/notes/OCR-PLAN.md` only) while PV was preparing
+  its commit** — i.e. concurrent writers on the assigned branch, the risk the integrator
+  flagged. PV's response was the minimum-conflict path: its single local commit was rebased
+  onto `ba93aac` (no force-push, no rewriting of the other session's commits, no touch of
+  OCR-PLAN files) and pushed as the fast-forward `ba93aac..cb91e9e`. This session wrote only
+  `tests/browser/pv-gate-*` and `handoff/notes/PV-GATE.md`; it neither edited the OCR-PLAN
+  note nor claims sole delivery ownership. **The integrator/owner should still name a single
+  writer for PR20** (or split the deliveries), because the next concurrent push could require
+  a conflict resolution that only one writer should own.
 - Nothing under `data/`, no `.env*`, no credentials, no raw logs or downloaded bytes are in
   the diff (raw synthetic evidence stays in `/tmp`, outside Git).
 
