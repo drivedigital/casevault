@@ -283,17 +283,24 @@ export interface RqJobResult {
 }
 
 const execFileAsync = promisify(execFile);
+const activeJobWaits = new Set<AbortController>();
+
+/** Abort any result-reader children still owned by the current test. */
+export function cancelJobWaits(): void {
+  for (const controller of activeJobWaits) controller.abort();
+  activeJobWaits.clear();
+}
 
 /** Wait through RQ's supported result API without blocking the Node event loop. */
 export async function waitForJobResult(jobId: string, timeoutMs = 120_000): Promise<RqJobResult> {
   const url = process.env.EU_V_REDIS_URL;
   if (!url) throw new Error('EU_V_REDIS_URL is not set (start the isolated stack)');
   const script = `
-import json, sys, time
+import json, os, sys, time
 import redis
 from rq.job import Job
-client = redis.Redis.from_url(sys.argv[1], socket_timeout=5)
-job_id, timeout = sys.argv[2], float(sys.argv[3]) / 1000
+client = redis.Redis.from_url(os.environ["EU_V_RQ_REDIS_URL"], socket_timeout=5)
+job_id, timeout = sys.argv[1], float(sys.argv[2]) / 1000
 end = time.monotonic() + timeout
 last = {"status": "missing", "result": None}
 while time.monotonic() < end:
@@ -315,19 +322,33 @@ while time.monotonic() < end:
 print(json.dumps(last, default=str))
 raise SystemExit(2)
 `;
-  const { stdout } = await execFileAsync(PYTHON, ['-c', script, url, jobId, String(timeoutMs)], {
-    cwd: REPO_ROOT,
-    encoding: 'utf8',
-    timeout: timeoutMs + 10_000,
-  });
-  return JSON.parse(stdout) as RqJobResult;
+  const controller = new AbortController();
+  activeJobWaits.add(controller);
+  try {
+    const { stdout } = await execFileAsync(PYTHON, ['-c', script, jobId, String(timeoutMs)], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+      timeout: timeoutMs + 5_000,
+      signal: controller.signal,
+      env: { ...process.env, EU_V_RQ_REDIS_URL: url },
+    });
+    return JSON.parse(stdout) as RqJobResult;
+  } catch (error) {
+    const safe = error as { name?: string; code?: string | number; killed?: boolean };
+    throw new Error(
+      `RQ result read failed for job ${jobId}: name=${safe.name ?? 'unknown'} ` +
+        `code=${String(safe.code ?? 'unknown')} killed=${Boolean(safe.killed)}`,
+    );
+  } finally {
+    activeJobWaits.delete(controller);
+  }
 }
 
 /** Committed state of a source, read independently of the UI. */
 export function sourceState(sourceId: string): {
   source_status?: string;
   ocr_status?: string;
-  page_count?: number;
+  page_count?: number | null;
   pages?: number;
   page_texts?: string[];
 } {

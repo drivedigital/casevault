@@ -311,14 +311,51 @@ PostgreSQL stop both exit 0; disposable database/storage removed; no owned
 service remains. Image, D5.12, other OCR cases, full OCR/list/detail suites and
 shared-helper regression were **not run**.
 
+### Correction-only OCR checkpoint — 2026-09-12
+
+No browser or worker case was rerun in this checkpoint. The prior measured TXT
+and PDF results remain attributed to verifier **5e925be** and product
+**a040e9f739ec3741cd28ee99756d256ea8b78d43**. Corrections after integrator
+review:
+
+1. Restored `image` to the D5.10/D5.11 parameterized acceptance definition;
+   future bounded TXT/PDF selection must use CLI `--grep`. Image remains **NOT
+   RUN**.
+2. The RQ child receives its Redis URL only through `EU_V_RQ_REDIS_URL` in its
+   environment, never argv. Child failures are rethrown using only job ID,
+   error name/code and killed state; command, URL, stdout and stderr are omitted.
+3. `sourceState().page_count` is typed `number | null` in both public and SQL-row
+   shapes.
+4. Retired stale wording that called the corrected result reader unresolved;
+   `result=None` remains only as historical evidence at `0212370`.
+5. D5.10/D5.11 now waits for the exact upload ID to reach its expected terminal
+   OCR state before opening Status and clicking Reprocess, preventing initial
+   ingest/explicit OCR overlap.
+6. Every result-reader child has an `AbortController`; the real-worker describe
+   cancels outstanding owned children in `afterEach`, while each child also has
+   a bounded process timeout shorter than the case cap.
+7. Other OCR cases, image, full suites and shared-helper regression remain
+   explicitly **NOT RUN**.
+
+Static validation only (no browser/worker execution):
+
+```text
+$ git diff --check
+  exit 0
+$ node "$EU_V_PLAYWRIGHT_CLI" test --list \
+    --config tests/browser/eu-acceptance-playwright.config.ts \
+    --grep 'real worker run for (text|pdf|image)' eu-acceptance-ocr.spec.ts
+  exit 0; 3 tests listed: text, pdf, image
+```
+
 ### Real-worker proof shape (contract §Proof and safety)
 
 `REAL_WORKER` cases require **all three**: the RQ job record reaches `finished`
 with its structured payload read through the supported RQ result API, the
 **committed** `sources.ocr_status` and `source_pages` rows read independently
-through SQL, and the UI's terminal state. The earlier raw Redis reader observed
-literal `result=None`; this is an unresolved result-reading limitation, not proof
-that the worker returned nothing and not a payload-present pass.
+through SQL, and the UI's terminal state. The raw-reader `result=None` observation
+belongs only to the earlier `0212370` measurement; the supported reader was
+corrected and decoded structured payloads at `5e925be`.
 Two sequential Reprocess requests per fixture type. Upload-time processing is
 proved separately from explicit reprocess (D5.12).
 

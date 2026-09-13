@@ -15,6 +15,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import {
   apiGet,
+  cancelJobWaits,
   declareMode,
   injectFailure,
   injectNetworkError,
@@ -297,11 +298,19 @@ test.describe('EU-D/D5 OCR enqueue feedback and polling', () => {
 });
 
 test.describe('EU-D/D5 real worker completion [REAL_WORKER]', () => {
-  for (const kind of ['text', 'pdf'] as const) {
+  test.afterEach(() => cancelJobWaits());
+
+  for (const kind of ['text', 'pdf', 'image'] as const) {
     test(`D5.10/D5.11 real worker run for ${kind}: result payload AND persisted state`, async ({ page }) => {
       test.setTimeout(120_000);
       declareMode('REAL_WORKER', 'real RQ worker; job result + committed rows, not merely queued');
       const { id } = await seedSource(page, kind);
+      const expectedOutcome = kind === 'text' ? 'complete' : 'skipped';
+      // Establish the upload's terminal state before explicit Reprocess. TXT
+      // ingestion is inline; PDF/image may have an initial ingest worker job.
+      await expect
+        .poll(() => sourceState(id).ocr_status, { timeout: 30_000, intervals: [500, 1_000] })
+        .toBe(expectedOutcome);
       await openStatusTab(page, id);
 
       for (const attempt of [1, 2]) {
@@ -321,7 +330,6 @@ test.describe('EU-D/D5 real worker completion [REAL_WORKER]', () => {
         expect(job.status, `attempt ${attempt}: job status`).toMatch(/finished/i);
         expect(job.result, `attempt ${attempt}: decoded job result payload`).not.toBeNull();
         const result = job.result!;
-        const expectedOutcome = kind === 'text' ? 'complete' : 'skipped';
         expect(result.job, `attempt ${attempt}: worker function`).toBe('ocr_source');
         expect(result.source_id, `attempt ${attempt}: exact source correlation`).toBe(id);
         expect(result.status, `attempt ${attempt}: payload status`).toBe('complete');
