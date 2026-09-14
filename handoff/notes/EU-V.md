@@ -399,6 +399,48 @@ exit 0, PostgreSQL stop exit 0, disposable database/storage removed, and no
 owned service remains. No full suite, D5.12, or other acceptance case ran;
 those cases remain **NOT RUN** in this checkpoint.
 
+### Bounded detail timing attempt — 2026-09-14
+
+Product remains **a21ea3481351cb1b19ea3488e4dde4cc2644bfd1**;
+verifier base **789390186bed3187eb65023992ad5a741d202e08**. Product identity
+remained exact (`git diff a21ea34 -- apps workers packages` empty). Source audit
+replaced arbitrary PATCH delay/sleeps with exact-ID PATCH-only hold/release,
+dispatch/completion timestamps, unresolved-at-second-activation proof, exact
+one-PATCH count, and SQL/UI title/status reconciliation. D1.8 is now explicitly
+Save activation only; Save+Reprocess overlap remains **NOT RUN**.
+
+Two bounded attempts used the same required command:
+
+```text
+$ timeout 300 bash scripts/eu_browser_run.sh \
+    --grep "D1.8|D4.6" --retries=0 --workers=1 --max-failures=1 \
+    --reporter=line eu-acceptance-detail.spec.ts
+```
+
+* Attempt 1, working diff SHA-256
+  `ba63cdc95f17e745687488e97b56d8fcf7e6d9ddb321cde99ebebdea486a25ed`:
+  exit 1 after 120s; D1.8 timed out, D4.6 **NOT RUN**. Cause: Playwright's
+  high-level first `click()` waited for the deliberately held request, so the
+  second activation was never reached.
+* Attempt 2, working diff SHA-256
+  `56166512db944935b4de48fb5fff14905f7137d28007789888e2322c8015d7ad`:
+  exit 1 after 120s; D1.8 timed out, D4.6 **NOT RUN**. Trace established the
+  first DOM dispatch completed and the PATCH was held, but the second
+  `/^save$/` locator waited because the accessible name had changed to
+  `Saving…`. This is a **verifier automation defect**, not product evidence.
+
+The checkpoint correction retains the exact Save `ElementHandle` before first
+activation so both dispatches target the same DOM node despite its pending label;
+cleanup also avoids masking an originating timeout after page teardown. Per the
+stop-on-first-failure rule, this final correction receives static validation only
+and no third browser attempt in this batch. Gate A therefore did **not pass**;
+D4.6 and visible-button L4.1 remain **NOT RUN**, and no upload-helper/L4.1 change
+was made. Raw traces/logs remain outside Git at
+`/home/user/eu-v-runs/detail-timing-20260914T204205Z/`.
+
+Cleanup: disposable stack and PostgreSQL stops both exited 0; database/storage
+removed; no owned process remains. No full suite or other case ran.
+
 ### Real-worker proof shape (contract §Proof and safety)
 
 `REAL_WORKER` cases require **all three**: the RQ job record reaches `finished`

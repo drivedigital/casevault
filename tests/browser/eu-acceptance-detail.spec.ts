@@ -10,7 +10,7 @@
  * negative paths, TRANSPORT for header-level checks. Fault-injection cases are
  * labelled and never substitute for real-API/real-worker proof.
  */
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type Response } from '@playwright/test';
 import {
   apiGet,
   apiPost,
@@ -41,6 +41,41 @@ function controls(page: Page) {
     title: page.locator('input[type=text], input:not([type])').first(),
     status: page.locator('select').first(),
     save: page.getByRole('button', { name: /^save$/i }).first(),
+  };
+}
+
+async function holdExactPatch(page: Page, id: string) {
+  const endpoint = new RegExp(`/api/v1/sources/${id}(?:\\?|$)`);
+  let dispatchAt: number | null = null;
+  let completionAt: number | null = null;
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let started!: () => void;
+  const firstStarted = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const onResponse = (response: Response) => {
+    if (endpoint.test(response.url()) && response.request().method() === 'PATCH') completionAt = Date.now();
+  };
+  page.on('response', onResponse);
+  await page.route(endpoint, async (route) => {
+    if (route.request().method() !== 'PATCH') return route.continue();
+    dispatchAt ??= Date.now();
+    started();
+    await released;
+    await route.continue();
+  });
+  return {
+    firstStarted,
+    release,
+    timing: () => ({ dispatchAt, completionAt }),
+    cleanup: async () => {
+      release();
+      page.off('response', onResponse);
+      if (!page.isClosed()) await page.unroute(endpoint);
+    },
   };
 }
 
@@ -166,25 +201,50 @@ test.describe('EU-D/D1 status initialization, dirty drafts, save behaviour [REAL
     }
   });
 
-  test('D1.8 concurrent save/reprocess does not duplicate or clobber [INJECTED_FAULT]', async ({ page }) => {
-    declareMode('INJECTED_FAULT', 'delayed PATCH + double submit; counts the real requests');
+  test('D1.8 concurrent save activation does not duplicate or clobber [INJECTED_FAULT]', async ({ page }) => {
+    test.setTimeout(120_000);
+    declareMode('INJECTED_FAULT', 'exact PATCH hold/release proves the second activation occurs while unresolved');
+    test.info().annotations.push({
+      type: 'eu-v-not-run-save-reprocess',
+      description: 'Save+Reprocess overlap is NOT RUN; this case covers duplicate Save activation only.',
+    });
     const { id } = await seedSource(page, 'text');
     const log = recordRequests(page);
     await openStatusTab(page, id);
-    const restore = await injectDelay(page, new RegExp(`/api/v1/sources/${id}(\\?|$)`), 1_200);
+    const held = await holdExactPatch(page, id);
+    const intendedTitle = `eu-v concurrency ${Date.now()}`;
+    const { title, status, save } = controls(page);
+    const intendedStatus = await status.inputValue();
 
-    const { title, save } = controls(page);
-    await title.fill('eu-v concurrency');
-    await save.click();
-    // Second activation while the first save is still in flight: the handler
-    // guard (isPending) is what must stop it, so dispatch the DOM event
-    // directly rather than relying on a disabled attribute.
-    await save.dispatchEvent('click');
-    await page.waitForTimeout(3_000);
+    try {
+      await title.fill(intendedTitle);
+      // Keep the exact DOM node: its accessible name changes to “Saving…”
+      // while held, so re-resolving the /^save$/ locator would wait forever.
+      const saveNode = await save.elementHandle();
+      expect(saveNode, 'Save DOM node exists').not.toBeNull();
+      await saveNode!.dispatchEvent('click');
+      await held.firstStarted;
+      const beforeSecond = held.timing();
+      expect(beforeSecond.dispatchAt, 'first PATCH was dispatched').not.toBeNull();
+      expect(beforeSecond.completionAt, 'first PATCH is unresolved at second activation').toBeNull();
+      await saveNode!.dispatchEvent('click');
+      await page.waitForTimeout(100);
+      const patches = log.matching(new RegExp(`/api/v1/sources/${id}(?:\\?|$)`)).filter((r) => r.method() === 'PATCH');
+      expect(patches, 'application guard allows exactly one PATCH while the first is held').toHaveLength(1);
 
-    const patches = log.matching(new RegExp(`/api/v1/sources/${id}(\\?|$)`)).filter((r) => r.method() === 'PATCH');
-    expect(patches.length, `PATCH count: ${patches.map((p) => p.postData()).join(' | ')}`).toBe(1);
-    await restore();
+      held.release();
+      await expect.poll(() => held.timing().completionAt, { timeout: 20_000 }).not.toBeNull();
+      const state = sourceState(id);
+      expect(state.title, 'committed intended title').toBe(intendedTitle);
+      expect(state.source_status, 'committed intended status').toBe(intendedStatus);
+      await expect(title, 'UI reconciles to intended title').toHaveValue(intendedTitle);
+      test.info().annotations.push({
+        type: 'eu-v-patch-timing',
+        description: JSON.stringify(held.timing()),
+      });
+    } finally {
+      await held.cleanup();
+    }
   });
 });
 
@@ -447,26 +507,45 @@ test.describe('EU-D/D4 distinct errors, retries and pending protection [INJECTED
   });
 
   test('D4.6 pending state prevents duplicate submits', async ({ page }) => {
-    declareMode('INJECTED_FAULT', 'delayed PATCH while double-clicking Save');
+    test.setTimeout(120_000);
+    declareMode('INJECTED_FAULT', 'exact PATCH hold/release with pending-state and persistence proof');
     const { id } = await seedSource(page, 'text');
     const log = recordRequests(page);
     await openStatusTab(page, id);
-    const restore = await injectDelay(page, new RegExp(`/api/v1/sources/${id}(\\?|$)`), 1_500);
-    const { save, title } = controls(page);
-    await title.fill('eu-v pending');
-    await save.click();
-    const pendingState = {
-      disabled: await save.isDisabled(),
-      busy: await save.getAttribute('aria-busy'),
-    };
-    await save.dispatchEvent('click');
-    await page.waitForTimeout(2_500);
-    test.info().annotations.push({
-      type: 'eu-v-pending-state',
-      description: `Save control during an in-flight save: ${JSON.stringify(pendingState)}`,
-    });
-    const patches = log.matching(new RegExp(`/api/v1/sources/${id}(\\?|$)`)).filter((r) => r.method() === 'PATCH');
-    expect(patches.length, `PATCH count: ${patches.length}`).toBe(1);
-    await restore();
+    const held = await holdExactPatch(page, id);
+    const intendedTitle = `eu-v pending ${Date.now()}`;
+    const { save, title, status } = controls(page);
+    const intendedStatus = await status.inputValue();
+
+    try {
+      await title.fill(intendedTitle);
+      // Keep the exact DOM node: its accessible name changes to “Saving…”
+      // while held, so re-resolving the /^save$/ locator would wait forever.
+      const saveNode = await save.elementHandle();
+      expect(saveNode, 'Save DOM node exists').not.toBeNull();
+      await saveNode!.dispatchEvent('click');
+      await held.firstStarted;
+      const pendingState = {
+        disabled: await save.isDisabled(),
+        busy: await save.getAttribute('aria-busy'),
+        ...held.timing(),
+      };
+      expect(pendingState.completionAt, 'first PATCH is unresolved before second activation').toBeNull();
+      await saveNode!.dispatchEvent('click');
+      await page.waitForTimeout(100);
+      const patches = log.matching(new RegExp(`/api/v1/sources/${id}(?:\\?|$)`)).filter((r) => r.method() === 'PATCH');
+      expect(patches, 'pending guard permits exactly one PATCH').toHaveLength(1);
+
+      held.release();
+      await expect.poll(() => held.timing().completionAt, { timeout: 20_000 }).not.toBeNull();
+      expect(sourceState(id)).toMatchObject({ title: intendedTitle, source_status: intendedStatus });
+      await expect(title).toHaveValue(intendedTitle);
+      test.info().annotations.push({
+        type: 'eu-v-pending-state',
+        description: JSON.stringify({ ...pendingState, completionAt: held.timing().completionAt }),
+      });
+    } finally {
+      await held.cleanup();
+    }
   });
 });

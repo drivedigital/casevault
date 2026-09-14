@@ -346,6 +346,7 @@ raise SystemExit(2)
 
 /** Committed state of a source, read independently of the UI. */
 export function sourceState(sourceId: string): {
+  title?: string;
   source_status?: string;
   ocr_status?: string;
   page_count?: number | null;
@@ -353,13 +354,14 @@ export function sourceState(sourceId: string): {
   page_texts?: string[];
 } {
   const rows = queryDatabase<{
+    title: string;
     source_status: string;
     ocr_status: string;
     page_count: number | null;
     pages: number;
     page_texts: string[];
   }>(
-    `SELECT s.source_status, s.ocr_status, s.page_count,
+    `SELECT s.title, s.source_status, s.ocr_status, s.page_count,
             (SELECT count(*) FROM source_pages p WHERE p.source_id = s.id) AS pages,
             ARRAY(SELECT p.ocr_text FROM source_pages p WHERE p.source_id = s.id ORDER BY p.page_number) AS page_texts
        FROM sources s WHERE s.id = '${sourceId}'`,
