@@ -16,6 +16,7 @@ fs.mkdirSync(deployDir, { recursive: true });
 
 // Copy public directory if exists
 if (fs.existsSync(publicDir)) {
+  console.log("Copying public assets to .deploy...");
   fs.cpSync(publicDir, deployDir, { recursive: true });
 }
 
@@ -23,6 +24,7 @@ if (fs.existsSync(publicDir)) {
 const deployNextStatic = path.join(deployDir, "_next", "static");
 fs.mkdirSync(path.dirname(deployNextStatic), { recursive: true });
 if (fs.existsSync(staticDir)) {
+  console.log("Copying _next/static to .deploy/_next/static...");
   fs.cpSync(staticDir, deployNextStatic, { recursive: true });
 }
 
@@ -38,27 +40,23 @@ function copyAppFiles(src, dest) {
       copyAppFiles(srcPath, destPath);
     } else if (entry.name.endsWith(".html") || entry.name.endsWith(".rsc") || entry.name.endsWith(".json")) {
       fs.copyFileSync(srcPath, destPath);
-      // Ensure directory/index.html is created for clean URLs
-      if (entry.name.endsWith(".html") && entry.name !== "index.html") {
-        const baseName = entry.name.slice(0, -5);
-        const subDir = path.join(dest, baseName);
-        fs.mkdirSync(subDir, { recursive: true });
-        fs.copyFileSync(srcPath, path.join(subDir, "index.html"));
-      }
     }
   }
 }
 
+console.log("Copying Next.js server app bundles...");
 copyAppFiles(serverAppDir, deployDir);
 
 // Write _redirects for Cloudflare Pages
 const redirects = `/api/v1/*  https://casevault-worker.dan-2eb.workers.dev/api/v1/:splat  200\n`;
 fs.writeFileSync(path.join(deployDir, "_redirects"), redirects);
 
-// Write _worker.js for edge request routing and proxying
+// Write _worker.js for edge request routing, KV file proxying, and SPA client-side fallback
 const workerContent = `export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    // Proxy all /api/* calls to edge worker gateway (which serves KV binary files and stores)
     if (url.pathname.startsWith("/api/")) {
       const targetUrl = new URL(request.url);
       targetUrl.hostname = "casevault-worker.dan-2eb.workers.dev";
@@ -75,10 +73,18 @@ const workerContent = `export default {
         redirect: "follow",
       }));
     }
-    return env.ASSETS.fetch(request);
+
+    // Try serving static asset directly
+    const assetResp = await env.ASSETS.fetch(request);
+    if (assetResp.status === 404 && request.method === "GET" && !url.pathname.startsWith("/_next/")) {
+      // Fallback to index.html for client-side routing on dynamic routes
+      return env.ASSETS.fetch(new URL('/index.html', request.url));
+    }
+    return assetResp;
   }
 };
 `;
+
 fs.writeFileSync(path.join(deployDir, "_worker.js"), workerContent);
 
 console.log("Successfully packaged .deploy folder for Cloudflare Pages.");

@@ -77,6 +77,13 @@ export function EvidenceViewer({
     source.source_type === "note" ||
     (source.mime_type?.startsWith("text/") ?? false);
 
+  // Autoload PDF preview immediately on mount when supported
+  useEffect(() => {
+    if (isPdf && pdfViewerEnabled !== false && preview.phase === "idle") {
+      void load();
+    }
+  }, [isPdf, pdfViewerEnabled, preview.phase, load]);
+
   // A failed pages refresh with data from an earlier success keeps the stale
   // text but labels it (never a silent false-healthy view).
   const pagesStale =
@@ -105,8 +112,7 @@ export function EvidenceViewer({
       {isPdf ? (
         <div data-testid="viewer-pdf">
           <p className="mb-2 text-xs text-slate-500">
-            Inline PDF preview is opt-in — it loads the file only when you ask,
-            so opening this page never downloads or buffers the document.
+            Document preview autoloaded.
             {source.file_size_bytes
               ? ` File size: ${source.file_size_bytes.toLocaleString()} bytes.`
               : ""}

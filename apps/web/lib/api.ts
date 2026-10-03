@@ -161,7 +161,12 @@ export const api = {
       >
     >,
   ) => apiFetch<Source>(`/sources/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
-  sourceFileUrl: (id: string) => `${getBaseUrl()}/sources/${id}/file`,
+  sourceFileUrl: (id: string) => {
+    if (typeof window !== "undefined" && window.location.hostname.includes("pages.dev")) {
+      return `/api/v1/sources/${id}/file`;
+    }
+    return `${getBaseUrl()}/sources/${id}/file`;
+  },
   listSourcePages: (id: string) => apiFetch<SourcePage[]>(`/sources/${id}/pages`),
   listSourceMatters: (id: string) => apiFetch<SourceMatterLink[]>(`/sources/${id}/matters`),
   linkSourceToMatter: (matterId: string, sourceId: string, linkReason?: string) =>

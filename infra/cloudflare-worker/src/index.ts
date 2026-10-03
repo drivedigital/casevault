@@ -17,6 +17,9 @@ export interface Env {
   CASEVAULT_KV?: any;
 }
 
+import sources510w42 from "./sources-510w42.json";
+import pages510w42 from "./pages-510w42.json";
+
 // ============================================================================
 // 510W42 REAL DATASET
 // ============================================================================
@@ -222,247 +225,63 @@ export const realMatters = [
   },
 ];
 
-export const realSources = [
+export const realSources = sources510w42;
+
+export const realMatterLinks = [
   {
-    id: "src-230-001",
-    workspace_id: "ws-510w42",
-    source_type: "image",
-    title: "2F Floor Plan Showing Exclusive Bedroom C Demise",
-    original_filename: "2F_Floor_Plan_BR_ABC.jpeg",
-    mime_type: "image/jpeg",
-    storage_path: "sources/230cps/2F_Floor_Plan_BR_ABC.jpeg",
-    sha256: "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9",
-    file_size_bytes: 428900,
-    page_count: 1,
-    source_status: "primary",
-    evidence_review_status: "reviewed",
-    included_flag: true,
-    excluded_flag: false,
-    exclusion_reason: null,
-    authentication_notes: "Floor plan identifying Bedroom A (IR), Bedroom B (Nasca), and Bedroom C (DG).",
-    restrictions_notes: null,
-    processing_status: "completed",
-    ocr_status: "not_needed",
+    id: "ml-1",
+    from_matter_id: "m-230cps",
+    from_matter_name: "230 CPS — 2F Bedroom C",
+    to_matter_id: "m-part19",
+    to_matter_name: "Part 19 — Article 81 Leave & Preservation",
+    link_type: "procedural_dependency",
+    direction: "outgoing",
+    notes: "Article 81 guardianship proceeding (Part 19) governs AIP Ian Reisner and Property Guardian Andre Cizmarik who controls 2F and withheld Bedroom C access.",
+    created_at: "2025-04-01T10:00:00Z",
+  },
+  {
+    id: "ml-2",
+    from_matter_id: "m-510w42",
+    from_matter_name: "510 W 42 — #209 / hotel work / property",
+    to_matter_id: "m-part19",
+    to_matter_name: "Part 19 — Article 81 Leave & Preservation",
+    link_type: "procedural_dependency",
+    direction: "outgoing",
+    notes: "Article 81 leave and accounting needed against Guardian Cizmarik regarding hotel operating entities, leases, and chattel conversion.",
+    created_at: "2025-04-01T10:00:00Z",
+  },
+  {
+    id: "ml-3",
+    from_matter_id: "m-230cps",
+    from_matter_name: "230 CPS — 2F Bedroom C",
+    to_matter_id: "m-510w42",
+    to_matter_name: "510 W 42 — #209 / hotel work / property",
+    link_type: "shares_actors",
+    direction: "outgoing",
+    notes: "Common parties (Dan George, Ian Reisner) with overlapping timeline and joint representations.",
     created_at: "2024-09-06T10:00:00Z",
-    updated_at: "2026-08-24T12:00:00Z",
-    duplicate_of: null,
   },
-  {
-    id: "src-230-016",
-    workspace_id: "ws-510w42",
-    source_type: "text",
-    title: "June 3, 2025 2F Door Exclusion Record — Doorman Donnie Refusal",
-    original_filename: "DG_230CPS_Pleading_Facts.md",
-    mime_type: "text/markdown",
-    storage_path: "sources/230cps/DG_230CPS_Pleading_Facts.md",
-    sha256: "3b879c968f9a2e6e3c0429f63ab84042884a441e8c07802875ab9393a20e2ef5",
-    file_size_bytes: 65400,
-    page_count: 12,
-    source_status: "primary",
-    evidence_review_status: "reviewed",
-    included_flag: true,
-    excluded_flag: false,
-    exclusion_reason: null,
-    authentication_notes: "Core claimed ouster event; doorman and super refused entry referencing management instruction.",
-    restrictions_notes: "Privileged Attorney Work Product",
-    processing_status: "completed",
-    ocr_status: "not_needed",
-    created_at: "2025-06-03T18:00:00Z",
-    updated_at: "2026-08-24T12:00:00Z",
-    duplicate_of: null,
-  },
-  {
-    id: "src-230-018",
-    workspace_id: "ws-510w42",
-    source_type: "pdf",
-    title: "DG Written Demand for Restoration and Inventory (Oct 20, 2025)",
-    original_filename: "RE Access and Property Status — 510 W 42nd St  230 Central Park South (Reisner Estate)_2.pdf",
-    mime_type: "application/pdf",
-    storage_path: "sources/230cps/RE_Access_and_Property_Status_2.pdf",
-    sha256: "9f837782e46b086e414c11f4864c39f134563813893c52a4209f984ca3b3b4aa",
-    file_size_bytes: 258536,
-    page_count: 6,
-    source_status: "primary",
-    evidence_review_status: "reviewed",
-    included_flag: true,
-    excluded_flag: false,
-    exclusion_reason: null,
-    authentication_notes: "Email dated 20 Oct 2025, 5:38 p.m. with attached NYAG RPAPL 768 statutory notice and schedules.",
-    restrictions_notes: null,
-    processing_status: "completed",
-    ocr_status: "completed",
-    created_at: "2025-10-20T17:38:00Z",
-    updated_at: "2026-08-24T12:00:00Z",
-    duplicate_of: null,
-  },
-  {
-    id: "src-230-019",
-    workspace_id: "ws-510w42",
-    source_type: "pdf",
-    title: "Guardian Cizmarik Written Access Refusal (Oct 21, 2025)",
-    original_filename: "AC_Access_Refusal_2025-10-21.pdf",
-    mime_type: "application/pdf",
-    storage_path: "sources/230cps/AC_Access_Refusal_2025-10-21.pdf",
-    sha256: "ef87342894ca101bc89a3ef94821ef447c491295b9278912efca348912fefcde",
-    file_size_bytes: 184500,
-    page_count: 2,
-    source_status: "primary",
-    evidence_review_status: "reviewed",
-    included_flag: true,
-    excluded_flag: false,
-    exclusion_reason: null,
-    authentication_notes: "AC writes he is not in a position to allow access or agree to lawful occupancy.",
-    restrictions_notes: null,
-    processing_status: "completed",
-    ocr_status: "completed",
-    created_at: "2025-10-21T11:15:00Z",
-    updated_at: "2026-08-24T12:00:00Z",
-    duplicate_of: null,
-  },
-  {
-    id: "src-230-022",
-    workspace_id: "ws-510w42",
-    source_type: "spreadsheet",
-    title: "230 CPS Bedroom C Itemized Chattel Schedule (45 Items, $5,025.58)",
-    original_filename: "Personal Property Inventory 276e64c0cfff82c7843987d46d7bed5e_all.csv",
-    mime_type: "text/csv",
-    storage_path: "sources/230cps/Personal_Property_Inventory.csv",
-    sha256: "a34c98e109df4421b8ef9295bc104fae994821049b49c482efca4981903ba8fe",
-    file_size_bytes: 53377,
-    page_count: 1,
-    source_status: "primary",
-    evidence_review_status: "reviewed",
-    included_flag: true,
-    excluded_flag: false,
-    exclusion_reason: null,
-    authentication_notes: "Itemized schedule of 45 personal items valued at $5,025.58 with photos and purchase links.",
-    restrictions_notes: null,
-    processing_status: "completed",
-    ocr_status: "not_needed",
-    created_at: "2025-10-20T17:00:00Z",
-    updated_at: "2026-08-24T12:00:00Z",
-    duplicate_of: null,
-  },
-  {
-    id: "src-510-001",
-    workspace_id: "ws-510w42",
-    source_type: "pdf",
-    title: "510 West 42nd Street Master Ground Lease Agreement",
-    original_filename: "Ground Lease COMPLETE.pdf",
-    mime_type: "application/pdf",
-    storage_path: "sources/510w42/Ground_Lease_COMPLETE.pdf",
-    sha256: "7b4c9e8832a104f9812efd9103b4129eacbc9012f458129a0129bcfe348102fa",
-    file_size_bytes: 3363021,
-    page_count: 84,
-    source_status: "primary",
-    evidence_review_status: "reviewed",
-    included_flag: true,
-    excluded_flag: false,
-    exclusion_reason: null,
-    authentication_notes: "Master ground lease between Richard Born / Caroline Born GPs and operating entities.",
-    restrictions_notes: "Confidential Commercial Lease",
-    processing_status: "completed",
-    ocr_status: "completed",
-    created_at: "2024-03-01T09:00:00Z",
-    updated_at: "2026-08-24T12:00:00Z",
-    duplicate_of: null,
-  },
-  {
-    id: "src-510-007",
-    workspace_id: "ws-510w42",
-    source_type: "pdf",
-    title: "Urban Resort d/b/a Cachet CGL Policy (MGH30002451100)",
-    original_filename: "Email_945_Urban_Resort_dba_Cachet_-_General_Liability_Policy.pdf",
-    mime_type: "application/pdf",
-    storage_path: "sources/510w42/General_Liability_Policy.pdf",
-    sha256: "678e01923bc48912ef01923ba4c901283efbc901284ba01924ef9012384ba012",
-    file_size_bytes: 1876138,
-    page_count: 62,
-    source_status: "primary",
-    evidence_review_status: "reviewed",
-    included_flag: true,
-    excluded_flag: false,
-    exclusion_reason: null,
-    authentication_notes: "Commercial General Liability policy with Coverage B personal injury provisions.",
-    restrictions_notes: null,
-    processing_status: "completed",
-    ocr_status: "completed",
-    created_at: "2024-05-20T10:00:00Z",
-    updated_at: "2026-08-24T12:00:00Z",
-    duplicate_of: null,
-  },
-  {
-    id: "src-510-015",
-    workspace_id: "ws-510w42",
-    source_type: "pdf",
-    title: "CRL §51 Pitch Deck — Commercial Exploitation of DG Identity",
-    original_filename: "Email IR using DG name on investor pitch - Oct 9 2024.pdf",
-    mime_type: "application/pdf",
-    storage_path: "sources/510w42/Email_IR_investor_pitch_Oct_9_2024.pdf",
-    sha256: "01923bca019284fe9012834b9012834fe9012384ba0192384fe9012834ba0192",
-    file_size_bytes: 76647,
-    page_count: 4,
-    source_status: "primary",
-    evidence_review_status: "reviewed",
-    included_flag: true,
-    excluded_flag: false,
-    exclusion_reason: null,
-    authentication_notes: "Investor solicitation email and slide deck using DG's name and identity without consent.",
-    restrictions_notes: null,
-    processing_status: "completed",
-    ocr_status: "completed",
-    created_at: "2024-10-09T14:30:00Z",
-    updated_at: "2026-08-24T12:00:00Z",
-    duplicate_of: null,
-  },
-  {
-    id: "src-510-025",
-    workspace_id: "ws-510w42",
-    source_type: "text",
-    title: "510 W 42nd St #209 Chattel Schedule (65 Items, $13,545.95)",
-    original_filename: "DG_510W42_Chattel_Schedule.md",
-    mime_type: "text/markdown",
-    storage_path: "sources/510w42/DG_510W42_Chattel_Schedule.md",
-    sha256: "8912efbc0192834ba0192834fe9012834ba0192834fe9012834ba0192834fe90",
-    file_size_bytes: 18450,
-    page_count: 5,
-    source_status: "primary",
-    evidence_review_status: "reviewed",
-    included_flag: true,
-    excluded_flag: false,
-    exclusion_reason: null,
-    authentication_notes: "Schedule of 65 conversion and bailment property items retained at hotel.",
-    restrictions_notes: null,
-    processing_status: "completed",
-    ocr_status: "not_needed",
-    created_at: "2024-09-06T15:00:00Z",
-    updated_at: "2026-08-24T12:00:00Z",
-    duplicate_of: null,
-  },
-  {
-    id: "src-nyscef-63",
-    workspace_id: "ws-510w42",
-    source_type: "pdf",
-    title: "NYSCEF 63 — Supreme Court Order & Entry Record for 2F",
-    original_filename: "NYSCEF_63_Nasca_2F_one_time_entry_2025-06-09.pdf",
-    mime_type: "application/pdf",
-    storage_path: "sources/230cps/NYSCEF_63_Nasca_2F.pdf",
-    sha256: "a0192384fe9012834ba0192834fe9012834ba0192834fe9012834ba0192834fe",
-    file_size_bytes: 111347,
-    page_count: 3,
-    source_status: "primary",
-    evidence_review_status: "reviewed",
-    included_flag: true,
-    excluded_flag: false,
-    exclusion_reason: null,
-    authentication_notes: "Judicial order establishing 2F occupancy, access history, and building knowledge.",
-    restrictions_notes: "Court Record",
-    processing_status: "completed",
-    ocr_status: "completed",
-    created_at: "2025-06-09T10:00:00Z",
-    updated_at: "2026-08-24T12:00:00Z",
-    duplicate_of: null,
-  },
+];
+
+export const realMatterActors = [
+  { role_id: "mar-1", matter_id: "m-230cps", actor_id: "act-dg", actor_name: "Dan George", actor_type: "person", role_label: "plaintiff", notes: "Claimant asserting RPAPL 768 and 853 occupancy.", created_at: "2024-09-06T10:00:00Z" },
+  { role_id: "mar-2", matter_id: "m-230cps", actor_id: "act-ir", actor_name: "Ian Reisner", actor_type: "person", role_label: "co-party", notes: "2F shareholder granting oral demise.", created_at: "2024-09-06T10:00:00Z" },
+  { role_id: "mar-3", matter_id: "m-230cps", actor_id: "act-ac", actor_name: "Andre K. Cizmarik", actor_type: "person", role_label: "counterparty", notes: "Article 81 guardian managing estate.", created_at: "2025-04-01T10:00:00Z" },
+  { role_id: "mar-4", matter_id: "m-230cps", actor_id: "act-230coop", actor_name: "230 Park South Apartments Inc.", actor_type: "entity", role_label: "counterparty", notes: "Co-op owning real property.", created_at: "2024-09-06T10:00:00Z" },
+  { role_id: "mar-5", matter_id: "m-510w42", actor_id: "act-dg", actor_name: "Dan George", actor_type: "person", role_label: "plaintiff", notes: "Claimant asserting CRL §51 and property claims.", created_at: "2024-03-15T10:00:00Z" },
+  { role_id: "mar-6", matter_id: "m-510w42", actor_id: "act-ir", actor_name: "Ian Reisner", actor_type: "person", role_label: "counterparty", notes: "Principal directing hotel operations.", created_at: "2024-03-15T10:00:00Z" },
+  { role_id: "mar-7", matter_id: "m-510w42", actor_id: "act-ur", actor_name: "Urban Resort LLC", actor_type: "entity", role_label: "counterparty", notes: "Lessee and operating entity.", created_at: "2024-03-15T10:00:00Z" },
+  { role_id: "mar-8", matter_id: "m-part19", actor_id: "act-ac", actor_name: "Andre K. Cizmarik", actor_type: "person", role_label: "court actor", notes: "Property guardian under MHL Art 81.", created_at: "2025-04-01T10:00:00Z" },
+  { role_id: "mar-9", matter_id: "m-part19", actor_id: "act-dg", actor_name: "Dan George", actor_type: "person", role_label: "witness", notes: "Creditor and claimant seeking OSC relief.", created_at: "2025-04-01T10:00:00Z" },
+];
+
+export const realSourceMatterLinks = [
+  { id: "sml-1", source_id: "src-230-001", source_title: "2F Floor Plan Showing Exclusive Bedroom C Demise", matter_id: "m-230cps", link_reason: "Primary physical layout proof of Bedroom C", created_at: "2024-09-06T10:00:00Z" },
+  { id: "sml-2", source_id: "src-230-016", source_title: "June 3, 2025 2F Door Exclusion Record — Doorman Donnie Refusal", matter_id: "m-230cps", link_reason: "Proof of June 3 door lockout event", created_at: "2025-06-03T18:00:00Z" },
+  { id: "sml-3", source_id: "src-230-018", source_title: "DG Written Demand for Restoration and Inventory (Oct 20, 2025)", matter_id: "m-230cps", link_reason: "Formal written demand under RPAPL 768", created_at: "2025-10-20T17:38:00Z" },
+  { id: "sml-4", source_id: "src-510-001", source_title: "Ground Lease COMPLETE", matter_id: "m-510w42", link_reason: "Master ground lease for 510 W 42", created_at: "2024-03-15T10:00:00Z" },
+  { id: "sml-5", source_id: "src-510-015", source_title: "Email IR using DG name on investor pitch - Oct 9 2024", matter_id: "m-510w42", link_reason: "Commercial identity exploitation proof", created_at: "2024-10-09T14:30:00Z" },
+  { id: "sml-6", source_id: "src-nyscef-63", source_title: "NYSCEF 63 Supreme Court Order & Entry Record for 2F", matter_id: "m-part19", link_reason: "Part 19 court order", created_at: "2025-04-01T10:00:00Z" },
 ];
 
 export const realFacts = [
@@ -1100,6 +919,11 @@ async function setStore<T>(env: Env, key: string, val: T): Promise<void> {
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    const corsHeaders = {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
+    };
 
     // CORS preflight
     if (request.method === "OPTIONS") {
@@ -1209,33 +1033,123 @@ export default {
         return jsonResponse(matter);
       }
 
-      if (url.pathname.match(/\/api\/v1\/matters\/[^/]+\/links/)) {
-        return jsonResponse([]);
-      }
-
-      if (url.pathname.match(/\/api\/v1\/matters\/[^/]+\/actors/)) {
+      // Matter Links
+      if (url.pathname.match(/^\/api\/v1\/matters\/[^/]+\/links$/)) {
         const matterId = url.pathname.split("/")[4];
-        if (matterId === "m-230cps" || matterId === "230cps") {
-          return jsonResponse([
-            { role_id: "mar-1", actor_id: "act-dg", actor_name: "Dan George", actor_type: "person", role_label: "claimant / occupant", notes: "Claimant asserting RPAPL 768 and 853 occupancy.", created_at: "2024-09-06T10:00:00Z" },
-            { role_id: "mar-2", actor_id: "act-ir", actor_name: "Ian Reisner", actor_type: "person", role_label: "shareholder / grantor", notes: "2F shareholder granting oral demise.", created_at: "2024-09-06T10:00:00Z" },
-            { role_id: "mar-3", actor_id: "act-ac", actor_name: "Andre K. Cizmarik", actor_type: "person", role_label: "property guardian", notes: "Article 81 guardian managing estate.", created_at: "2025-04-01T10:00:00Z" },
-            { role_id: "mar-4", actor_id: "act-230coop", actor_name: "230 Park South Apartments Inc.", actor_type: "entity", role_label: "defendant corporation", notes: "Co-op owning real property.", created_at: "2024-09-06T10:00:00Z" },
-          ]);
+        const allLinks = await getStore(env, "matter_links", realMatterLinks);
+        if (request.method === "GET") {
+          const relevant = allLinks
+            .filter((l: any) => l.from_matter_id === matterId || l.to_matter_id === matterId)
+            .map((l: any) => ({
+              ...l,
+              direction: l.from_matter_id === matterId ? "outgoing" : "incoming",
+            }));
+          return jsonResponse(relevant);
         }
-        return jsonResponse([
-          { role_id: "mar-5", actor_id: "act-dg", actor_name: "Dan George", actor_type: "person", role_label: "claimant / aggrieved party", notes: "Claimant asserting CRL §51 and property claims.", created_at: "2024-03-15T10:00:00Z" },
-          { role_id: "mar-6", actor_id: "act-ir", actor_name: "Ian Reisner", actor_type: "person", role_label: "hotel principal", notes: "Principal directing hotel operations.", created_at: "2024-03-15T10:00:00Z" },
-          { role_id: "mar-7", actor_id: "act-ur", actor_name: "Urban Resort LLC", actor_type: "entity", role_label: "operating entity", notes: "Lessee and operating entity.", created_at: "2024-03-15T10:00:00Z" },
-        ]);
+        if (request.method === "POST") {
+          const body: any = await request.json();
+          const matters = await getStore(env, "matters", realMatters);
+          const fromMatter = matters.find((m: any) => m.id === matterId || m.slug === matterId);
+          const toMatter = matters.find((m: any) => m.id === body.to_matter_id || m.slug === body.to_matter_id);
+          const newLink = {
+            id: `ml-${Date.now()}`,
+            from_matter_id: fromMatter ? fromMatter.id : matterId,
+            from_matter_name: fromMatter ? fromMatter.name : "Matter",
+            to_matter_id: toMatter ? toMatter.id : body.to_matter_id,
+            to_matter_name: toMatter ? toMatter.name : "Target Matter",
+            link_type: body.link_type || "related",
+            direction: "outgoing",
+            notes: body.notes || null,
+            created_at: new Date().toISOString(),
+          };
+          const updated = [...allLinks, newLink];
+          await setStore(env, "matter_links", updated);
+          return jsonResponse(newLink, 201);
+        }
       }
 
-      if (url.pathname.match(/\/api\/v1\/matters\/[^/]+\/source-links/)) {
-        return jsonResponse([
-          { id: "sml-1", source_id: "src-230-001", source_title: "2F Floor Plan Showing Exclusive Bedroom C Demise", matter_id: "m-230cps", link_reason: "Primary physical layout proof of Bedroom C", created_at: "2024-09-06T10:00:00Z" },
-          { id: "sml-2", source_id: "src-230-016", source_title: "June 3, 2025 2F Door Exclusion Record — Doorman Donnie Refusal", matter_id: "m-230cps", link_reason: "Proof of June 3 door lockout event", created_at: "2025-06-03T18:00:00Z" },
-          { id: "sml-3", source_id: "src-230-018", source_title: "DG Written Demand for Restoration and Inventory (Oct 20, 2025)", matter_id: "m-230cps", link_reason: "Formal written demand under RPAPL 768", created_at: "2025-10-20T17:38:00Z" },
-        ]);
+      if (url.pathname.match(/^\/api\/v1\/matter-links\/[^/]+$/) && request.method === "DELETE") {
+        const linkId = url.pathname.split("/").pop();
+        const allLinks = await getStore(env, "matter_links", realMatterLinks);
+        const filtered = allLinks.filter((l: any) => l.id !== linkId);
+        await setStore(env, "matter_links", filtered);
+        return new Response(null, { status: 204, headers: corsHeaders });
+      }
+
+      // Matter Actors & Roles
+      if (url.pathname.match(/^\/api\/v1\/matters\/[^/]+\/actors$/)) {
+        const matterId = url.pathname.split("/")[4];
+        const allRoles = await getStore(env, "matter_actors", realMatterActors);
+        if (request.method === "GET") {
+          const relevant = allRoles.filter((r: any) => r.matter_id === matterId || r.matter_slug === matterId);
+          return jsonResponse(relevant);
+        }
+        if (request.method === "POST") {
+          const body: any = await request.json();
+          const actors = await getStore(env, "actors", realActors);
+          const actor = actors.find((a: any) => a.id === body.actor_id);
+          const newRole = {
+            role_id: `mar-${Date.now()}`,
+            matter_id: matterId,
+            actor_id: body.actor_id,
+            actor_name: actor ? actor.display_name : "Actor",
+            actor_type: actor ? actor.actor_type : "person",
+            role_label: body.role_label || "other non-party",
+            notes: body.notes || null,
+            created_at: new Date().toISOString(),
+          };
+          const updated = [...allRoles, newRole];
+          await setStore(env, "matter_actors", updated);
+          return jsonResponse(newRole, 201);
+        }
+      }
+
+      if (url.pathname.match(/^\/api\/v1\/matter-actors\/[^/]+$/) && request.method === "DELETE") {
+        const roleId = url.pathname.split("/").pop();
+        const allRoles = await getStore(env, "matter_actors", realMatterActors);
+        const filtered = allRoles.filter((r: any) => r.role_id !== roleId);
+        await setStore(env, "matter_actors", filtered);
+        return new Response(null, { status: 204, headers: corsHeaders });
+      }
+
+      // Source-Matter Links
+      if (url.pathname.match(/^\/api\/v1\/matters\/[^/]+\/source-links$/) || url.pathname.match(/^\/api\/v1\/matters\/[^/]+\/sources$/)) {
+        const matterId = url.pathname.split("/")[4];
+        const allLinks = await getStore(env, "source_matter_links", realSourceMatterLinks);
+        if (request.method === "GET") {
+          return jsonResponse(allLinks.filter((l: any) => l.matter_id === matterId));
+        }
+        if (request.method === "POST") {
+          const body: any = await request.json();
+          const sources = await getStore(env, "sources", realSources);
+          const src = sources.find((s: any) => s.id === body.source_id);
+          const newLink = {
+            id: `sml-${Date.now()}`,
+            matter_id: matterId,
+            source_id: body.source_id,
+            source_title: src ? src.title : "Document",
+            link_reason: body.link_reason || null,
+            created_at: new Date().toISOString(),
+          };
+          const updated = [...allLinks, newLink];
+          await setStore(env, "source_matter_links", updated);
+          return jsonResponse(newLink, 201);
+        }
+      }
+
+      if (url.pathname.match(/^\/api\/v1\/source-matter-links\/[^/]+$/) && request.method === "DELETE") {
+        const linkId = url.pathname.split("/").pop();
+        const allLinks = await getStore(env, "source_matter_links", realSourceMatterLinks);
+        const filtered = allLinks.filter((l: any) => l.id !== linkId);
+        await setStore(env, "source_matter_links", filtered);
+        return new Response(null, { status: 204, headers: corsHeaders });
+      }
+
+      if (url.pathname.match(/^\/api\/v1\/sources\/[^/]+\/matters$/)) {
+        const sourceId = url.pathname.split("/")[4];
+        const allLinks = await getStore(env, "source_matter_links", realSourceMatterLinks);
+        const relevant = allLinks.filter((l: any) => l.source_id === sourceId);
+        return jsonResponse(relevant);
       }
 
       // 4. Actors & Aliases
@@ -1375,46 +1289,66 @@ export default {
         }
       }
 
-      if (url.pathname.match(/\/api\/v1\/sources\/[^/]+\/pages/)) {
+      if (url.pathname.match(/^\/api\/v1\/sources\/[^/]+\/pages$/)) {
         const sourceId = url.pathname.split("/")[4];
-        return jsonResponse([
+        const pagesData = (pages510w42 as any)[sourceId] || [
           {
             id: `sp-${sourceId}-1`,
             source_id: sourceId,
             page_number: 1,
             page_label: "Page 1",
-            ocr_text: "510W42 EVIDENCE TRANSCRIPT\n\nVerified case exhibit authenticated from the 510W42 case file repository.",
+            ocr_text: "510W42 Case Exhibit authenticated from repository drivedigital/510W42.",
             image_path: null,
             created_at: "2024-09-06T10:00:00Z",
             updated_at: "2026-08-24T12:00:00Z",
-          },
-        ]);
+          }
+        ];
+        return jsonResponse(pagesData);
       }
 
-      if (url.pathname.match(/\/api\/v1\/sources\/[^/]+\/matters/)) {
+      if (url.pathname.match(/^\/api\/v1\/sources\/[^/]+\/file$/)) {
         const sourceId = url.pathname.split("/")[4];
-        return jsonResponse([
-          {
-            id: `sml-${sourceId}`,
-            source_id: sourceId,
-            source_title: "510W42 Evidence Document",
-            matter_id: sourceId.startsWith("src-510") ? "m-510w42" : "m-230cps",
-            matter_name: sourceId.startsWith("src-510") ? "510 W 42 — #209 / hotel work / property" : "230 CPS — 2F Bedroom C",
-            matter_slug: sourceId.startsWith("src-510") ? "510w42" : "230cps",
-            link_reason: "Primary case evidence exhibit",
-            created_at: "2024-09-06T10:00:00Z",
-          },
-        ]);
-      }
+        const sources = await getStore(env, "sources", realSources);
+        const source = sources.find((s: any) => s.id === sourceId);
 
-      if (url.pathname.match(/\/api\/v1\/sources\/[^/]+\/file/)) {
+        // Check if file is stored in Cloudflare KV
+        if (env.CASEVAULT_KV) {
+          const fileData = await env.CASEVAULT_KV.get(`file:${sourceId}`, { type: "arrayBuffer" });
+          if (fileData) {
+            const mimeType = source?.mime_type || (sourceId.endsWith(".jpeg") || sourceId.includes("230-001") ? "image/jpeg" : "application/octet-stream");
+            const filename = source?.original_filename || `${sourceId}.bin`;
+            return new Response(fileData, {
+              status: 200,
+              headers: {
+                "Content-Type": mimeType,
+                "Content-Disposition": `inline; filename="${filename}"`,
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "*",
+              },
+            });
+          }
+        }
+
+        // If markdown/text, return text content from pages
+        const pagesData = (pages510w42 as any)[sourceId];
+        if (pagesData && pagesData[0] && pagesData[0].ocr_text) {
+          return new Response(pagesData[0].ocr_text, {
+            status: 200,
+            headers: {
+              "Content-Type": source?.mime_type || "text/plain; charset=utf-8",
+              "Content-Disposition": `inline; filename="${source?.original_filename || sourceId + '.txt'}"`,
+              "Access-Control-Allow-Origin": "*",
+            },
+          });
+        }
+
         return new Response(
-          `CaseVault 510W42 Case Exhibit\nAuthenticated original document preserved from repository drivedigital/510W42.\nTimestamp: ${new Date().toISOString()}`,
+          `CaseVault 510W42 Case Exhibit\nPreserved in CaseVault from repository drivedigital/510W42.\nID: ${sourceId}\nTitle: ${source?.title || 'Unknown'}\nTimestamp: ${new Date().toISOString()}`,
           {
             status: 200,
             headers: {
               "Content-Type": "text/plain; charset=utf-8",
-              "Content-Disposition": 'inline; filename="510W42-evidence.txt"',
+              "Content-Disposition": `inline; filename="${sourceId}.txt"`,
               "Access-Control-Allow-Origin": "*",
             },
           }
