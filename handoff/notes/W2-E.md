@@ -180,3 +180,15 @@ above are recorded for the integrator; neither blocks W2-F/W2-G.
   return members.
 - Local env: `python scripts/agent_pg.py start` for embedded PG16; keep
   `sqlalchemy<2.1` in the venv (see Risks).
+
+## GitHub status
+- Branch `arena/01a100df-casevault` pushed, deliverable commit `b26eefb`
+  (base `adcb1b8` — the integration tip the original W2-E session was cut
+  from). This note addendum follows on the same branch.
+- PR opened: https://github.com/drivedigital/casevault/pull/23 (base
+  `arena/01a0899f-casevault`) with the proof output in its body.
+- Integrator context: the integration branch already merged the historical
+  W2-E (PR #4, `de1ca88`, merge `f0aa9e2`) and the rest of Wave 2 (F/G/H/I/J).
+  This branch is the from-brief reproduction on the pre-merge tip; the only
+  functional difference from the merged migration is the
+  `source_status_enum` `create_type=False` fix described above.
