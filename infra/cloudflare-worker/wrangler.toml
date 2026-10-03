@@ -5,10 +5,11 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 ENVIRONMENT = "production"
-# GITHUB_REPO = "drivedigital/casevault"
-# SUPABASE_URL = "https://your-project.supabase.co"
+GITHUB_REPO = "drivedigital/casevault"
+SUPABASE_URL = "https://ogbhlsddfajiwyofumrk.supabase.co"
+SUPABASE_PUBLISHABLE_KEY = "sb_publishable_vGwCBIXw9l4sZunDksfOuw_p1ySEySA"
 
-# Encrypted secrets configured via wrangler secret put:
-# - GITHUB_WEBHOOK_SECRET
+# Secret keys configured via wrangler secret put (never committed to git):
 # - SUPABASE_SERVICE_ROLE_KEY
+# - GITHUB_WEBHOOK_SECRET
 # - CASEVAULT_API_TOKEN
