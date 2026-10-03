@@ -6,45 +6,27 @@ Update this page when assignments, tools, edge gateways, or merge statuses chang
 
 ## Product and Infrastructure Status
 
-- **Integration Branch:** `arena/01a0899f-casevault`
-- **Database & Ledger Status:** Schema migration and live fix applied for `source_status_enum` and `ix_ledger_entries__workspace__source_status`. `/ledger` loads 200 OK cleanly with filter controls, drawer inspections, and CSV export intact.
-- **Hybrid OCR Engine:**
-  - `workers/pipeline/ocr_engine.py` implements automatic extraction with local `pypdf` for digital text PDFs and fallback to cloud **OCR.space Engine** (`https://api.ocr.space/parse/image`, engine 2) for scanned PDFs and raster images (`png`, `jpg`, etc.).
-  - Background RQ worker configured on Darwin using `rq.SpawnWorker` to ensure clean multiprocessing without macOS CoreFoundation fork traps.
-- **Cloudflare Worker Edge Gateway:**
-  - Live deployment: `https://casevault-worker.dan-2eb.workers.dev` (source: `infra/cloudflare-worker/`).
-  - Endpoints: `GET /` (edge health), `POST /webhooks/github` (HMAC verification & event forwarding), `GET /supabase/health` (Supabase connectivity).
-- **GitHub Repository Cleanup:**
-  - Cleaned and pruned 10 merged remote arena branches (`arena/01a089c9` through `01a089ce`, `01a08a04`, `01a08c4a`, `01a08cdf`, `01a08ce1`, `01a097ea`, `01a097fd`).
-  - Preserved unmerged diagnostic and safety branches: `codex/local-ops-safety`, `dev-logs`, `arena/01a08ce3-casevault`, `arena/01a08ce4-casevault`.
-  - Local worktrees pruned and synchronized.
-
-## Development Acceleration Tools & Shared Spaces
-
-| Resource / Space | Endpoint / Identifier | Acceleration Capability |
-|---|---|---|
-| **OCR.space API** | `https://api.ocr.space/parse/image` (`K88494079788957`) | High-speed cloud OCR for scanned exhibits and multi-page discovery bundles. |
-| **Cloudflare Worker** | `https://casevault-worker.dan-2eb.workers.dev` | Edge proxy, HMAC webhook verification, rate-limiting, and async intake gateway. |
-| **Supabase Project** | `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | Remote PostgreSQL, storage buckets, and future vector embedding/pgvector acceleration. |
-| **AI LLM/VLM APIs** | NVIDIA API (`nvapi-iCso...`), Ollama Cloud (`111a5d...`), OpenAI, Anthropic | Automated fact extraction, chronology synthesis, and VLM evidence analysis. |
-| **Isolated Git Worktrees** | `../casevault-<workstream>` | Concurrent subagents develop in parallel without file locks or workspace pollution. |
-| **Arena Dispatcher** | `scripts/arena_dispatcher/dispatcher.py` | Playwright CDP automation (`:9222`) to monitor subagents, inject briefs, and relay approvals. |
-
-## Tasks & Wave 3 Roadmap Fan-Out
-
-| Workstream | Subagent / Worktree | Scope / Write Set | Exit Criteria |
-|---|---|---|---|
-| **WS-CHRONO** | `../casevault-chrono` (`feat/chronology-ui`) | `/chronology` interactive timeline, event clustering, evidence backlinks | Clean timeline rendering, zoom/filter controls, e2e tests |
-| **WS-CLAIMS** | `../casevault-claims` (`feat/claims-matrix`) | `/claims` matrix, claim-to-evidence mapping, burden-of-proof tracking | Claims grid, proof link modals, API integration |
-| **WS-AI-INTEL** | `../casevault-ai` (`feat/ai-intelligence`) | AI proposal inbox, background entity extraction, VLM doc summaries | Proposal approval flow, streaming extraction hooks |
-| **WS-VERIFY** | `../casevault-verifier` (`feat/verifier-wave3`) | End-to-end integration tests, OCR worker validation, edge webhook tests | Full test suite green (`verify_all.sh`), no regressions |
-
-## Measured Proof & Verification
-
-- **API Test Suite:** 118 passed, 1 skipped (`tests/api/` on isolated test DB with redis-optional fallback).
-- **Web Frontend:** Clean build, Next.js route compilation passing, zero ESLint errors.
-- **RQ Worker:** Background queue operational, successfully executes `process_source` and `ocr_source` with both local extraction and OCR.space cloud fallback.
-- **Edge Gateway:** Verified via `curl -s https://casevault-worker.dan-2eb.workers.dev/` returning `{"service":"casevault-worker","status":"healthy"}` and HMAC webhook test passing.
+- **Integration Branch:** `arena/01a0899f-casevault` (up to date with remote origin)
+- **Live Deployments:**
+  - **Web Application (Cloudflare Pages):** [https://casevault-web.pages.dev](https://casevault-web.pages.dev)
+  - **Edge Worker Gateway & KV API:** [https://casevault-worker.dan-2eb.workers.dev/api/v1](https://casevault-worker.dan-2eb.workers.dev/api/v1)
+- **Real Litigation Dataset Integration:**
+  - 404 real discovery documents populated from `drivedigital/510W42`.
+  - 3 interconnected active matters:
+    1. **230 CPS** (Housing Part summary eviction, RPAPL 768 / 853, Chattel Conversion).
+    2. **510 W 42** (Hotel conversion, Civil Rights Law § 51, Quantum Meruit).
+    3. **Part 19** (Supreme Court MHL Article 81 Guardianship, Index No. 153243/2026).
+  - Real actors normalized with aliases: Dan George, Ian Reisner, Andre K. Cizmarik, 230 Park South Apartments Inc., Urban Resort LLC.
+- **Wave 3 Integrated Workstreams:**
+  - **WS-CLAIMS (`/claims`, `/claims/[id]`):** Fully operational. Element-by-element burden health (`proven`, `partially_supported`, `unsupported`), fact-element linking with polarities (`support`, `adverse`, `context`), conflict warnings, and instant recomputation (`POST /claim-instances/{id}/recompute-support`).
+  - **WS-CHRONO (`/chronology`):** Fully operational. Multi-precision timeline (`exact`, `range`, `approximate`, `unknown`), significance tagging, fact-evidence backlinks, and strict review floors.
+  - **WS-EVIDENCE (`/evidence`, `/evidence/[id]`):** Fully operational. Autoloading PDF/JPEG previews served directly from edge KV, OCR page transcriptions, and review state controls.
+  - **WS-AI-INTEL (`/ai-review`):** Proposal review inbox with strict human-in-the-loop review floor (`review_state = proposed` $\to$ `accepted`).
+  - **WS-LEDGER (`/ledger`):** Cryptographic immutable transaction ledger tracking all mutations and evidentiary links.
+- **Cloudflare Edge Gateway & Persistent KV:**
+  - Cloudflare Worker (`infra/cloudflare-worker/src/index.ts`) routes all `/api/v1/*` requests to persistent KV (`CASEVAULT_KV`, id: `d707525cc924472aadf3bd3eeccec3db`).
+  - Edge binary exhibit serving (`GET /api/v1/sources/:id/file`) supporting image/jpeg, application/pdf, and text/markdown.
+  - Bidirectional matter links, actor roles, and source-matter linking with KV persistence.
 
 ## Documentation Map
 

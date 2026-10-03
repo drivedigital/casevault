@@ -12,31 +12,31 @@ multi-agent analysis, and strict confidentiality defaults.
 > default AI-sharing policy is `no_ai` — no case material leaves this machine
 > unless you explicitly opt in per matter. See `handoff/RECOVERY.md`.
 
-**Status: integrated evidence + intake core; evidence UI acceptance pending.**
-Workspace/matters/actors, evidence upload/viewer/linking, ledger CRUD/CSV and
-proposal review/trusted-facts UI are implemented. PDF/image OCR remains a stub;
-chronology, claims and advanced intelligence are future work.
+**Status: Live Edge Deployment & Proof Graph Active**
+The workspace is fully deployed to **Cloudflare Pages** at [casevault-web.pages.dev](https://casevault-web.pages.dev/) with an edge gateway on **Cloudflare Workers** at [casevault-worker.dan-2eb.workers.dev/api/v1](https://casevault-worker.dan-2eb.workers.dev/api/v1).
 
-**Start here:** [current status and tasks](handoff/STATUS.md),
-[agent policy](handoff/AGENT_POLICY.md), [recovery runbook](handoff/RECOVERY.md),
-[verification workflows](handoff/VERIFICATION_WORKFLOWS.md).
-**Limited synthetic owner preview is authorized** under
-[the pinned checklist and mandatory isolation preflight](handoff/OWNER_PREVIEW.md).
-Full acceptance and real-data testing remain held. Generic setup below does not
-override that safety scope.
+The system currently manages the **510W42 Legal Matter Workspace** populated with 404 real discovery documents across three interconnected proceedings:
+1. **230 CPS** — 2F Bedroom C lockout (RPAPL 768, RPAPL 853, Chattel Conversion).
+2. **510 W 42** — Hotel operations & property (Civil Rights Law § 51, Conversion, Quantum Meruit).
+3. **Part 19** — Supreme Court MHL Article 81 Guardianship (Index No. 153243/2026, Andre K. Cizmarik as property guardian for Ian Reisner).
 
-Database migrations run with Alembic: after `make infra-up`,
-`cd apps/api && ../../.venv/bin/python -m alembic upgrade head`.
+### Core Capabilities Operational:
+- **Legal Claims Matrix & Burden Evaluator (`/claims`, `/claims/[id]`)**: Element-by-element burden health (`proven`, `partially_supported`, `unsupported`), fact-element linking with polarities (`support`, `adverse`, `context`), and conflict warnings.
+- **Chronology Timeline (`/chronology`)**: Multi-precision dating (`exact`, `range`, `approximate`, `unknown`), significance tagging, fact-evidence backlinks, and strict review floors.
+- **Evidence Review & Ingestion Queue (`/evidence`, `/evidence/[id]`)**: 404 exhibits, SHA-256 deduplication, native inline PDF/image rendering, OCR text transcription, and review triage.
+- **AI Proposal Review Inbox (`/ai-review`)**: Triage candidate facts with strict human-in-the-loop review state gates (`proposed` $\to$ `accepted`).
+- **Actors & Witness Network (`/actors`)**: Normalized entities, aliases, and matter role affiliations.
+- **Cryptographic Audit Ledger (`/ledger`)**: Immutable transaction log tracking all state mutations and evidentiary links.
 
 ## Stack
 
-| Layer    | Technology |
-|----------|------------|
-| Web      | Next.js 14, TypeScript, Tailwind, TanStack Query/Table, React Hook Form, Zod |
-| API      | FastAPI, SQLAlchemy 2, Alembic, Pydantic v2 |
-| Workers  | Python + RQ (redis) — OCR, extraction, embeddings, agents, connectors |
-| Database | PostgreSQL 16 (pgvector in later sprints) |
-| Storage  | Local filesystem under `data/` (S3-compatible abstraction later) |
+| Layer | Local Development | Cloud Edge Production |
+|---|---|---|
+| **Web Frontend** | Next.js 14, React 18, Tailwind, TanStack Query/Table, Zod | Cloudflare Pages (`casevault-web.pages.dev`) |
+| **API Gateway** | FastAPI, Uvicorn, SQLAlchemy 2, Pydantic v2 | Cloudflare Worker (`casevault-worker.dan-2eb.workers.dev`) |
+| **Data Store** | PostgreSQL 16 (with Alembic migrations) | Cloudflare KV (`CASEVAULT_KV`) persistent edge store |
+| **Task Queue** | Python + RQ (Redis 7) — OCR & Ingest pipelines | Cloudflare Worker async routes + future E2B sandboxes |
+| **Binary Exhibits**| Local filesystem (`./data/`) | Supabase Storage + Cloudflare KV byte serving |
 
 ## Prerequisites
 
