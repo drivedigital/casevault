@@ -143,8 +143,20 @@ class ArenaDispatcher:
                     latest = msgs[-1]
                     if latest != last_seen:
                         last_seen = latest
-                        timestamp = datetime.now().strftime("%H:%M:%S")
+                        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         print(f"[{timestamp}] [Arena Update]:\n{latest[-500:]}\n{'-'*60}")
+
+                        # Determine session name from page URL/title for notes file
+                        session_name = "arena-subagent"
+                        match = re.search(r"agent/([a-zA-Z0-9_-]+)", page.url)
+                        if match:
+                            session_name = f"arena-{match.group(1)[:8]}"
+                        if session_filter:
+                            session_name = re.sub(r"[^a-zA-Z0-9_-]", "", session_filter)
+
+                        note_file = NOTES_DIR / f"{session_name}.md"
+                        with open(note_file, "a", encoding="utf-8") as nf:
+                            nf.write(f"\n### Update [{timestamp}]\n```text\n{latest[-1000:]}\n```\n")
 
                         # Check for blocker or decision request
                         if any(phrase in latest.lower() for phrase in [
@@ -153,9 +165,12 @@ class ArenaDispatcher:
                             "blocked by",
                             "escalate",
                             "error:",
-                            "permission denied"
+                            "permission denied",
+                            "was this task successful"
                         ]):
-                            print(f"[!] ATTENTION: Subagent may be waiting for approval or blocked.")
+                            print(f"[!] ATTENTION: Subagent may be waiting for approval, input, or completion.")
+                            with open(note_file, "a", encoding="utf-8") as nf:
+                                nf.write(f"\n> [!WARNING]\n> **Action/Review Needed:** Subagent signaled a prompt, error, or completion at {timestamp}.\n")
 
             except Exception as e:
                 print(f"[!] Warning during monitor loop: {e}")

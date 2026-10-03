@@ -13,6 +13,13 @@ You are the verifier for workstream **WS-VERIFY** of CaseVault Wave 3.
 Worktree: ../casevault-verifier (Branch: feat/verifier-wave3).
 Binding rules: handoff/AGENT_POLICY.md.
 
+## Step 0 (Mandatory for Arena.ai Agents):
+Arena sessions initialize on `main`. Reset your branch to the integration tip before writing code:
+```bash
+git fetch origin arena/01a0899f-casevault
+git reset --hard FETCH_HEAD
+```
+
 ## Deliverables & Write Set:
 You own exclusively:
 - `tests/integration/test_wave3_e2e.py`

@@ -13,6 +13,13 @@ You are the implementer for workstream **WS-CLAIMS** of CaseVault Wave 3.
 Worktree: ../casevault-claims (Branch: feat/claims-matrix).
 Binding rules: handoff/AGENT_POLICY.md.
 
+## Step 0 (Mandatory for Arena.ai Agents):
+Arena sessions initialize on `main`. Reset your branch to the integration tip before writing code:
+```bash
+git fetch origin arena/01a0899f-casevault
+git reset --hard FETCH_HEAD
+```
+
 ## Deliverables & Write Set:
 You own exclusively:
 - `apps/web/app/claims/**`

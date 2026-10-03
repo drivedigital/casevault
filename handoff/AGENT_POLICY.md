@@ -130,10 +130,25 @@ One workstream = one subagent session = one git worktree = one branch = one PR.
 
 - **Integration branch:** `arena/01a0899f-casevault`. PRs target it. **`main` is
   never touched by an agent session.**
-- **Branch names:** Arena sessions use only their assigned branch. Local report
-  branches require explicit agreed workflow; no automatic feature/log branch creation.
-- **Force-push:** not authorized in current closure/recovery work. Never reset
-  or rewrite another session's branch.
+- **Arena.ai Branch Naming Limitations & Mandatory Session Branches:**
+  Arena.ai agents cannot push to arbitrary branch names (e.g. `feat/ai-intelligence`).
+  Instead, Arena automatically creates and enforces a dedicated session branch in the format:
+  `arena/<session-id>-casevault` (e.g., `arena/01a100f2-casevault`).
+  Any attempt by an Arena agent to push to another branch name is rejected or ignored.
+- **Mandatory Step 0 for Arena.ai Sessions (Base Reset):**
+  When a new Arena agent session initializes, it clones from GitHub default (`main`),
+  which has an unrelated history and lacks Phase 1/2 integration commits.
+  Therefore, **every Arena agent must execute Step 0 before writing any code**:
+  ```bash
+  git fetch origin arena/01a0899f-casevault
+  git reset --hard FETCH_HEAD
+  ```
+  Failure to execute Step 0 will cause the subagent to code against a stale stub
+  scaffold and create unmergeable PRs.
+- **Local Agents vs Arena Agents:**
+  - Local agents / worktrees use `../casevault-<ws>` on `feat/<ws>`.
+  - Arena agents operate on their assigned `arena/<session-id>-casevault` branch.
+- **Force-push:** not authorized in current closure/recovery work except for the initial Step 0 reset. Never reset or rewrite another session's branch.
 - **Merge order:** current sequencing is in STATUS.md and the active contract.
   Historical Wave2 order is reference only. If ready early, report; do not self-merge.
 - **Conflict policy:** if a rebase conflicts inside your write set, resolve it.

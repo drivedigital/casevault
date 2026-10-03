@@ -13,6 +13,13 @@ You are the implementer for workstream **WS-AI-INTEL** of CaseVault Wave 3.
 Worktree: ../casevault-ai (Branch: feat/ai-intelligence).
 Binding rules: handoff/AGENT_POLICY.md.
 
+## Step 0 (Mandatory for Arena.ai Agents):
+Arena sessions initialize on `main`. Reset your branch to the integration tip before writing code:
+```bash
+git fetch origin arena/01a0899f-casevault
+git reset --hard FETCH_HEAD
+```
+
 ## Deliverables & Write Set:
 You own exclusively:
 - `workers/ai/**`
