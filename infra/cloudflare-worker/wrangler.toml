@@ -1,0 +1,14 @@
+name = "casevault-worker"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ENVIRONMENT = "production"
+# GITHUB_REPO = "drivedigital/casevault"
+# SUPABASE_URL = "https://your-project.supabase.co"
+
+# Encrypted secrets configured via wrangler secret put:
+# - GITHUB_WEBHOOK_SECRET
+# - SUPABASE_SERVICE_ROLE_KEY
+# - CASEVAULT_API_TOKEN

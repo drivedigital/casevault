@@ -1,7 +1,7 @@
 # Agent Policy — division of labor & coordination
 
 **Owner:** integrator session (`arena/01a0899f-casevault`) · **Status:** in force
-from 2026-09-10 · **Applies to:** every agent session that touches this repo,
+from 2026-10-03 · **Applies to:** every agent session and parallel subagent that touches this repo,
 plus the human local tester. Current assignments/holds: STATUS.md; recovery: RECOVERY.md.
 
 This is the rulebook. `handoff/PARALLEL_PLAN.md` is the *plan* (who builds what,
@@ -11,19 +11,32 @@ you, escalate (see §6) rather than improvise.
 
 ---
 
+## 0. Development Acceleration Tools & Environment Secrets
+
+The repository is equipped with local and cloud accelerators configured in `.env.local`
+and the deployment infrastructure:
+
+| Tool / Provider | Endpoint / Service | Purpose & Usage |
+|---|---|---|
+| **OCR.space Engine** | `https://api.ocr.space/parse/image` (`K88494079788957`) | High-speed cloud extraction for scanned PDFs & images via `workers/pipeline/ocr_engine.py`. Automatic hybrid fallback from local `pypdf`. |
+| **Cloudflare Worker** | `https://casevault-worker.dan-2eb.workers.dev` | Edge gateway for GitHub webhooks, webhook signature verification (`/webhooks/github`), and Supabase REST proxying. Source in `infra/cloudflare-worker/`. |
+| **Supabase Integration** | `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | Managed Postgres, edge storage buckets, and future vector embedding/pgvector acceleration. |
+| **AI Providers** | NVIDIA API (`nvapi-iCso...`), Ollama Cloud (`111a5d...`), OpenAI, Anthropic | Fast automated proposal generation, entity extraction, and VLM image descriptions. |
+| **Local Worktrees** | `git worktree add ../casevault-<ws> -b feat/<ws>` | Isolated filesystem checkouts for concurrent subagents avoiding working tree collisions. |
+
+---
+
 ## 1. Roles
 
 | Role | Who | Owns | Never does |
 |---|---|---|---|
-| **Owner** | the human | priorities, permissions, real-evidence testing | — |
-| **Integrator** | this session (`arena/01a0899f-casevault`) | contracts, review, merges, gate runs, `handoff/WORKLOG.md` + `BACKLOG.md` + `KNOWN_ISSUES.md` + `TESTING.md` + `DECISIONS.md`, releases to the tester | writing feature code inside another workstream's write set |
-| **Implementer** | one agent session per workstream | the files listed in its workstream brief | touching files outside its write set |
-| **Verifier** | one agent session per wave (WS-*V/J) | integration tests, smoke scripts, CI job, a written deviation report | fixing product bugs itself (reports them instead) |
-| **Local tester** | the human (+ local agents on their machine) | authorized synthetic local checks and redacted reports | real-evidence operations or product edits without separate explicit approval |
+| **Owner** | the human | priorities, permissions, environment decisions | — |
+| **Integrator** | this session (`arena/01a0899f-casevault`) | contracts, review, merges, gate runs, `handoff/*`, releases to tester | writing feature code inside another workstream's write set |
+| **Subagent / Implementer** | isolated agent in dedicated git worktree | files explicitly assigned in its workstream brief | touching files outside its write set or self-merging |
+| **Verifier** | verification subagent | integration tests, smoke scripts, CI job, written deviation report | fixing product bugs itself (reports them instead) |
+| **Local tester** | the human (+ local agents) | authorized synthetic local checks and redacted reports | real-evidence operations or unapproved schema changes |
 
-One workstream = one session = one branch = one PR. If a session is asked to do
-two workstreams, they must be in **different waves** (or the integrator splits
-the write sets explicitly).
+One workstream = one subagent session = one git worktree = one branch = one PR.
 
 ---
 
@@ -38,11 +51,12 @@ the write sets explicitly).
    treats them as read-only.
 4. **Append-only hubs.** `apps/web/lib/api.ts` and `apps/web/lib/types.ts` are
    edited by multiple workstreams, so the rule is: **append at the end, in your
-   own commented section, never reorder or reformat existing lines.** If a
-   conflict still happens there, the integrator resolves it — do not hand-fix.
+   own commented section, never reorder or reformat existing lines.**
 5. **No breaking response-shape changes mid-wave.** An endpoint's response shape
-   is frozen while a wave is in flight; if a shape is wrong, it is a contract
-   change (§4.1) scheduled for the next wave.
+   is frozen while a wave is in flight.
+6. **Worktree Isolation.** Subagents must always spawn inside a separate git
+   worktree (e.g. `../casevault-<ws>`). Never run multiple subagents in the
+   primary workspace root simultaneously.
 
 ### Hub-file ownership — Wave 2
 

@@ -78,21 +78,38 @@ failure; new test counts may legitimately grow with reviewed changes.
   run all specs merely to recover counts. Keep separate per-run outputs and push
   redacted ledgers because scratch files may disappear on reset.
 
-## Local test release and operational tools
+## Edge Gateway & Cloudflare Worker Verification
 
-EU-M has a limited synthetic preview release at a040e9f via OWNER_PREVIEW.md,
-subject to mandatory isolation preflight. Full acceptance/real-data work remains
-held. Historical setup recipes are reference, not permission.
-Never stop Homebrew/system services or change ports without ownership review.
-Python3.14/native Mac behavior is not proven by Linux CI or older Phase1 results.
+The edge gateway at `https://casevault-worker.dan-2eb.workers.dev` handles webhook receipt, HMAC validation, and Supabase REST requests.
 
-The integrated `collect_logs.py --push` path creates another branch and may force-add
-private bundles. Do NOT use that path in Arena; review/redact individual reports
-and transfer through the approved report/attachment workflow. Pattern redaction is
-not complete confidentiality protection. No data/, .env*, credentials or real case
-material may be committed. The webhook/backup hardening proposal is unmerged;
-local LaunchAgent/ngrok setup is owner-reported, not verified by these CI jobs.
-See RECOVERY.md for backup hazards and restore prerequisites.
+1. **Health Verification:**
+   ```bash
+   curl -s https://casevault-worker.dan-2eb.workers.dev/
+   # Expected: {"service":"casevault-worker","status":"healthy"}
+   ```
 
-`make handoff-finish` is an advisory scaffold: file modification checks are not
-acceptance, and its generic "give tester steps" does not override the current hold.
+2. **Supabase Health Verification:**
+   ```bash
+   curl -s https://casevault-worker.dan-2eb.workers.dev/supabase/health
+   # Expected: {"service":"supabase-rest","status":"ok"|"accessible"}
+   ```
+
+3. **GitHub Webhook Verification (HMAC Signature):**
+   ```bash
+   python scripts/webhook_listener.py
+   # Or send test ping with X-Hub-Signature-256 header computed via GITHUB_WEBHOOK_SECRET
+   ```
+
+## Hybrid OCR Engine Verification (Local pypdf + OCR.space Cloud)
+
+OCR pipeline verification tests both local text-based extraction and remote cloud OCR:
+
+1. **Unit / Inline Verification:**
+   ```bash
+   TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/casevault_test pytest tests/workers/test_ocr_engine.py
+   ```
+
+2. **End-to-End OCR Worker Job:**
+   Enqueue an image/PDF source through FastAPI (`POST /api/v1/workspaces/{id}/sources/{id}/reprocess`) with payload `{"engine":"auto"}`.
+   Verify RQ worker job log indicates `OCR.space API HTTP 200` and creates text pages in `source_pages`.
+

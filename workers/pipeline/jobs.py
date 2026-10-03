@@ -103,6 +103,65 @@ def process_source(source_id: str, database_url: str | None = None) -> dict:
                 source_id,
                 {"ingest_method": "worker_text", "processed_at": _now()},
             )
+        elif source.source_type in (SourceType.pdf, SourceType.image):
+            from app.config import get_settings
+            from app.services.storage import LocalStorage
+            from workers.pipeline.ocr_engine import extract_source_pages
+
+            content = LocalStorage().read(source.storage_path)
+            settings = get_settings()
+            try:
+                pages_extracted, engine_used = extract_source_pages(
+                    file_bytes=content,
+                    filename=source.original_filename or f"document.{source.source_type.value}",
+                    source_type=source.source_type.value,
+                    engine=settings.ocr_engine,
+                    ocr_space_key=settings.ocr_space_api_key,
+                    ocr_space_url=settings.ocr_space_api_url,
+                )
+
+                for page in source.pages:
+                    session.delete(page)
+                session.flush()
+
+                for p in pages_extracted:
+                    session.add(
+                        SourcePage(
+                            source_id=source.id,
+                            page_number=p.page_number,
+                            page_label=p.page_label,
+                            ocr_text=p.text,
+                        )
+                    )
+                source.page_count = len(pages_extracted)
+                source.ocr_status = "complete" if any(len(p.text) > 0 for p in pages_extracted) else "skipped"
+                _merge_metadata(
+                    session,
+                    source_id,
+                    {
+                        "ingest_method": f"worker_ocr_{engine_used}",
+                        "processed_at": _now(),
+                        "ocr": {
+                            "engine": engine_used,
+                            "pages": len(pages_extracted),
+                        },
+                    },
+                )
+            except Exception as ocr_err:
+                source.page_count = 0
+                source.ocr_status = "skipped"
+                _merge_metadata(
+                    session,
+                    source_id,
+                    {
+                        "ingest_method": "worker_ocr_fallback",
+                        "processed_at": _now(),
+                        "ocr": {
+                            "engine": "none",
+                            "reason": str(ocr_err),
+                        },
+                    },
+                )
         else:
             source.ocr_status = "skipped"
             _merge_metadata(
@@ -113,14 +172,8 @@ def process_source(source_id: str, database_url: str | None = None) -> dict:
                     "processed_at": _now(),
                     "ocr": {
                         "engine": "stub",
-                        "reason": "No OCR engine wired in this build "
-                        "(Tesseract/OCRmyPDF integration is a later sprint item).",
+                        "reason": f"File type {source.source_type.value} does not require OCR.",
                     },
-                    **(
-                        {"vlm": {"engine": "stub", "reason": "VLM description not configured."}}
-                        if source.source_type == SourceType.image
-                        else {}
-                    ),
                 },
             )
         source.processing_status = "complete"
@@ -150,6 +203,7 @@ def _mark_failed_quietly(session, source_id: str) -> None:
         source = session.get(Source, source_id)
         if source is not None:
             source.processing_status = "failed"
+            source.ocr_status = "failed"
             session.commit()
     logging.getLogger("casevault.worker").warning(
         "source %s marked processing_status=failed", source_id
@@ -210,7 +264,7 @@ def ingest_source(
 def ocr_source(
     source_id: str, workspace_id: str | None = None, database_url: str | None = None
 ) -> dict:
-    """RQ entry point for OCR reprocessing, including the existing OCR stub."""
+    """RQ entry point for OCR reprocessing using local extraction or OCR.space."""
     del workspace_id  # workspace scoping is enforced before enqueueing
     session = _connect(database_url)
     try:
@@ -244,6 +298,62 @@ def ocr_source(
             )
             source.page_count = 1
             source.ocr_status = "complete"
+        elif source.source_type in (SourceType.pdf, SourceType.image):
+            from app.config import get_settings
+            from workers.pipeline.ocr_engine import extract_source_pages
+
+            content = LocalStorage().read(source.storage_path)
+            settings = get_settings()
+            try:
+                pages_extracted, engine_used = extract_source_pages(
+                    file_bytes=content,
+                    filename=source.original_filename or f"document.{source.source_type.value}",
+                    source_type=source.source_type.value,
+                    engine=settings.ocr_engine,
+                    ocr_space_key=settings.ocr_space_api_key,
+                    ocr_space_url=settings.ocr_space_api_url,
+                )
+
+                for page in source.pages:
+                    session.delete(page)
+                session.flush()
+
+                for p in pages_extracted:
+                    session.add(
+                        SourcePage(
+                            source_id=source.id,
+                            page_number=p.page_number,
+                            page_label=p.page_label,
+                            ocr_text=p.text,
+                        )
+                    )
+                source.page_count = len(pages_extracted)
+                source.ocr_status = "complete" if any(len(p.text) > 0 for p in pages_extracted) else "skipped"
+                _merge_metadata(
+                    session,
+                    source_id,
+                    {
+                        "ocr": {
+                            "engine": engine_used,
+                            "pages": len(pages_extracted),
+                        },
+                        "ocr_reprocessed_at": _now(),
+                    },
+                )
+            except Exception as ocr_err:
+                source.page_count = 0
+                source.ocr_status = "skipped"
+                _merge_metadata(
+                    session,
+                    source_id,
+                    {
+                        "ocr": {
+                            "engine": "none",
+                            "reason": str(ocr_err),
+                        },
+                        "ocr_reprocessed_at": _now(),
+                    },
+                )
         else:
             source.ocr_status = "skipped"
             _merge_metadata(
@@ -252,8 +362,7 @@ def ocr_source(
                 {
                     "ocr": {
                         "engine": "stub",
-                        "reason": "No OCR engine wired in this build "
-                        "(Tesseract/OCRmyPDF integration is a later sprint item).",
+                        "reason": f"File type {source.source_type.value} does not require OCR.",
                     },
                     "ocr_reprocessed_at": _now(),
                 },

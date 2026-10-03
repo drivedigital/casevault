@@ -51,7 +51,14 @@ class Settings(BaseSettings):
     embedding_model: str | None = None
 
     # OCR / parsing
-    ocr_engine: str = "tesseract"
+    ocr_engine: str = "hybrid"  # "local", "ocr_space", or "hybrid" (try local text first, fallback to OCR.space)
+    ocr_space_api_key: str | None = None
+    ocr_space_api_url: str = "https://api.ocr.space/parse/image"
+
+    # Cloud / Edge / Supabase integration
+    cloudflare_worker_url: str | None = "https://casevault-worker.dan-2eb.workers.dev"
+    supabase_url: str | None = None
+    supabase_service_role_key: str | None = None
 
     # MCP connectors (later phase)
     mcp_default_timeout: int = 30

@@ -13,6 +13,7 @@ import tempfile
 # so upload tests never write into the real ./data tree.
 _STORAGE_ROOT = tempfile.mkdtemp(prefix="casevault-test-storage-")
 os.environ["LOCAL_STORAGE_ROOT"] = _STORAGE_ROOT
+os.environ["REDIS_URL"] = ""
 
 import pytest
 from fastapi.testclient import TestClient

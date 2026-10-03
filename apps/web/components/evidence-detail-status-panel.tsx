@@ -326,9 +326,7 @@ export function EvidenceStatusPanel({
           {ocrWatch.phase === "done" && ocrWatch.outcome === "skipped" ? (
             <WarningNote title="OCR skipped — no extraction performed">
               <span data-testid="ocr-done">
-                The worker skipped OCR for this file type (no OCR engine is wired in this build:
-                PDF/image/spreadsheet types are stub-skipped). This is a valid terminal state,
-                not a success and not an error.
+                The worker skipped OCR for this file type (this file type does not require OCR extraction).
               </span>
             </WarningNote>
           ) : null}

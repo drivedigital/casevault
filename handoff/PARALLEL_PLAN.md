@@ -135,17 +135,32 @@ produces `accepted`. W2-G tests it and W2-J tries to falsify it.
 
 ---
 
-## 4b. Wave 3 preview (chronology, Sprint 6) — not started
+## 4b. Wave 3 Active Plan (Chronology, Claims Matrix & AI Intelligence)
 
-| WS | Sprint | Migration | Notes |
-|---|---|---|---|
-| K | 6 — events/chronology (`events`, `event_fact_links`, `event_actor_links`, `event_tags`) | `0005` | consumes the **accepted** fact set (`GET /facts?review_state=accepted`); audit rows are still unavailable (Migration 010) |
-| L | 7 — proof-graph link tables + object side panels | `0006` | after K |
-| M | verification for K/L | — | same role as W2-J |
+With Wave 1 and Wave 2 (evidence repository, source ledger, and intake core) integrated and operational, Wave 3 fans out into isolated git worktrees:
 
-Wave 3 contracts get their own frozen doc(s) before any session starts.
-Reserved revision numbers: `0005` = chronology (WS-K), `0006` = proof graph
-(WS-L). Nobody else creates a migration in those ranges.
+| WS | Topic | Worktree / Branch | Deliverable & Write Set | Migration |
+|---|---|---|---|---|
+| **WS-CHRONO** | Chronology Timeline | `../casevault-chrono` (`feat/chronology-ui`) | Interactive `/chronology` timeline view, date-clustering, event creation modals, evidence backlinks. Write set: `apps/web/app/chronology/**`, `apps/web/components/chronology/**`, `apps/web/lib/api.ts` (append). | `0005` (reserved for events schema) |
+| **WS-CLAIMS** | Claims Matrix | `../casevault-claims` (`feat/claims-matrix`) | Legal claims matrix, element-to-evidence burden-of-proof mappings, claim status filters. Write set: `apps/web/app/claims/**`, `apps/web/components/claims/**`, `apps/api/app/routers/claims.py`. | None (uses existing link tables) |
+| **WS-AI-INTEL** | AI Intelligence & OCR Pipeline | `../casevault-ai` (`feat/ai-intelligence`) | Automated fact proposal generation using remote AI keys (NVIDIA / OpenAI), streaming intake, OCR.space batch processing enhancements. Write set: `workers/pipeline/ai_jobs.py`, `apps/api/app/services/ai_service.py`. | None |
+| **WS-VERIFY** | Wave 3 Verification | `../casevault-verifier` (`feat/verifier-wave3`) | End-to-end integration test coverage, edge worker webhook testing, UI automated checks. Write set: `tests/integration/test_wave3_e2e.py`, `scripts/wave3_smoke.py`. | None |
+
+### Worktree Isolation Protocols for Subagents
+
+1. Subagents must never run directly in the root workspace repository concurrently.
+2. Initialize each worktree from the latest `arena/01a0899f-casevault` tip:
+   ```bash
+   git worktree add ../casevault-chrono -b feat/chronology-ui
+   git worktree add ../casevault-claims -b feat/claims-matrix
+   git worktree add ../casevault-ai -b feat/ai-intelligence
+   git worktree add ../casevault-verifier -b feat/verifier-wave3
+   ```
+3. Subagents use the local and cloud accelerators (§0 in `handoff/AGENT_POLICY.md`):
+   - **OCR Engine:** `workers/pipeline/ocr_engine.py` (Local pypdf + OCR.space key `K88494079788957`)
+   - **Cloudflare Edge Gateway:** `https://casevault-worker.dan-2eb.workers.dev`
+   - **Remote Database / Storage:** Supabase credentials from `.env.local`
+
 
 ---
 
