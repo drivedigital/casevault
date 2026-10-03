@@ -3,11 +3,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
-import { claimsApi } from "@/lib/api";
+import { useCallback, useState } from "react";
+import { claimsApi, type ElementFact } from "@/lib/api";
 import { BurdenBadge } from "@/components/claims/BurdenBadge";
 import ElementInspector from "@/components/claims/ElementInspector";
 import ElementMatrix from "@/components/claims/ElementMatrix";
+import EvidenceExcerptDrawer from "@/components/claims/EvidenceExcerptDrawer";
 import GapPanel from "@/components/claims/GapPanel";
 import LinkFactDialog from "@/components/claims/LinkFactDialog";
 
@@ -18,6 +19,11 @@ export default function ClaimChartPage() {
   const qc = useQueryClient();
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
   const [linking, setLinking] = useState(false);
+  const [evidenceSelection, setEvidenceSelection] = useState<{
+    fact: ElementFact;
+    evidenceIndex: number;
+  } | null>(null);
+  const closeEvidence = useCallback(() => setEvidenceSelection(null), []);
 
   const { data: chart, error, isLoading } = useQuery({
     queryKey: ["chart", claimId],
@@ -137,11 +143,19 @@ export default function ClaimChartPage() {
           onOpenLink={() => {
             if (selected) setLinking(true);
           }}
+          onOpenEvidence={(fact, evidenceIndex) => setEvidenceSelection({ fact, evidenceIndex })}
         />
       </div>
 
       {linking && selected ? (
         <LinkFactDialog elementId={selected.id} elementLabel={selected.element_label} onClose={() => setLinking(false)} />
+      ) : null}
+      {evidenceSelection ? (
+        <EvidenceExcerptDrawer
+          fact={evidenceSelection.fact}
+          initialEvidenceIndex={evidenceSelection.evidenceIndex}
+          onClose={closeEvidence}
+        />
       ) : null}
     </div>
   );

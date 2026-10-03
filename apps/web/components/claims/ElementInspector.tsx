@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { claimsApi, type ChartElement } from "@/lib/api";
+import { claimsApi, type ChartElement, type ElementFact } from "@/lib/api";
 import { BurdenBadge, SupportPill } from "./BurdenBadge";
 import { SOURCE_STATUS_HINT } from "./statusMeta";
 
@@ -12,10 +12,12 @@ export default function ElementInspector({
   element,
   claimId,
   onOpenLink,
+  onOpenEvidence,
 }: {
   element: ChartElement | null;
   claimId: string;
   onOpenLink: () => void;
+  onOpenEvidence: (fact: ElementFact, evidenceIndex: number) => void;
 }) {
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("support");
@@ -86,8 +88,27 @@ export default function ElementInspector({
           <li key={f.link_id} className="rounded-lg border border-slate-200 bg-white p-3">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <div className="text-sm font-semibold text-slate-800">{f.short_label ?? "Fact"}</div>
-                <p className="prose-note mt-0.5 text-xs text-slate-600">{f.statement_text}</p>
+                {f.evidence.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenEvidence(f, 0)}
+                    aria-label={`Open evidence excerpt for ${f.short_label ?? "fact"}`}
+                    className="group w-full rounded-md text-left focus:outline-none focus:ring-2 focus:ring-sky-400"
+                  >
+                    <span className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-800">
+                      {f.short_label ?? "Fact"}
+                      <span className="text-[10px] font-semibold text-sky-700 opacity-80 group-hover:underline">
+                        Open excerpt →
+                      </span>
+                    </span>
+                    <span className="prose-note mt-0.5 block text-xs text-slate-600">{f.statement_text}</span>
+                  </button>
+                ) : (
+                  <>
+                    <div className="text-sm font-semibold text-slate-800">{f.short_label ?? "Fact"}</div>
+                    <p className="prose-note mt-0.5 text-xs text-slate-600">{f.statement_text}</p>
+                  </>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 <label className="text-[10px] text-slate-400" title="Link weight drives the points behind the status badge">
@@ -124,31 +145,43 @@ export default function ElementInspector({
               ) : (
                 <ul className="mt-1 space-y-1">
                   {f.evidence.map((ev, i) => (
-                    <li key={`${ev.source_id}-${i}`} className="flex items-start gap-2 text-[11px]">
-                      <span
-                        className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${
-                          ev.is_primary_anchor ? "bg-emerald-500" : "bg-slate-300"
-                        }`}
-                        title={ev.is_primary_anchor ? "primary / public-record anchor" : "not a primary anchor"}
-                      />
-                      <div className="min-w-0">
-                        <span className="font-medium text-slate-700">{ev.title}</span>
-                        <span className="text-slate-400">
-                          {" "}
-                          · {SOURCE_STATUS_HINT[ev.source_status] ?? ev.source_status} · review: {ev.evidence_review_status.replace(/_/g, " ")}
+                    <li key={`${ev.source_id}-${i}`}>
+                      <button
+                        type="button"
+                        onClick={() => onOpenEvidence(f, i)}
+                        aria-label={`Open excerpt from ${ev.title} for ${f.short_label ?? "fact"}`}
+                        className="flex w-full items-start gap-2 rounded-md px-1 py-1 text-left text-[11px] hover:bg-sky-50 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                      >
+                        <span
+                          className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${
+                            ev.is_primary_anchor ? "bg-emerald-500" : "bg-slate-300"
+                          }`}
+                          title={ev.is_primary_anchor ? "primary / public-record anchor" : "not a primary anchor"}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="font-medium text-slate-700">{ev.title}</span>
+                          <span className="text-slate-400">
+                            {" "}
+                            · {SOURCE_STATUS_HINT[ev.source_status] ?? ev.source_status} · review: {ev.evidence_review_status.replace(/_/g, " ")}
+                          </span>
+                          {ev.locator_text || ev.page_start !== null || ev.page_end !== null ? (
+                            <span className="block text-slate-400">
+                              locator: {ev.locator_text ?? "page"}
+                              {ev.page_start !== null
+                                ? ` (p. ${ev.page_start}${ev.page_end !== null && ev.page_end !== ev.page_start ? `–${ev.page_end}` : ""})`
+                                : ev.page_end !== null
+                                  ? ` (p. ${ev.page_end})`
+                                  : ""}
+                            </span>
+                          ) : null}
+                          {ev.excerpt_text ? (
+                            <span className="mt-0.5 block border-l-2 border-slate-200 pl-2 italic text-slate-500">
+                              {ev.excerpt_text}
+                            </span>
+                          ) : null}
+                          <span className="mt-0.5 block font-semibold text-sky-700">Open excerpt →</span>
                         </span>
-                        {ev.locator_text ? (
-                          <div className="text-slate-400">
-                            locator: {ev.locator_text}
-                            {ev.page_start ? ` (p. ${ev.page_start}${ev.page_end && ev.page_end !== ev.page_start ? `–${ev.page_end}` : ""})` : ""}
-                          </div>
-                        ) : null}
-                        {ev.excerpt_text ? (
-                          <blockquote className="mt-0.5 border-l-2 border-slate-200 pl-2 italic text-slate-500">
-                            {ev.excerpt_text}
-                          </blockquote>
-                        ) : null}
-                      </div>
+                      </button>
                     </li>
                   ))}
                 </ul>
