@@ -6,7 +6,8 @@
 **Integration target:** `arena/01a0899f-casevault` (not present in this clone; verifier built merge-ready)
 **Migration:** None
 **Base commit:** `bfdaf22` ("Patch spec inconsistencies and model gaps")
-**Verified through:** `6ec8fe2` — Run 2 covers `356c5db` (WS-AI-INTEL) +
+**Verified through:** `d814b16` — Run 3 covers the `d814b16` excerpt-drawer
+slice plus 6 new drawer probes; Run 2 covers `356c5db` (WS-AI-INTEL) +
 `6ec8fe2` (WS-CLAIMS); Run 1 (§2, history) covers pre-merge baseline `ad2e911`.
 
 ## 0. Binding rules & assumptions
@@ -32,7 +33,7 @@ mode (see §3), so this suite is safe to run before, during, and after merges.
 
 | Owned file | Purpose | Lines |
 |---|---|---:|
-| `tests/integration/test_wave3_e2e.py` | E2E integration probes: harness self-checks, API health, ingest chain, **OCR dual-path invariant**, review/proof-graph, chronology/claims, search/connectors, AI guardrails, exports/audit, punch-list manifest | ~600 |
+| `tests/integration/test_wave3_e2e.py` | E2E integration probes: harness self-checks, API health, ingest chain, **OCR dual-path invariant**, review/proof-graph, chronology/claims, search/connectors, AI guardrails, exports/audit, **excerpt-drawer wiring + citation contract (Run 3)**, punch-list manifest | ~730 |
 | `tests/integration/test_cloudflare_worker.py` | Edge gate: wrangler/entry contract, fetch+CORS+configurable-backend static checks, live worker probes (`/health`, proxy, preflight, 404 shape, security headers), edge manifest | ~330 |
 | `scripts/wave3_smoke.py` | Fast (<60s, stdlib-only) smoke gate: 14 checks across structure/safety/ocr/api/edge/e2e; `--json`, `--strict`, `--offline`, `--api-url`, `--worker-url` | ~380 |
 | `handoff/notes/WS-VERIFY.md` | This report (pass/fail counts per invariant 4) | — |
@@ -43,14 +44,63 @@ cannot collide with (or be broken by) the verifier.
 
 | # | Invariant | Verdict (as of Run 2) |
 |---|---|---|
-| 1 | Verifies E2E integration across merged branches | **PARTIALLY VERIFIED** — claims chain live (`/health`, `/api/v1/{health,matters,claim-instances,claim-templates}` all 200; burden/support models present); AI services present but router **unmounted** (finding F1); sources/events/proposals/search/exports/audit/connectors/edge unmerged. e2e: 14P/14S/0F default, 14P/14F strict |
+| 1 | Verifies E2E integration across merged branches | **PARTIALLY VERIFIED** — claims chain live (`/health`, `/api/v1/{health,matters,claim-instances,claim-templates}` all 200; burden/support models present); excerpt drawer correctly wired into chart workspace with citation contract holding (Run 3, 6/6 probes); AI services present but router **unmounted** (finding F1, fix with owner per §5); sources/events/proposals/search/exports/audit/connectors/edge unmerged. e2e: 20P/14S/0F default, 20P/14F strict |
 | 2 | Checks OCR engine with digital PDF **and** scanned/image fallback | **HARNESS READY / NOT YET VERIFIED** — no OCR engine merged; all 6 OCR probes SKIP. Fixture self-checks PASS (digital marker extractable, scanned fixture image-only) |
 | 3 | Does not write application or UI feature code | **HELD** — only the 4 files above (Run 2 probe-consistency fix touched the owned e2e file only); `git status` shows no other changes |
 | 4 | Reports pass/fail counts explicitly here | **HELD** — Runs 1–2 below |
 
 ## 2. Verification runs (explicit counts)
 
-### Run 2 — post WS-CLAIMS + WS-AI-INTEL, live API (2026-10-03, latest)
+### Run 3 — excerpt-drawer probe + re-gate, live API (2026-10-03, latest)
+
+Scope: verify the `d814b16` Evidence Excerpt Drawer slice and add 6 permanent
+drawer probes to the owned e2e suite. Environment: sandbox re-provisioned
+mid-session (fresh clone at `bfdaf22`); branch restored via
+`git reset origin/arena/01a100f2-casevault` → `96ecda5` with a clean tree,
+proving zero content drift. Deps reinstalled to Run-2-identical versions
+(`pytest 9.1.1`, `fastapi 0.142.2`); API live at `http://localhost:8000`
+(same SQLite fallback).
+
+#### Run-3 pytest (50 tests: 34 e2e + 16 worker)
+
+| Mode | Passed | Failed | Skipped | Exit |
+|---|---:|---:|---:|---:|
+| Default (punch-list) | **21** | **0** | **29** | 0 |
+| Strict (merge gate) | **21** | **29** | **0** | 1 |
+
+| File (default) | Passed | Skipped | Delta vs Run 2 |
+|---|---:|---:|---|
+| `test_wave3_e2e.py` (34) | 20 | 14 | **+6 drawer probes, all pass**; skips unchanged |
+| `test_cloudflare_worker.py` (16) | 1 (manifest) | 15 | unchanged (no URL supplied this run; no repo worker code) |
+
+New `TestEvidenceExcerptDrawer` probes (6/6 PASS): component exists with
+`(fact, initialEvidenceIndex, onClose)` props contract; chart page imports +
+renders drawer with `evidenceSelection` state; inspector `onOpenEvidence`
+triggers (fact-level + per-excerpt) forwarded into drawer state; 12-marker
+citation rendering contract (`<cite>` title, `pp./p.` ranges, locator, type/
+status/review badges, primary-anchor badge, excerpt blockquote + empty-state,
+`/evidence/` deep link, empty-evidence guard); `ElementFact`/`EvidenceAnchor`
+type-field contract (10 + 4 fields) + `SOURCE_STATUS_HINT`; dialog a11y
+contract (role/modal/Escape/backdrop/labelled close).
+
+#### Run-3 smoke (14 checks)
+
+| Mode | PASS | FAIL | SKIP | Gate | Exit |
+|---|---:|---:|---:|---|---:|
+| Default | **8** | **0** | **6** | **PASS** | 0 |
+| `--strict` | 8 | 0 (+6 skips→fail) | 6 | **FAIL** | 1 |
+
+Unchanged from Run 2 (gate remains green); `e2e-collect` now reports 50 tests.
+Remaining 6 SKIPs: 2 OCR env deps, `ocr-engine`, `worker-config`,
+`worker-entry`, `worker-live`.
+
+#### Run-3 verdict
+
+Drawer slice **correctly wired, no new findings**: F1/F2/F3 stand as Run-2
+reported (F1 fix still with the owning workstream per §5; no AI-router change
+landed since). Invariant 2 still blocked (no OCR engine).
+
+### Run 2 — post WS-CLAIMS + WS-AI-INTEL, live API (2026-10-03)
 
 Verified commits `356c5db` + `6ec8fe2`. Environment: Run-1 sandbox plus API
 stack (`fastapi 0.142.2`, `uvicorn 0.54.0`, `sqlalchemy 2.0.54`,
@@ -238,9 +288,9 @@ CASEVAULT_API_URL=http://localhost:8000 CLOUDFLARE_WORKER_URL=https://<worker> \
    re-run the Run-2 edge command from CI/local with open egress for a live
    worker verdict.
 6. **Re-verify on integration target**: after further Wave 3 merges, run the
-   strict commands in §2c; post-merge target is **44 passed / 0 failed**
+   strict commands in §2c; post-merge target is **50 passed / 0 failed**
    (pytest strict) and **14 PASS / 0 FAIL / 0 SKIP** (smoke, with services up)
-   — current strict standing: **15 passed / 29 failed** (pytest),
+   — current strict standing: **21 passed / 29 failed** (pytest),
    smoke strict FAIL (6 skips).
 
 ## 5. F1/F2 patch proposal for owning workstream (2026-10-03, proposal only)

@@ -13,6 +13,8 @@ What this verifies (Technical Spec / PRD / Roadmap traceability):
     scanned/image fallback via OCR (Tech Spec §15; PRD §10.3).
   * Proof graph: fact -> event -> claim element -> relief/authority links
     (Tech Spec §7, §18; PRD §9-10).
+  * Claim chart workspace excerpt drawer: wiring into the chart page plus
+    evidence citation rendering contract (UX Spec Screen 10; d814b16 slice).
   * Search / MCP connectors stay candidates until reviewed (Tech Spec §14).
   * AI sharing guardrails enforced before external calls (Tech Spec §12.5).
   * Exports + audit trail (Tech Spec §19, §21).
@@ -290,6 +292,8 @@ WAVE3_SURFACES = [
      "paths": ["apps/api"], "routes": ["/api/v1/events"]},
     {"id": "claims", "spec": "Tech §18 / PRD §10.7",
      "paths": ["apps/api"], "routes": ["/api/v1/claim-instances"]},
+    {"id": "excerpt-drawer", "spec": "UX Screen 10 / drawer slice (d814b16)",
+     "paths": ["apps/web/components/claims"], "routes": []},
     {"id": "search", "spec": "Tech §11 / PRD §10.13",
      "paths": ["apps/api"], "routes": ["/api/v1/search"]},
     {"id": "connectors", "spec": "Tech §14 / Roadmap Sprint 11",
@@ -687,7 +691,147 @@ class TestExportsAndAudit:
 
 
 # ---------------------------------------------------------------------------
-# 9. Wave 3 integration manifest (always passes; prints the punch-list)
+# 9. Evidence excerpt drawer — claim chart workspace (UX Screen 10)
+# ---------------------------------------------------------------------------
+
+WEB_DRAWER = REPO_ROOT / "apps/web/components/claims/EvidenceExcerptDrawer.tsx"
+WEB_CHART_PAGE = REPO_ROOT / "apps/web/app/claims/[claimId]/page.tsx"
+WEB_INSPECTOR = REPO_ROOT / "apps/web/components/claims/ElementInspector.tsx"
+WEB_API_LIB = REPO_ROOT / "apps/web/lib/api.ts"
+WEB_STATUS_META = REPO_ROOT / "apps/web/components/claims/statusMeta.ts"
+
+
+def _read_text(path: Path) -> str | None:
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
+def _interface_body(source: str, name: str) -> str | None:
+    match = re.search(rf"interface {re.escape(name)}\s*\{{(.*?)\}}", source, re.S)
+    return match.group(1) if match else None
+
+
+class TestEvidenceExcerptDrawer:
+    """Claim chart workspace must open a drawer that renders citable evidence
+    excerpts (source citation + page locator + excerpt text + source link).
+    Covers the d814b16 drawer slice of UX Spec Screen 10."""
+
+    def test_drawer_component_exists(self):
+        verify_or_skip(
+            (REPO_ROOT / "apps/web").is_dir(),
+            "web app not merged (no apps/web checkout)",
+        )
+        text = _read_text(WEB_DRAWER)
+        verify_or_skip(
+            text is not None,
+            "EvidenceExcerptDrawer.tsx not merged under apps/web/components/claims/",
+        )
+        assert text is not None
+        assert re.search(r"export default function EvidenceExcerptDrawer", text), (
+            "drawer has no default-exported EvidenceExcerptDrawer component"
+        )
+        for prop in (r"fact:\s*ElementFact", r"initialEvidenceIndex:\s*number",
+                     r"onClose:\s*\(\)\s*=>\s*void"):
+            assert re.search(prop, text), f"drawer props contract missing `{prop}`"
+
+    def test_drawer_wired_into_claim_chart_page(self):
+        for path in (WEB_DRAWER, WEB_CHART_PAGE):
+            verify_or_skip(
+                _read_text(path) is not None,
+                f"excerpt-drawer wiring not merged (missing {path.relative_to(REPO_ROOT)})",
+            )
+        page = _read_text(WEB_CHART_PAGE) or ""
+        assert 'components/claims/EvidenceExcerptDrawer' in page, (
+            "claim chart page does not import EvidenceExcerptDrawer"
+        )
+        assert "<EvidenceExcerptDrawer" in page, "claim chart page never renders the drawer"
+        for prop in ("fact={evidenceSelection.fact}",
+                     "initialEvidenceIndex={evidenceSelection.evidenceIndex}",
+                     "onClose={closeEvidence}"):
+            assert prop in page, f"drawer render missing prop wiring `{prop}`"
+        assert "setEvidenceSelection" in page and "evidenceSelection" in page, (
+            "claim chart page has no evidence-selection state driving the drawer"
+        )
+
+    def test_drawer_trigger_wired_via_inspector(self):
+        for path in (WEB_INSPECTOR, WEB_CHART_PAGE):
+            verify_or_skip(
+                _read_text(path) is not None,
+                f"excerpt-drawer trigger not merged (missing {path.relative_to(REPO_ROOT)})",
+            )
+        inspector = _read_text(WEB_INSPECTOR) or ""
+        assert re.search(
+            r"onOpenEvidence:\s*\(fact:\s*ElementFact,\s*evidenceIndex:\s*number\)\s*=>\s*void",
+            inspector,
+        ), "ElementInspector has no typed onOpenEvidence(fact, evidenceIndex) callback prop"
+        triggers = re.findall(r"onOpenEvidence\(f,", inspector)
+        assert len(triggers) >= 2, (
+            f"expected fact-level + per-excerpt open triggers, found {len(triggers)}"
+        )
+        page = _read_text(WEB_CHART_PAGE) or ""
+        assert re.search(r"onOpenEvidence=\{\(fact,\s*evidenceIndex\)\s*=>\s*setEvidenceSelection",
+                         page), "claim chart page does not forward onOpenEvidence into drawer state"
+
+    def test_drawer_citation_rendering_contract(self):
+        text = _read_text(WEB_DRAWER)
+        verify_or_skip(text is not None, "EvidenceExcerptDrawer.tsx not merged")
+        assert text is not None
+        required = {
+            "Source citation section": "Source citation",
+            "citation title element": "<cite",
+            "page-range formatting (pp./p.)": "pp. ",
+            "locator text": "locator_text",
+            "source-type badge": "source_type",
+            "source-status hint": "SOURCE_STATUS_HINT",
+            "review-status badge": "evidence_review_status",
+            "primary-anchor badge": "primary anchor",
+            "excerpt blockquote": "<blockquote",
+            "empty-excerpt fallback": "No excerpt text is stored",
+            "source-record deep link": "/evidence/",
+            "empty-evidence guard": "fact.evidence.length === 0",
+        }
+        missing = [label for label, marker in required.items() if marker not in text]
+        assert not missing, f"drawer citation rendering missing: {', '.join(missing)}"
+
+    def test_drawer_type_contract(self):
+        for path in (WEB_API_LIB, WEB_STATUS_META):
+            verify_or_skip(
+                _read_text(path) is not None,
+                f"drawer type contract not merged (missing {path.relative_to(REPO_ROOT)})",
+            )
+        lib = _read_text(WEB_API_LIB) or ""
+        anchor = _interface_body(lib, "EvidenceAnchor")
+        fact = _interface_body(lib, "ElementFact")
+        assert anchor is not None, "lib/api has no exported EvidenceAnchor interface"
+        assert fact is not None, "lib/api has no exported ElementFact interface"
+        for field in ("source_id", "title", "source_type", "source_status",
+                      "evidence_review_status", "is_primary_anchor", "locator_text",
+                      "page_start", "page_end", "excerpt_text"):
+            assert re.search(rf"\b{field}\b", anchor), f"EvidenceAnchor missing `{field}`"
+        for field in ("fact_id", "short_label", "statement_text", "evidence"):
+            assert re.search(rf"\b{field}\b", fact), f"ElementFact missing `{field}`"
+        meta = _read_text(WEB_STATUS_META) or ""
+        assert "SOURCE_STATUS_HINT" in meta, "statusMeta does not export SOURCE_STATUS_HINT"
+
+    def test_drawer_dialog_accessibility_contract(self):
+        text = _read_text(WEB_DRAWER)
+        verify_or_skip(text is not None, "EvidenceExcerptDrawer.tsx not merged")
+        assert text is not None
+        required = {
+            "dialog role": 'role="dialog"',
+            "modal semantics": "aria-modal",
+            "Escape to close": "Escape",
+            "backdrop click to close": "event.target === event.currentTarget",
+            "labelled close control": 'aria-label="Close evidence excerpt"',
+        }
+        missing = [label for label, marker in required.items() if marker not in text]
+        assert not missing, f"drawer a11y contract missing: {', '.join(missing)}"
+
+
+# ---------------------------------------------------------------------------
+# 10. Wave 3 integration manifest (always passes; prints the punch-list)
 # ---------------------------------------------------------------------------
 
 class TestWave3Manifest:
