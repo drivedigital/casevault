@@ -41,7 +41,7 @@ def upgrade() -> None:
     sa.Column('relief_use_text', sa.Text(), nullable=True),
     sa.Column('source_path_text', sa.Text(), nullable=True),
     sa.Column('source_locator_text', sa.Text(), nullable=True),
-    sa.Column('source_status', sa.Enum('primary', 'derived', 'testimony', 'working_note', 'public_record', name='source_status_enum'), nullable=True),
+    sa.Column('source_status', sa.Enum('primary', 'derived', 'testimony', 'working_note', 'public_record', name='source_status_enum', create_type=False), nullable=True),
     sa.Column('authentication_or_witness', sa.Text(), nullable=True),
     sa.Column('confidence_level', sa.Enum('low', 'medium', 'high', name='strength_label_enum'), nullable=True),
     sa.Column('verification_task_text', sa.Text(), nullable=True),
