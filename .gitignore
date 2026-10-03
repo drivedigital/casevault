@@ -1,0 +1,35 @@
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# node / frontend
+node_modules/
+.next/
+out/
+coverage/
+
+# python
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+
+# local data / evidence / derived artifacts
+data/
+uploads/
+evidence/
+exports/
+logs/
+tmp/
+cache/
+
+# db files if local sqlite ever used
+*.sqlite
+*.sqlite3
+*.db
+
+# misc
+.DS_Store
+.vscode/
+.idea/
