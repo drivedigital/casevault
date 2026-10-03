@@ -6,6 +6,8 @@
 **Integration target:** `arena/01a0899f-casevault` (not present in this clone; verifier built merge-ready)
 **Migration:** None
 **Base commit:** `bfdaf22` ("Patch spec inconsistencies and model gaps")
+**Verified through:** `6ec8fe2` — Run 2 covers `356c5db` (WS-AI-INTEL) +
+`6ec8fe2` (WS-CLAIMS); Run 1 (§2, history) covers pre-merge baseline `ad2e911`.
 
 ## 0. Binding rules & assumptions
 
@@ -39,19 +41,111 @@ No shared helper modules / `conftest.py` were created on purpose: helpers are
 duplicated inside the two test files so other workstreams' test infrastructure
 cannot collide with (or be broken by) the verifier.
 
-| # | Invariant | Verdict |
+| # | Invariant | Verdict (as of Run 2) |
 |---|---|---|
-| 1 | Verifies E2E integration across merged branches | **HARNESS READY / NOT YET VERIFIED** — no Wave 3 branches merged in this checkout; all integration probes SKIP (default) / FAIL (strict gate) as designed |
-| 2 | Checks OCR engine with digital PDF **and** scanned/image fallback | **HARNESS READY / NOT YET VERIFIED** — dual-path probes + static dual-marker check + structured-failure check written; blocked on OCR engine merge. Fixture self-checks PASS (digital marker extractable, scanned fixture image-only) |
-| 3 | Does not write application or UI feature code | **HELD** — only the 4 files above; `git status` shows no other changes |
-| 4 | Reports pass/fail counts explicitly here | **HELD** — see §2 |
+| 1 | Verifies E2E integration across merged branches | **PARTIALLY VERIFIED** — claims chain live (`/health`, `/api/v1/{health,matters,claim-instances,claim-templates}` all 200; burden/support models present); AI services present but router **unmounted** (finding F1); sources/events/proposals/search/exports/audit/connectors/edge unmerged. e2e: 14P/14S/0F default, 14P/14F strict |
+| 2 | Checks OCR engine with digital PDF **and** scanned/image fallback | **HARNESS READY / NOT YET VERIFIED** — no OCR engine merged; all 6 OCR probes SKIP. Fixture self-checks PASS (digital marker extractable, scanned fixture image-only) |
+| 3 | Does not write application or UI feature code | **HELD** — only the 4 files above (Run 2 probe-consistency fix touched the owned e2e file only); `git status` shows no other changes |
+| 4 | Reports pass/fail counts explicitly here | **HELD** — Runs 1–2 below |
 
 ## 2. Verification runs (explicit counts)
+
+### Run 2 — post WS-CLAIMS + WS-AI-INTEL, live API (2026-10-03, latest)
+
+Verified commits `356c5db` + `6ec8fe2`. Environment: Run-1 sandbox plus API
+stack (`fastapi 0.142.2`, `uvicorn 0.54.0`, `sqlalchemy 2.0.54`,
+`pydantic 2.13.5`); API started locally from `apps/api` (SQLite fallback
+`data/dev.sqlite`, git-ignored) at `http://localhost:8000`. Worker URL
+`https://casevault-worker.dan-2eb.workers.dev` supplied for live edge probes.
+
+Live endpoint map (curl, API up):
+
+| Endpoint | HTTP | Verdict |
+|---|---:|---|
+| `/health`, `/api/v1/health` | 200 | PASS — scaffold health live |
+| `/api/v1/matters` | 200 | PASS — bootstrap stub live |
+| `/api/v1/claim-instances`, `/api/v1/claim-templates` | 200 | PASS — WS-CLAIMS live |
+| `/api/ai/providers` | 404 | **FINDING F1** — ai router merged but not mounted in `main.py` |
+| `/api/v1/proposals`, `/api/v1/events`, `/api/v1/search` | 404 | not yet built (punch-list) |
+
+#### Run-2 pytest (44 tests)
+
+| Mode | Passed | Failed | Skipped | Exit |
+|---|---:|---:|---:|---:|
+| Default (punch-list) | **15** | **0** | **29** | 0 |
+| Strict (merge gate) | **15** | **29** | **0** | 1 |
+
+| File (default) | Passed | Skipped | Delta vs Run 1 |
+|---|---:|---:|---|
+| `test_wave3_e2e.py` (28) | 14 | 14 | **+8 passes** (see below) |
+| `test_cloudflare_worker.py` (16) | 1 (manifest) | 15 (9 contract — no wrangler/entry in repo; 6 live — egress-blocked, see edge verdict) | unchanged |
+
+The +8 e2e passes: `test_health_endpoint_answers`, `test_api_v1_health_shape`
+(live API); `test_source_status_fields_present_in_models`,
+`test_fact_support_links_modeled`, `test_claim_chart_surface_exists` (live 200),
+`test_support_status_vocabulary_present` (WS-CLAIMS); and
+`test_sharing_policy_vocabulary_present`, `test_agent_run_manifest_shape`
+(WS-AI-INTEL). Remaining 14 e2e skips: 6 OCR, sources-live, proposals-live,
+review-actions, events-live, search, connectors, exports, audit.
+
+#### Run-2 smoke (14 checks)
+
+| Mode | PASS | FAIL | SKIP | Gate | Exit |
+|---|---:|---:|---:|---|---:|
+| Default | **8** | **0** | **6** | **PASS** | 0 |
+| `--strict` | 8 | 0 (+6 skips→fail) | 6 | **FAIL** | 1 |
+| `--worker-url https://casevault-worker.dan-2eb.workers.dev` | 8 | 0 | 6 (`worker-live` SKIP: unreachable, TLS-EOF — graceful) | **PASS** | 0 |
+
+Delta vs Run 1 (5/2/7 FAIL): `safety-gitignore` FAIL→PASS, `safety-env`
+FAIL→PASS (scaffold landed), `api-health` SKIP→PASS (API up). Remaining 6
+SKIPs: 2 OCR env deps, `ocr-engine`, `worker-config`, `worker-entry`,
+`worker-live`.
+
+#### Run-2 harness fix (owned file, transparent)
+
+The first live-API run exposed a probe inconsistency: 3 surface probes
+hard-asserted on live 404 (`3 failed / 14 passed / 11 skipped`) while sibling
+probes SKIP on the same condition. Fixed `test_upload_route_exists_in_code_or_live`,
+`test_proposals_surface_exists`, `test_events_surface_exists` to
+`verify_or_skip`, matching the claims/search/exports probes and the documented
+§3 semantics (default = punch-list, strict = gate). Before: 3F/14P/11S; after:
+**0F/14P/14S**. No product code touched; strict mode still fails these 14 until
+merged.
+
+#### Run-2 integration findings
+
+- **F1 (P1): ai router merged but not mounted.** `apps/api/app/routers/ai.py`
+  exists (WS-AI-INTEL) but `apps/api/app/main.py` includes only
+  health/matters/claims → every `/api/ai/*` returns 404 live. The ai module
+  docstring assigns mounting to the owning API workstream; WS-CLAIMS (which
+  owns the `main.py` scaffold) did not include it. Classic cross-branch miss —
+  one-line fix on the API owner's side.
+- **F2 (P2): AI route prefix `/api/ai` vs spec `/api/v1/agent-runs`.**
+  WS-AI-INTEL mounts outside the Tech Spec §9.2 `/api/v1` namespace. Needs a
+  recorded decision: adopt `/api/ai` + amend spec, or migrate to `/api/v1`.
+- **F3 (info): unmerged surfaces.** sources/proposals/events/search/exports/
+  audit/connectors/OCR/edge → remaining 14 e2e + 9 worker-contract skips.
+
+#### Run-2 edge verdict (worker URL supplied)
+
+Live probes: **6/6 SKIP** — `TLS/SSL connection has been closed (EOF)` /
+curl `SSL_ERROR_SYSCALL`. Sandbox-egress evidence: `pypi.org`→200,
+`github.com`→200, `workers.dev`→000, `cloudflare.com`→000 (TCP connects, TLS
+reset = SNI-filtered egress). Worker health is **UNKNOWN from this sandbox** —
+not a product fail; probes degrade correctly. Re-run from CI/local with open
+egress:
+
+```bash
+CLOUDFLARE_WORKER_URL=https://casevault-worker.dan-2eb.workers.dev \
+  python3 -m pytest tests/integration/test_cloudflare_worker.py -v
+```
+
+### Run 1 — pre-merge baseline (2026-10-03, history)
 
 Environment: `python3.11.2`, `pytest 9.1.1`, repo root `/home/user/casevault`,
 no API/worker running, no `CLOUDFLARE_WORKER_URL`, OCR libs absent (bare sandbox).
 
-### 2a. `pytest tests/integration/test_wave3_e2e.py tests/integration/test_cloudflare_worker.py`
+#### Run-1 pytest (44 tests)
 
 | Mode | Command | Passed | Failed | Skipped | Total | Exit |
 |---|---|---:|---:|---:|---:|---:|
@@ -69,7 +163,7 @@ The 7 passes prove the harness itself is sound (fixtures valid, manifest
 well-formed); the 37 skips are the current integration punch-list, each with a
 machine-readable reason (`pytest -v -rs`).
 
-### 2b. `python scripts/wave3_smoke.py` (14 checks)
+#### Run-1 smoke (14 checks)
 
 | Mode | PASS | FAIL | SKIP | Gate | Exit |
 |---|---|---:|---:|---:|---|
@@ -117,31 +211,37 @@ CASEVAULT_API_URL=http://localhost:8000 CLOUDFLARE_WORKER_URL=https://<worker> \
 ## 3. Gate semantics (dual mode, both suites + smoke)
 
 - **Default mode** = punch-list: missing integrations SKIP with reasons;
-  `pytest` exits 0 (harness green), smoke exits 1 only on hard FAILs (currently
-  the 2 Phase-0 safety files).
+  `pytest` exits 0 (harness green), smoke exits 1 only on hard FAILs (none
+  currently — Phase-0 safety files landed in Run 2).
 - **Strict mode** (`WS_VERIFY_STRICT=1` / `smoke --strict`) = merge gate: every
-  SKIP becomes a FAIL. Pre-merge this is red by design (37 pytest fails now);
-  post-merge it must be fully green before the integration target accepts.
+  SKIP becomes a FAIL. Red by design until fully merged (Run 1: 37 pytest
+  fails; Run 2: 29 fails with API live); post-merge it must be fully green
+  before the integration target accepts.
 
-## 4. Blockers & next steps for `arena/01a0899f-casevault`
+## 4. Blockers & next steps
 
-1. **Phase 0 scaffold missing** (blocks everything): `.gitignore`, `.env.example`,
-   `apps/api` health routes, `handoff/` workflow files. Smoke FAILs on the first
-   two until landed. Owner: scaffold workstream, not WS-VERIFY.
-2. **OCR engine missing** (invariant 2): expected at `workers/pipeline/ocr*.py`
+1. **Phase 0 scaffold — DONE (Run 2).** `.gitignore`, `.env.example`, health
+   routes landed via the `356c5db`/`6ec8fe2` bootstraps; smoke safety checks
+   PASS. Residual: two bootstrap authors — confirm single scaffold ownership
+   (see WS-CLAIMS / WS-AI-INTEL reconciliation notes).
+2. **F1 (P1): mount the ai router.** One-line `main.py` include (+ F2 prefix
+   decision). Owner: API scaffold owner / WS-CLAIMS in agreement with
+   WS-AI-INTEL. Until then `/api/ai/*` is dead surface.
+3. **OCR engine missing** (invariant 2): expected at `workers/pipeline/ocr*.py`
    (or `apps/api/app/integrations/ocr*`) exposing an `extract_text`-family
    callable; must show both digital-extraction and tesseract/ocrmypdf-fallback
    markers. The verifier auto-discovers common module/function names and call
    conventions — no verifier change needed when it lands.
-3. **API + worker missing**: bring up `GET /health`, `/api/v1/*` per Tech Spec
-   §9.2 and the worker (`wrangler.toml` + fetch handler + `/health` + CORS +
-   env-configured backend); then set `CASEVAULT_API_URL` / `CLOUDFLARE_WORKER_URL`
-   and re-run §2c for a live verdict.
-4. **Re-verify on integration target**: after merging Wave 3 branches into
-   `arena/01a0899f-casevault`, run the strict commands in §2c; expected post-merge
-   target is **44 passed / 0 failed** (pytest strict) and **14 PASS / 0 FAIL /
-   0 SKIP** (smoke, with services up) — or an explicit, smaller skip list with
-   per-item justification appended to this note.
+4. **Unmerged surfaces (F3):** sources/proposals/events/search/exports/audit/
+   connectors/edge → 14 e2e + 9 worker-contract skips remain.
+5. **Edge live re-run off-sandbox:** `workers.dev` egress is blocked here;
+   re-run the Run-2 edge command from CI/local with open egress for a live
+   worker verdict.
+6. **Re-verify on integration target**: after further Wave 3 merges, run the
+   strict commands in §2c; post-merge target is **44 passed / 0 failed**
+   (pytest strict) and **14 PASS / 0 FAIL / 0 SKIP** (smoke, with services up)
+   — current strict standing: **15 passed / 29 failed** (pytest),
+   smoke strict FAIL (6 skips).
 
 ## Appendix — probe inventory
 
