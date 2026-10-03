@@ -101,3 +101,53 @@ ACTOR_ROLE_LABELS = [
     "court actor",
     "other non-party",
 ]
+
+
+# --- Wave 2: intake core (contract wave2_intake_core.md v1.0, section 2) ---
+# Values must stay in sync with the Postgres enum types created by migration
+# 0004; tests/api/test_intake_schema.py pins the exact lists on both sides.
+
+
+class ProposalType(StrEnum):
+    fact = "fact"
+    event = "event"
+    actor = "actor"
+    duplicate_merge = "duplicate_merge"
+    date_normalization = "date_normalization"
+    claim_mapping = "claim_mapping"
+    contradiction = "contradiction"
+    verification_task = "verification_task"
+    restriction = "restriction"
+
+
+class ReviewState(StrEnum):
+    proposed = "proposed"
+    accepted = "accepted"
+    accepted_with_edits = "accepted_with_edits"
+    rejected = "rejected"
+    deferred = "deferred"
+    uncertain = "uncertain"
+    superseded = "superseded"
+    disputed = "disputed"
+
+
+class FactType(StrEnum):
+    source_derived = "source_derived"
+    user_entered = "user_entered"
+    testimony = "testimony"
+    procedural = "procedural"
+    damage = "damage"
+    other = "other"
+
+
+class SupportType(StrEnum):
+    supports = "supports"
+    contradicts = "contradicts"
+    mentions = "mentions"
+    background = "background"
+
+
+class StrengthLabel(StrEnum):
+    low = "low"
+    medium = "medium"
+    high = "high"

@@ -8,7 +8,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routers import actors, health, matters, sources, workspaces
+from app.routers import (
+    actors,
+    facts,
+    health,
+    ledger,
+    matters,
+    proposals,
+    sources,
+    workspaces,
+)
 
 
 def create_app() -> FastAPI:
@@ -28,7 +37,17 @@ def create_app() -> FastAPI:
     # /health for infrastructure probing, /api/v1/health for the app surface.
     app.include_router(health.router)
     app.include_router(health.router, prefix="/api/v1")
-    for r in (workspaces.router, matters.router, actors.router, sources.router):
+    for r in (
+        workspaces.router,
+        matters.router,
+        actors.router,
+        sources.router,
+        # Wave 2 (contract v1.0): stubs registered here by WS-E; W2-F/W2-G
+        # fill ledger.py / proposals.py / facts.py in place.
+        ledger.router,
+        proposals.router,
+        facts.router,
+    ):
         app.include_router(r, prefix="/api/v1")
     return app
 
