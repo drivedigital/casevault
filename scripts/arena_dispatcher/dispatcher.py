@@ -178,6 +178,50 @@ class ArenaDispatcher:
             await asyncio.sleep(poll_interval)
 
 
+    async def wait_for_completion(self, session_filter: Optional[str] = None, poll_interval: int = 4, timeout: int = 300) -> bool:
+        """Wait until a subagent finishes, encounters a blocker, or pushes code, then exit 0 to wake integrator."""
+        page = await self.get_page_for_session(session_filter)
+        if not page:
+            return False
+
+        print(f"[*] Waiting for milestone / completion on {page.url} (timeout: {timeout}s)...")
+        start_time = asyncio.get_event_loop().time()
+        last_seen = ""
+
+        while (asyncio.get_event_loop().time() - start_time) < timeout:
+            try:
+                msgs = await self.extract_latest_messages(page)
+                if msgs:
+                    latest = msgs[-1]
+                    if latest != last_seen:
+                        last_seen = latest
+                        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        print(f"[{ts}] Latest subagent step:\n{latest[-300:]}\n")
+
+                        # Detect completion or decision points
+                        if any(phrase in latest.lower() for phrase in [
+                            "pushed",
+                            "create pr",
+                            "was this task successful",
+                            "all green",
+                            "passed",
+                            "delivered",
+                            "confirm to continue",
+                            "do you want to proceed",
+                            "error:"
+                        ]):
+                            print(f"[!] MILESTONE REACHED: Subagent delivered or prompt pending.")
+                            return True
+
+            except Exception as e:
+                print(f"[!] Warning during wait loop: {e}")
+
+            await asyncio.sleep(poll_interval)
+
+        print("[-] Wait timeout reached.")
+        return False
+
+
 def load_brief(brief_name: str) -> Optional[str]:
     """Load brief from handoff/kickoff/<brief_name>.md."""
     path = KICKOFF_DIR / brief_name
@@ -214,6 +258,12 @@ async def main_async():
     p_monitor.add_argument("--session", "-s", help="Subagent tab name / URL filter")
     p_monitor.add_argument("--interval", "-i", type=int, default=3, help="Polling interval in seconds")
 
+    # Command: wait
+    p_wait = subparsers.add_parser("wait", help="Wait for subagent completion/milestone and exit 0 to wake integrator")
+    p_wait.add_argument("--session", "-s", help="Subagent tab name / URL filter")
+    p_wait.add_argument("--interval", "-i", type=int, default=4, help="Polling interval in seconds")
+    p_wait.add_argument("--timeout", "-t", type=int, default=300, help="Timeout in seconds")
+
     args = parser.parse_args()
     dispatcher = ArenaDispatcher()
 
@@ -246,6 +296,10 @@ async def main_async():
 
     elif args.command == "monitor":
         await dispatcher.monitor(session_filter=args.session, poll_interval=args.interval)
+
+    elif args.command == "wait":
+        success = await dispatcher.wait_for_completion(session_filter=args.session, poll_interval=args.interval, timeout=args.timeout)
+        sys.exit(0 if success else 1)
 
 
 def main():
