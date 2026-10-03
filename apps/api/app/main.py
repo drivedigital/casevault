@@ -1,4 +1,4 @@
-"""FastAPI application entry (Phase 0 scaffold + WS-CLAIMS router)."""
+"""FastAPI application entry (Phase 0 scaffold + WS-CLAIMS + WS-AI-INTEL routers)."""
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.session import init_db
-from app.routers import claims, health, matters
+from app.routers import ai, claims, health, matters
 
 
 @asynccontextmanager
@@ -36,3 +36,5 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(matters.router, prefix="/api/v1")
 app.include_router(claims.router, prefix="/api/v1")
+# WS-AI-INTEL router mount (WS-VERIFY Run-2 finding F1; proposal §5 D1a).
+app.include_router(ai.router, prefix="/api/v1")

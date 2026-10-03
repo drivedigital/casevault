@@ -14,3 +14,18 @@
   marked for replacement in the handoff notes.
 - **D-004:** Portable `sa.Uuid` + check-constrained enums keep one model set
   valid on both Postgres and SQLite; tests never require Docker.
+- **D-005 (Wave 3/WS-AI-INTEL, resolves WS-VERIFY F2 — "D1"):** AI router adopts
+  the `/api/v1` namespace (option a). Router keeps internal prefix `/ai` and is
+  mounted in `app/main.py` with `prefix="/api/v1"` alongside claims/matters;
+  live surface is `/api/v1/ai/*`. Old `/api/ai/*` removed (verified 404 live).
+- **D-006 (resolves WS-VERIFY "D2"):** Endpoint inventory stays as merged:
+  `POST /ai/proposals/runs` (202), `GET /ai/proposals`,
+  `POST /ai/agent-runs` (201), `GET /ai/agent-runs/{id}`,
+  `POST /ai/agent-runs/{id}/steps/{step_id}/proposals` (201),
+  `GET /ai/providers[/health]`. No `/proposals/generate`, no `/stream` —
+  neither exists in Tech Spec §9.2; streaming intake is served inside
+  `POST /proposals/runs` (StreamEvent pipeline). Verifier cannot invent
+  surface; owner declines the rename.
+- **D-007 (resolves WS-VERIFY "D3"):** Success-code bar is **2xx** — 202 for
+  the async extraction run, 201 for resource creation. Literal-200 demand
+  rejected as REST-incorrect.

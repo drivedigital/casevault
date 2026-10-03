@@ -1,20 +1,21 @@
 """HTTP surface for the AI workstream (WS-AI-INTEL).
 
-Mounted under `/api/ai`. The owning API workstream includes this router in
-`app/main.py` via:
+Mounted under `/api/v1/ai` (Tech Spec §9.2 `/api/v1` namespace; WS-VERIFY
+Run-2 findings F1/F2, decision D1a). The API scaffold includes this router
+in `app/main.py` via:
 
-    from app.routers.ai import router as ai_router
-    app.include_router(ai_router)
+    from app.routers import ai
+    app.include_router(ai.router, prefix="/api/v1")
 
 Endpoints:
-- GET  /api/ai/providers                          configured providers (secrets masked)
-- GET  /api/ai/providers/health                   provider health probes
-- POST /api/ai/proposals/runs                     streamed extraction run
-- GET  /api/ai/proposals                          review-queue listing
-- POST /api/ai/agent-runs                         create + run a multi-agent run
-- GET  /api/ai/agent-runs/{run_id}                run with steps + artifacts
-- POST /api/ai/agent-runs/{run_id}/steps/{step_id}/proposals
-                                                  convert agent output -> proposal
+- GET  /api/v1/ai/providers                          configured providers (secrets masked)
+- GET  /api/v1/ai/providers/health                   provider health probes
+- POST /api/v1/ai/proposals/runs                     streamed extraction run (202)
+- GET  /api/v1/ai/proposals                          review-queue listing
+- POST /api/v1/ai/agent-runs                         create + run a multi-agent run (201)
+- GET  /api/v1/ai/agent-runs/{run_id}                run with steps + artifacts
+- POST /api/v1/ai/agent-runs/{run_id}/steps/{step_id}/proposals
+                                                     convert agent output -> proposal (201)
 
 Invariant #1 holds end-to-end: every proposal these endpoints create carries
 `review_state = "proposed"`; there is no API path to mint a trusted fact.
@@ -39,7 +40,9 @@ from app.services.ai_service import (
     get_service,
 )
 
-router = APIRouter(prefix="/api/ai", tags=["ai"])
+# Prefix-less router: mounted with `/api/v1` in app/main.py alongside the
+# claims/matters routers (matches the Tech Spec §9.2 `/api/v1` namespace).
+router = APIRouter(prefix="/ai", tags=["ai"])
 
 _STATUS_CODES = {
     "policy_violation": 409,

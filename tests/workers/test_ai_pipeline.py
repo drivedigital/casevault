@@ -816,7 +816,8 @@ def api_client(monkeypatch):
     set_service(service)
 
     app = fastapi.FastAPI()
-    app.include_router(ai_router)
+    # Mirror app/main.py: prefix-less router mounted under /api/v1.
+    app.include_router(ai_router, prefix="/api/v1")
     client = TestClient(app)
     yield client, provider, service
     set_service(None)
@@ -826,7 +827,7 @@ class TestHttpSurface:
     def test_list_providers_masks_secrets(self, api_client, monkeypatch):
         client, _, _ = api_client
         monkeypatch.setenv("OPENAI_API_KEY", "sk-supersecret-value")
-        response = client.get("/api/ai/providers")
+        response = client.get("/api/v1/ai/providers")
         assert response.status_code == 200
         body = response.json()
         assert any(p["provider_name"] == "openai" for p in body)
@@ -837,7 +838,7 @@ class TestHttpSurface:
         provider.structured_responses.append({"proposals": [fact_item()]})
         provider.structured_responses.append({"proposals": [event_item()]})
         response = client.post(
-            "/api/ai/proposals/runs",
+            "/api/v1/ai/proposals/runs",
             json={
                 "workspace_id": "ws-1",
                 "matter_id": "matter-1",
@@ -855,7 +856,7 @@ class TestHttpSurface:
     def test_proposal_run_policy_violation_409(self, api_client):
         client, _, _ = api_client
         response = client.post(
-            "/api/ai/proposals/runs",
+            "/api/v1/ai/proposals/runs",
             json={
                 "workspace_id": "ws-1",
                 "source_id": "src-1",
@@ -869,7 +870,7 @@ class TestHttpSurface:
     def test_proposal_run_unknown_provider_404(self, api_client):
         client, _, _ = api_client
         response = client.post(
-            "/api/ai/proposals/runs",
+            "/api/v1/ai/proposals/runs",
             json={
                 "workspace_id": "ws-1",
                 "source_id": "src-1",
@@ -883,7 +884,7 @@ class TestHttpSurface:
         client, provider, _ = api_client
         provider.text_responses.append("Defense view: the record is thin on notice.")
         created = client.post(
-            "/api/ai/agent-runs",
+            "/api/v1/ai/agent-runs",
             json={
                 "workspace_id": "ws-1",
                 "matter_id": "matter-1",
@@ -898,12 +899,12 @@ class TestHttpSurface:
         assert len(run["steps"]) == 1
         step_id = run["steps"][0]["id"]
 
-        fetched = client.get(f"/api/ai/agent-runs/{run['id']}")
+        fetched = client.get(f"/api/v1/ai/agent-runs/{run['id']}")
         assert fetched.status_code == 200
         assert fetched.json()["id"] == run["id"]
 
         converted = client.post(
-            f"/api/ai/agent-runs/{run['id']}/steps/{step_id}/proposals",
+            f"/api/v1/ai/agent-runs/{run['id']}/steps/{step_id}/proposals",
             json={"proposal_type": "verification_task"},
         )
         assert converted.status_code == 201, converted.text
@@ -911,4 +912,4 @@ class TestHttpSurface:
 
     def test_unknown_agent_run_404(self, api_client):
         client, _, _ = api_client
-        assert client.get("/api/ai/agent-runs/nope").status_code == 404
+        assert client.get("/api/v1/ai/agent-runs/nope").status_code == 404

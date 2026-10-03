@@ -27,3 +27,21 @@ environment, so work landed directly on the session branch — see
 (see `handoff/notes/WS-CLAIMS.md` §7), retired `pytest.ini` in favour of the
 unified `pyproject.toml` pytest config (`apps/api/requirements.txt` kept for
 runtime installs). Full suite: 95 passed / 29 skipped / 0 failed; web build green.
+
+---
+
+## 2026-10-03 — WS-AI-INTEL: F1/F2 patch applied (WS-VERIFY Run-2 proposal §5)
+
+- **F1 fixed:** ai router mounted in `apps/api/app/main.py` with
+  `prefix="/api/v1"` (WS-VERIFY's exact proposed diff; cross-workstream edit
+  coordinated via the verifier's §5 proposal).
+- **F2 fixed:** router internal prefix `/api/ai` → `/ai`; live surface is now
+  `/api/v1/ai/*` (Tech Spec §9.2 namespace). Old prefix verified 404 live.
+- Tests: 8 hardcoded paths in `tests/workers/test_ai_pipeline.py` moved to
+  `/api/v1/ai/*`; suite still **57 passed**; full repo suite 95 passed /
+  29 skipped / 0 failed; `scripts/wave3_smoke.py` GATE PASS (8P/0F/6S) with
+  API live.
+- Live acceptance (real `app.main` + local stub provider): GET
+  `/api/v1/ai/providers` 200 · POST `/api/v1/ai/proposals/runs` 202 · POST
+  `/api/v1/ai/agent-runs` 201 · all created proposals `review_state=proposed`.
+- Decisions D1/D2/D3 recorded as D-005..D-007 in `handoff/DECISIONS.md`.
