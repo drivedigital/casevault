@@ -63,3 +63,8 @@ Now the events router with inline service logic (services/event_service.py is no
 ```text
 Now the migration (0005, reserved for this workstream):
 ```
+
+### Arena Update [2026-10-03 05:21:52]
+```text
+Please git add all modified/created files for chronology, git commit with message "WS-CHRONO: timeline events, actors, links, and migration 0005", and git push origin arena/01a100f2-casevault.
+```

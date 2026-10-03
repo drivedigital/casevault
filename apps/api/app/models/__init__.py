@@ -17,4 +17,10 @@ from app.models.source import (  # noqa: F401
     SourceMetadata,
     SourcePage,
 )
+from app.models.event import (  # noqa: F401
+    DatePrecision,
+    Event,
+    EventActorLink,
+    EventFactLink,
+)
 from app.models.workspace import Workspace  # noqa: F401

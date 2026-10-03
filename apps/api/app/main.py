@@ -8,7 +8,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routers import actors, facts, health, ledger, matters, proposals, sources, workspaces
+from app.routers import (
+    actors,
+    ai,
+    events,
+    facts,
+    health,
+    ledger,
+    matters,
+    proposals,
+    sources,
+    workspaces,
+)
 
 
 def create_app() -> FastAPI:
@@ -36,6 +47,8 @@ def create_app() -> FastAPI:
         ledger.router,
         proposals.router,
         facts.router,
+        events.router,
+        ai.router,
     ):
         app.include_router(r, prefix="/api/v1")
     return app
