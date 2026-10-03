@@ -1,3 +1,6 @@
+# >>> Phase 0 plan — legal-data protections (docs/specs/..._Repo_Scaffold_Phase0_Plan.md §5)
+# IMPORTANT: data/ holds sensitive local evidence. It must NEVER be committed.
+
 # env / secrets
 .env
 .env.*
@@ -14,6 +17,7 @@ coverage/
 __pycache__/
 .pytest_cache/
 .mypy_cache/
+*.pyc
 
 # local data / evidence / derived artifacts
 data/
