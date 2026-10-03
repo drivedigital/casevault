@@ -2,9 +2,12 @@ import MatterDetail from "./matter-detail-client";
 
 export function generateStaticParams() {
   return [
-    { id: "m-001" },
-    { id: "m-002" },
-    { id: "m-003" },
+    { id: "m-230cps" },
+    { id: "m-510w42" },
+    { id: "m-part19" },
+    { id: "230cps" },
+    { id: "510w42" },
+    { id: "part19" },
   ];
 }
 

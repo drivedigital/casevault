@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "package": "node scripts/package-deploy.js"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.51.15",
