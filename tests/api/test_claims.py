@@ -12,6 +12,8 @@ candidate ranking, gap analysis.
 """
 from __future__ import annotations
 
+import csv
+import io
 import uuid
 
 import pytest
@@ -545,3 +547,76 @@ class TestAuthorityLinks:
             json={"authority_id": str(auth.id), "link_type": "controlling"},
         )
         assert dup.status_code == 409
+
+
+class TestClaimSummaryExport:
+    def test_json_export_includes_burden_elements_and_supporting_evidence_counts(self, ctx, client):
+        source = make_source(ctx, "Executed services agreement.pdf")
+        fact = make_fact(
+            ctx,
+            "Agreement signed",
+            text="The parties executed the services agreement.",
+            anchors=[(source, SupportType.supports)],
+            locator="§ 2.1",
+        )
+        claim, _ = create_claim(ctx, client, code="EXP1", elements=["Agreement", "Performance"])
+        first_element = chart(client, claim["id"])["elements"][0]
+        linked = client.post(
+            f"/api/v1/claim-elements/{first_element['id']}/link-fact",
+            json={"fact_id": str(fact.id), "link_polarity": "support", "weight_label": "medium"},
+        )
+        assert linked.status_code == 201, linked.text
+
+        response = client.get(
+            "/api/v1/claims/export",
+            params={"matter_id": str(ctx.matter.id), "format": "json"},
+        )
+        assert response.status_code == 200, response.text
+        assert response.headers["content-type"].startswith("application/json")
+        assert "claims-matrix" in response.headers["content-disposition"]
+        payload = response.json()
+        assert payload["total_claims"] == 1
+        assert payload["matter_id"] == str(ctx.matter.id)
+
+        exported = payload["claims"][0]
+        assert exported["id"] == claim["id"]
+        assert exported["burden"]["status"] == "partially_supported"
+        assert exported["supporting_fact_link_count"] == 1
+        assert exported["supporting_evidence_anchor_count"] == 1
+        assert exported["supporting_source_count"] == 1
+        assert len(exported["elements"]) == 2
+        element = exported["elements"][0]
+        assert element["element_label"] == "Agreement"
+        assert element["burden_status"] == "proven"
+        assert element["support_status"] == "moderate_support"
+        assert element["supporting_fact_link_count"] == 1
+        assert element["supporting_evidence_anchor_count"] == 1
+        assert element["supporting_source_count"] == 1
+
+    def test_csv_export_is_downloadable_and_has_one_row_per_element(self, ctx, client):
+        source = make_source(ctx, "Signed purchase order.pdf")
+        fact = make_fact(
+            ctx,
+            "Purchase order signed",
+            anchors=[(source, SupportType.supports)],
+            locator="p. 4",
+        )
+        claim, _ = create_claim(ctx, client, code="EXP2", elements=["Signed order", "Payment due"])
+        first_element = chart(client, claim["id"])["elements"][0]
+        client.post(
+            f"/api/v1/claim-elements/{first_element['id']}/link-fact",
+            json={"fact_id": str(fact.id), "link_polarity": "support", "weight_label": "medium"},
+        )
+
+        response = client.get("/api/v1/claims/export", params={"matter_id": str(ctx.matter.id)})
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/csv")
+        assert 'filename="claims-matrix-' in response.headers["content-disposition"]
+        rows = list(csv.DictReader(io.StringIO(response.text)))
+        assert len(rows) == 2
+        first = next(row for row in rows if row["element_label"] == "Signed order")
+        assert first["burden_status"] == "partially_supported"
+        assert first["element_burden_status"] == "proven"
+        assert first["element_supporting_fact_link_count"] == "1"
+        assert first["element_supporting_evidence_anchor_count"] == "1"
+        assert first["element_supporting_source_count"] == "1"

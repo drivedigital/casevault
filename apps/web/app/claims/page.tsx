@@ -85,6 +85,14 @@ export default function ClaimsMatrixPage() {
               ))}
             </select>
           </label>
+          <a
+            href={`/api/v1/claims/export?format=csv&matter_id=${encodeURIComponent(activeMatter)}`}
+            download
+            title="Download burden-of-proof rollups, element breakdowns, and supporting evidence counts for this matter"
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+          >
+            ↓ Export CSV
+          </a>
           <button
             className="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-700"
             onClick={() => setShowNew(true)}

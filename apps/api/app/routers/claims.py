@@ -5,6 +5,7 @@ Endpoint map (Tech Spec §9.2 "Claims" + matrix/gap support added by WS-CLAIMS):
 - GET    /api/v1/claim-templates                       template library (NY-first)
 - POST   /api/v1/claim-templates                       create template (seed/admin)
 - GET    /api/v1/claim-instances?matter_id=…           the claims matrix (rows + rollups)
+- GET    /api/v1/claims/export?format=csv|json          burden-of-proof summary export
 - POST   /api/v1/claim-instances                       create claim (from template or blank)
 - GET    /api/v1/claim-instances/{id}                  one claim, with burden rollup
 - PATCH  /api/v1/claim-instances/{id}                  edit header fields
@@ -22,11 +23,16 @@ Endpoint map (Tech Spec §9.2 "Claims" + matrix/gap support added by WS-CLAIMS):
 """
 from __future__ import annotations
 
+import csv
+import io
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -363,6 +369,167 @@ def _chart_out(db: Session, claim: ClaimInstance) -> ChartOut:
     )
 
 
+def _evidence_counts(facts: list[ElementFactOut]) -> tuple[int, int, int]:
+    """Return fact-link, evidence-anchor, and distinct-source counts."""
+    anchors = [anchor for fact in facts for anchor in fact.evidence]
+    return (
+        len(facts),
+        len(anchors),
+        len({anchor.source_id for anchor in anchors}),
+    )
+
+
+def _element_export_out(element: ChartElementOut) -> dict[str, object]:
+    support_counts = _evidence_counts(element.support_facts)
+    adverse_counts = _evidence_counts(element.adverse_facts)
+    return {
+        "id": str(element.id),
+        "element_order": element.element_order,
+        "element_label": element.element_label,
+        "support_status": element.computed_support_status.value,
+        "burden_status": element.burden_status.value,
+        "support_points": element.support_points,
+        "adverse_points": element.adverse_points,
+        "conflicted": element.conflicted,
+        "gap_text": element.gap_text,
+        "risk_text": element.risk_text,
+        "supporting_fact_link_count": support_counts[0],
+        "supporting_evidence_anchor_count": support_counts[1],
+        "supporting_source_count": support_counts[2],
+        "adverse_fact_link_count": adverse_counts[0],
+        "adverse_evidence_anchor_count": adverse_counts[1],
+        "adverse_source_count": adverse_counts[2],
+    }
+
+
+def _claim_export_out(db: Session, claim: ClaimInstance) -> dict[str, object]:
+    chart = _chart_out(db, claim)
+    elements = [_element_export_out(element) for element in chart.elements]
+    support_counts = _evidence_counts([fact for element in chart.elements for fact in element.support_facts])
+    adverse_counts = _evidence_counts([fact for element in chart.elements for fact in element.adverse_facts])
+    return {
+        "id": str(chart.claim.id),
+        "matter_id": str(chart.claim.matter_id),
+        "claim_code": chart.claim.claim_code,
+        "name": chart.claim.name,
+        "target_summary": chart.claim.target_summary,
+        "status": chart.claim.status,
+        "theory_summary": chart.claim.theory_summary,
+        "highest_priority_gap": chart.claim.highest_priority_gap,
+        "authority_verification_state": chart.claim.authority_verification_state,
+        "burden": chart.burden.model_dump(mode="json"),
+        "element_count": len(elements),
+        "supporting_fact_link_count": support_counts[0],
+        "supporting_evidence_anchor_count": support_counts[1],
+        "supporting_source_count": support_counts[2],
+        "adverse_fact_link_count": adverse_counts[0],
+        "adverse_evidence_anchor_count": adverse_counts[1],
+        "adverse_source_count": adverse_counts[2],
+        "elements": elements,
+    }
+
+
+CSV_EXPORT_FIELDS = [
+    "matter_id",
+    "claim_id",
+    "claim_code",
+    "claim_name",
+    "target_summary",
+    "claim_status",
+    "burden_status",
+    "burden_label",
+    "elements_total",
+    "proven_elements",
+    "partial_elements",
+    "unsupported_elements",
+    "conflicted_elements",
+    "claim_supporting_fact_link_count",
+    "claim_supporting_evidence_anchor_count",
+    "claim_supporting_source_count",
+    "claim_adverse_fact_link_count",
+    "claim_adverse_evidence_anchor_count",
+    "claim_adverse_source_count",
+    "element_id",
+    "element_order",
+    "element_label",
+    "element_support_status",
+    "element_burden_status",
+    "support_points",
+    "adverse_points",
+    "conflicted",
+    "gap_text",
+    "risk_text",
+    "element_supporting_fact_link_count",
+    "element_supporting_evidence_anchor_count",
+    "element_supporting_source_count",
+    "element_adverse_fact_link_count",
+    "element_adverse_evidence_anchor_count",
+    "element_adverse_source_count",
+]
+
+
+def _csv_safe(value: object) -> object:
+    """Neutralize spreadsheet formula prefixes in untrusted text cells."""
+    if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
+        return f"'{value}"
+    return value
+
+
+def _claim_export_csv(claims: list[dict[str, object]]) -> str:
+    output = io.StringIO(newline="")
+    writer = csv.DictWriter(output, fieldnames=CSV_EXPORT_FIELDS, extrasaction="ignore")
+    writer.writeheader()
+    for claim in claims:
+        burden = claim["burden"]
+        assert isinstance(burden, dict)
+        claim_fields = {
+            "matter_id": claim["matter_id"],
+            "claim_id": claim["id"],
+            "claim_code": claim["claim_code"],
+            "claim_name": claim["name"],
+            "target_summary": claim["target_summary"],
+            "claim_status": claim["status"],
+            "burden_status": burden["status"],
+            "burden_label": burden["label"],
+            "elements_total": burden["elements_total"],
+            "proven_elements": burden["proven_elements"],
+            "partial_elements": burden["partial_elements"],
+            "unsupported_elements": burden["unsupported_elements"],
+            "conflicted_elements": burden["conflicted_elements"],
+            "claim_supporting_fact_link_count": claim["supporting_fact_link_count"],
+            "claim_supporting_evidence_anchor_count": claim["supporting_evidence_anchor_count"],
+            "claim_supporting_source_count": claim["supporting_source_count"],
+            "claim_adverse_fact_link_count": claim["adverse_fact_link_count"],
+            "claim_adverse_evidence_anchor_count": claim["adverse_evidence_anchor_count"],
+            "claim_adverse_source_count": claim["adverse_source_count"],
+        }
+        elements = claim["elements"]
+        assert isinstance(elements, list)
+        for element in elements or [{}]:
+            assert isinstance(element, dict)
+            row = {
+                **claim_fields,
+                "element_id": element.get("id"),
+                "element_order": element.get("element_order"),
+                "element_label": element.get("element_label"),
+                "element_support_status": element.get("support_status"),
+                "element_burden_status": element.get("burden_status"),
+                "support_points": element.get("support_points"),
+                "adverse_points": element.get("adverse_points"),
+                "conflicted": element.get("conflicted"),
+                "gap_text": element.get("gap_text"),
+                "risk_text": element.get("risk_text"),
+                "element_supporting_fact_link_count": element.get("supporting_fact_link_count"),
+                "element_supporting_evidence_anchor_count": element.get("supporting_evidence_anchor_count"),
+                "element_supporting_source_count": element.get("supporting_source_count"),
+                "element_adverse_fact_link_count": element.get("adverse_fact_link_count"),
+                "element_adverse_evidence_anchor_count": element.get("adverse_evidence_anchor_count"),
+                "element_adverse_source_count": element.get("adverse_source_count"),
+            }
+            writer.writerow({key: _csv_safe(value) for key, value in row.items()})
+    return output.getvalue()
+
+
 # ------------------------------------------------------------------ templates
 
 
@@ -485,6 +652,44 @@ def list_claim_instances(
         if burden is None or assessed[c.id].burden.status == burden
     ]
     return ListOut(items=items, limit=limit, offset=offset, total=total)
+
+
+@router.get("/claims/export", response_model=None)
+def export_claim_matrix(
+    format: Literal["csv", "json"] = Query(default="csv", description="Export encoding."),
+    matter_id: uuid.UUID | None = Query(default=None, description="Limit the export to one matter."),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Export claim burden rollups with one element-breakdown row per element.
+
+    CSV is the default for direct downloads. JSON is available with
+    ``?format=json``. Both formats can be scoped to a matter using
+    ``?matter_id=<uuid>``.
+    """
+    stmt = select(ClaimInstance)
+    if matter_id is not None:
+        stmt = stmt.where(ClaimInstance.matter_id == matter_id)
+    claims = list(
+        db.scalars(
+            stmt.order_by(ClaimInstance.claim_code.nulls_last(), ClaimInstance.created_at)
+        ).all()
+    )
+    exported_claims = [_claim_export_out(db, claim) for claim in claims]
+    payload = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "matter_id": str(matter_id) if matter_id is not None else None,
+        "total_claims": len(exported_claims),
+        "claims": exported_claims,
+    }
+    filename = f"claims-matrix-{matter_id}.{format}" if matter_id else f"claims-matrix.{format}"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    if format == "json":
+        return JSONResponse(content=payload, headers=headers)
+    return Response(
+        content=_claim_export_csv(exported_claims),
+        media_type="text/csv",
+        headers=headers,
+    )
 
 
 @router.post("/claim-instances", response_model=ClaimOut, status_code=201)
