@@ -21,10 +21,20 @@ and the deployment infrastructure:
 | **OCR.space Engine** | `https://api.ocr.space/parse/image` (`K88494079788957`) | High-speed cloud extraction for scanned PDFs & images via `workers/pipeline/ocr_engine.py`. Automatic hybrid fallback from local `pypdf`. |
 | **Cloudflare Worker** | `https://casevault-worker.dan-2eb.workers.dev` | Edge gateway for GitHub webhooks, webhook signature verification (`/webhooks/github`), and Supabase REST proxying. Source in `infra/cloudflare-worker/`. |
 | **Supabase Integration** | `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | Managed Postgres, edge storage buckets, and future vector embedding/pgvector acceleration. |
-| **AI Providers** | NVIDIA API (`nvapi-iCso...`), Ollama Cloud (`111a5d...`), OpenAI, Anthropic | Fast automated proposal generation, entity extraction, and VLM image descriptions. |
-| **Local Worktrees** | `git worktree add ../casevault-<ws> -b feat/<ws>` | Isolated filesystem checkouts for concurrent subagents avoiding working tree collisions. |
+### 0.1 Arena.ai Sandbox Boundaries & Resource Access Guidelines
 
----
+Arena subagents operate inside containerized Linux sandboxes. When formulating assignments, we must strictly respect their environment boundaries:
+
+| Resource / Boundary | Status inside Arena Sandbox | Permissible Subagent Work |
+|---|---|---|
+| **Local Docker / Daemon** | **Not Available** (Cannot run `docker compose up`) | Subagents must use embedded Postgres (`scripts/agent_pg.py`) or SQLite/in-memory fixtures for test suites. |
+| **Outbound Network (PyPI / GitHub)** | **Available** (`200 OK`) | Subagents can `pip install`, `npm install`, `git fetch`, `git push`, and access standard package registries. |
+| **Outbound Network (Cloudflare / Workers)** | **Blocked / Reset** (`*.workers.dev` drops/resets TLS) | Subagents **cannot** directly probe live edge workers. Edge probes must be mocked locally or verified by the Integrator/CI. |
+| **Remote Database / Storage (Supabase)** | **REST/HTTPS Allowed** (if port 443 accessible) | Permissible for API integration via `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` over HTTPS. |
+| **AI Endpoints (OpenAI, Anthropic, NVIDIA)** | **HTTPS Allowed** (standard REST APIs) | Subagents can test live LLM completions using API tokens in `.env.local` or fake transport fixtures. |
+| **Filesystem Persistence** | **Ephemeral across turn resets** | Subagents must commit and push all code, tests, and handoff notes to GitHub before their session ends. |
+
+**Integrator Assignment Rule:** Never assign tasks requiring local Docker daemons, system-level systemd services, or live `*.workers.dev` network verification to an Arena sandbox agent. Assign those to local worktrees or verify them at the integration gate.
 
 ## 1. Roles
 
