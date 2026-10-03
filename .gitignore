@@ -26,6 +26,7 @@ cache/
 # --- node / frontend ---
 node_modules/
 .next/
+.deploy/
 out/
 coverage/
 *.tsbuildinfo
