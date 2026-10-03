@@ -198,3 +198,24 @@ Their modules need no extra deps. Running the full combined test suite:
 ```text
 Servers are still up — the gate keeps using live mode. Stopping them for the test run, then checking exactly what those two greps want:
 ```
+
+### Arena Update [2026-10-03 04:10:57]
+```text
+WS-CLAIMS is delivered, verified, and pushed — commit 6ec8fe2 on arena/01a100f2-casevault, live in the preview (/claims, ports 3000 + proxied API 8000).One thing you should know up frontThe brief's environment didn't exist: this checkout held only docs/specs/ (Phase-0 planning docs) — no ../casevault-claims worktree, no handoff/AGENT_POLICY.md, no Wave 1/2 scaffold, and the integration target arena/01a0899f-casevault
+```
+
+### Arena Update [2026-10-03 04:11:01]
+```text
+shed to this branch; I rebased onto them and resolved the shared-file overlaps.)What was builtBackend — apps/api
+app/routers/claims.py (write set ✓): templates, the matrix list (GET /claim-instances?matter_id&burden&q), full chart, create-from-template, element CRUD, link-fact / link-authority with auto-recompute (Tech Spec §10.3), recompute-support, and ranked support-candidates (§11.3).
+app/services/claim_burden.py — the burden engine. Invariant 1: elements map to accepted facts → fact_support_links → evidence sources (with locators; excluded/privileged anchors don't count). Invariant 2: per-element claim_support_status_enum + a derived 3-step rollup — unsupported / partially_supported / proven, where proven requires evidence anchoring, never attorney notes — and every badge carries an explanation ("why is this weak?").
+Claim tables match Schema Draft §6.7 exactly; alembic created once as frozen 0001 bootstrap (Invariant 3 — never modified after).
+Frontend — apps/web
+/claims matrix (
+```
+
+### Arena Update [2026-10-03 04:11:05]
+```text
+orkspace (UX Spec Screen 10: header, element matrix, inspector with facts→evidence mapping, unlink/re-weight, gap notes, candidates dialog, gap panel) — all in app/claims/** + components/claims/**; typed claimsApi client inside a delimited WS-CLAIMS section of lib/api.ts.
+Verification — Invariant 4 ✓ npm run build --workspace=web green (14 routes); Invariant 5 ✓ handoff/notes/WS-CLAIMS.md written (+ WORKLOG/TESTING/BACKLOG/DECISIONS/KNOWN_ISSUES per the repo's Phase-0 discipline). tests/api/test_claims.py: 23 passed; whole monorepo suite after rebase: 95 passed / 29 skipped / 0 failed.The seeded demo matter exercises all three states: C1 partially supported (conflicted breach element, unanchored damages), C2 unsupported, C3 proven — and the WS-VERIFY e2e gate's claim probe (/api/v1/claim-instances) returns 200 against the live server. Its 3 remaining failures probe other unlanded waves' surfaces (sources/proposals/events); flagged to them in the notes rather than faked in my write set.
+```
