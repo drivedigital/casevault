@@ -243,6 +243,76 @@ CASEVAULT_API_URL=http://localhost:8000 CLOUDFLARE_WORKER_URL=https://<worker> \
    — current strict standing: **15 passed / 29 failed** (pytest),
    smoke strict FAIL (6 skips).
 
+## 5. F1/F2 patch proposal for owning workstream (2026-10-03, proposal only)
+
+Scope note: the fix below was requested of WS-VERIFY but **not applied** —
+invariant 3 bars the verifier from writing application code, and the
+assignment's endpoint targets don't exist in code or spec (see D2). Owner:
+WS-AI-INTEL + API scaffold owner (WS-CLAIMS owns `main.py`). WS-VERIFY will
+re-run the gate after the owning workstream lands the fix. Baseline before any
+change: `tests/workers/test_ai_pipeline.py` = **57 passed** (run 2026-10-03).
+
+### Decisions required (blocking)
+
+- **D1 — mount prefix.** Options: (a) `/api/v1/ai/*` (consistent with
+  claims/matters routers + Tech Spec §9.2 `/api/v1` namespace; recommended);
+  (b) keep `/api/ai/*` (zero test churn, perpetuates F2 spec deviation).
+- **D2 — endpoint inventory mismatch.** The review asked for
+  `POST /api/v1/ai/proposals/generate` and `POST /api/v1/ai/stream` → 200, but
+  merged `ai.py` (356c5db) provides `POST /proposals/runs` (202),
+  `GET /proposals`, `POST /agent-runs` (201), `GET /agent-runs/{id}`,
+  `POST /agent-runs/{id}/steps/{step_id}/proposals`, `GET /providers[/health]`
+  — no `/proposals/generate`, no `/stream`, and 202/201 (not 200) on the POSTs
+  by design. Decide: rename, alias, or new endpoints + spec amendment. The
+  verifier cannot invent API surface.
+- **D3 — success-code bar.** Recommend "2xx" (202 accepted / 201 created are
+  REST-correct for async-run and create endpoints), not literal 200.
+
+### Proposed diff (option D1a: `/api/v1/ai/*`)
+
+`apps/api/app/routers/ai.py` — internal prefix `/api/ai` → `/ai` (matches the
+claims/matters pattern of prefix-less routers), and update the module
+docstring's mount instructions + endpoint list accordingly:
+
+```diff
+-router = APIRouter(prefix="/api/ai", tags=["ai"])
++router = APIRouter(prefix="/ai", tags=["ai"])
+```
+
+`apps/api/app/main.py` — mount alongside the other routers:
+
+```diff
+-from app.routers import claims, health, matters
++from app.routers import ai, claims, health, matters
+ ...
+ app.include_router(health.router)
+ app.include_router(matters.router, prefix="/api/v1")
+ app.include_router(claims.router, prefix="/api/v1")
++app.include_router(ai.router, prefix="/api/v1")
+```
+
+Resulting live surface: `/api/v1/ai/providers[/health]`,
+`/api/v1/ai/proposals/runs`, `/api/v1/ai/proposals`,
+`/api/v1/ai/agent-runs[/{id}...]`.
+
+### Required test updates (same commit, no exceptions)
+
+`tests/workers/test_ai_pipeline.py::TestHttpSurface` hardcodes 8 `/api/ai/*`
+paths (lines ~829–914); every one must move to `/api/v1/ai/*` or the suite
+goes red on a correct fix. No other in-repo `/api/ai` consumers exist
+(verified by grep 2026-10-03).
+
+### Acceptance checklist (WS-VERIFY re-run gates on these)
+
+1. `GET /api/v1/ai/providers` → 200 live (proves F1 mount fixed).
+2. `POST /api/v1/ai/proposals/runs` → 202, `POST /api/v1/ai/agent-runs` → 201
+   live (or per D2/D3 replacements).
+3. `pytest tests/workers/test_ai_pipeline.py -q` → 57 passed.
+4. `python scripts/wave3_smoke.py` → still GATE PASS; e2e AI/review probes
+   improve (currently SKIP on live 404s).
+5. Decision record for D1/D2/D3 in `handoff/DECISIONS.md` (or owning
+   workstream's notes) so the spec deviation is tracked, not silent.
+
 ## Appendix — probe inventory
 
 - Env vars: `CASEVAULT_API_URL`/`API_BASE_URL` (default `http://localhost:8000`),
